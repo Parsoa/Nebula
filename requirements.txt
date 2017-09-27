@@ -1,3 +1,4 @@
 cython
-pybedtoola
+pybedtools
 biopython
+-e git+git@github.com:dib-lab/khmer.git#egg=khmer
