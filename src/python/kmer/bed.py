@@ -15,7 +15,14 @@ def read_tracks_from_bed_file(path):
         count_kmers(sequence)
 
 def extract_reference_sequence(track):
-    bedtool = pybedtools.BedTool(str(track), from_gok5443w;'rrfnstring=True)
+    bedtool = pybedtools.BedTool(str(track), from_string=True)
+    sequence = bedtool.sequence(fi=reference.ReferenceGenome().fasta)
+    # print(open(sequence.seqfn).read())
+    return sequence.seqfn
+
+
+def extract_sample_sequence(track):
+    bedtool = pybedtools.BedTool(str(track), from_string=True)
     sequence = bedtool.sequence(fi=reference.ReferenceGenome().fasta)
     # print(open(sequence.seqfn).read())
     return sequence.seqfn
