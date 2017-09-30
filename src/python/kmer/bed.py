@@ -33,7 +33,7 @@ def extract_sequence_boundaries(sequence):
     c = config.Configuration()
     f = open(sequence)
     for i, line in enumerate(f):
-        line = line.strip()
+        line = line.strip( )
         if i == 1:
             head = line[0:2 * c.ksize]
             tail = line[-2 * c.ksize:]
