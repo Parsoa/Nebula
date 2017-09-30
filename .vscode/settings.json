@@ -1,5 +1,7 @@
 {
     "files.associations": {
         "algorithm": "cpp"
-    }
+    },
+    "python.formatting.provider": "yapf",
+    "python.linting.pylintEnabled": false
 }
