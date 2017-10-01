@@ -5,7 +5,7 @@ class Configuration:
             self.ksize = ksize
             self.khmer_table_size = khmer_table_size
             self.khmer_num_tables = khmer_num_tables
-            self.fastq_file = 
+            self.fastq_file = fastq_file
 
         def kmer_size(self):
             return self.ksize
