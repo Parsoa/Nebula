@@ -34,11 +34,11 @@ def read_tracks_from_bed_file(path):
             for kmer in counts.get_kmers(seq) :
                 inverse_kmers[kmer.upper()] = True
     print('done processing tracks')
-    fastq_counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
-    total_reads, n_consumed = fastq_counts.consume_seqfile(c.fastq_file)
-    print('fatsq, total_reads: ', total_reads, ', n_consumed: ', n_consumed)
-    print('reference kmers:', kmers)
-    print('inverse reference kmers:', inverse_kmers)
+    # fastq_counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
+    # total_reads, n_consumed = fastq_counts.consume_seqfile(c.fastq_file)
+    # print('fatsq, total_reads: ', total_reads, ', n_consumed: ', n_consumed)
+    print('reference kmers:', len(kmers))
+    print('inverse reference kmers:', len(inverse_kmers))
     print('common:', sets.print_dictionary_keys(
         sets.calc_dictionary_intersection(kmers, inverse_kmers)))
 
