@@ -15,6 +15,7 @@ def read_tracks_from_bed_file(path):
     inverse_counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
     bedtools = pybedtools.BedTool(path)
     for track in bedtools:
+        print('track: ', track)
         sequence = extract_reference_sequence(track)
         (head, tail), (inverse_head, inverse_tail) = extract_sequence_boundaries(sequence)
         # 
@@ -24,6 +25,7 @@ def read_tracks_from_bed_file(path):
         inverse_counts.consume(inverse_head)
         inverse_counts.consume(inverse_tail)
         # 
+    print('done processing tracks')
     print('common:', sets.calc_set_intersection())
 
 def extract_reference_sequence(track):
