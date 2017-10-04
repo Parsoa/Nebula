@@ -1,7 +1,9 @@
 def calc_dictionary_intersection(a, b):
     intersection = {}
-    for key in a :
-        if key in b :
+    small = a if len(a.keys()) < len(b.keys()) else b
+    large = b if len(a.keys()) < len(b.keys()) else a
+    for key in small :
+        if key in large :
             intersection[key] = True
     return intersection
 
