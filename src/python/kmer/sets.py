@@ -15,5 +15,5 @@ def calc_dictionary_symmetric_difference(a, b):
             symmetric_difference[key] = True
     return symmetric_differencels
 
-def print_dictionary_keys(dict):davisss
+def print_dictionary_keys(dict):
     print(list(dict.keys()))
