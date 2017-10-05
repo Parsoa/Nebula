@@ -16,7 +16,8 @@ if __name__ == '__main__':
         ksize=25,
         khmer_table_size=khmer_table_size,
         khmer_num_tables=khmer_num_tables,
-        fastq_file='/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
+        fastq_file=
+        '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.fq'
     )
     if platform == "darwin":
         print('Running on Mac OS X')
