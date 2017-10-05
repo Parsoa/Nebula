@@ -13,7 +13,7 @@ def calc_dictionary_symmetric_difference(a, b):
     for key in a.keys():
         if not key in b:
             symmetric_difference[key] = True
-    return symmetric_difference
+    return symmetric_differencels
 
-def print_dictionary_keys(dict):
+def print_dictionary_keys(dict):davisss
     print(list(dict.keys()))
