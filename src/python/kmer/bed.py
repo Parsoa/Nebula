@@ -3,31 +3,22 @@ import os
 import time
 import pwd
 
-# from . import (
-#     reference,
-#     config,
-#     sets,
-# )
-
-# from kmer import reference
-# from kmer import config
-# from kmer import sets
-
-import reference
-import config
-import sets
+from . import (
+    reference,
+    config,
+    sets,
+)
 
 import pybedtools
 import khmer
 
 # @profile
 def read_tracks_from_bed_file(path):
-    print(__name__)
     c = config.Configuration()
     bedtools = pybedtools.BedTool(path)
     # 
-    reference_counttable = count_reference_kmers()
-    sample_counttable = count_sample_kmers()
+    # reference_counttable = count_reference_kmers()
+    # sample_counttable = count_sample_kmers()
     #
     for track in bedtools:
         print('track: ', track)
@@ -70,7 +61,7 @@ def count_kmers_from_file(file):
     return counttable, nkmer
 
 def count_reference_kmers():
-    print('reading reference genome ...')
+    print('reading reference genome ... ')
     c = config.Configuration()
     start = time.clock()
     #
@@ -100,7 +91,8 @@ def extract_track_boundaries(track):
     c = config.Configuration()
     interval = pybedtools.Interval(chrom=track.chrom, start=track.start - c.ksize, end=track.end + c.ksize)
     bedtool = pybedtools.BedTool(str(interval), from_string=True)
-    f = open(bedtool.sequence(fi=reference.ReferenceGenome().fasta))
+    print('reference genome: ' + reference.ReferenceGenome().path)
+    f = open(bedtool.sequence(fi = reference.ReferenceGenome().fasta))
     for i, line in enumerate(f):
         line = line.strip()
         if i == 1:
@@ -125,24 +117,28 @@ def calc_jaccard_similarity(kmers, countgraph):
             result[kmer] = True
     return result
 
-if __name__ == '__main__':
-    print('cwd: {}'.format(os.getcwd()))
+
+def configure():
+    # print('cwd: {}'.format(os.getcwd()))
     khmer_table_size = 5e8
     khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
-        reference_genome = '/Users/' + pwd.getpwuid(os.getuid()).pw_name + '/Desktop/Davis/Projects/NebulousSerendipity/data/hg38.fa'
-        fastq_file = '../../../data/CHM1.samtoolsversion.head.fq'
+        reference.ReferenceGenome(os.path.join(os.path.dirname(__file__), '../../../data/hg38.fa'))
+        fastq_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.fq')
     else:
         print('Running on Linux')
-        reference_genome = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
-        fastq_file='/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.fq'
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.fq'
+        reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
     config.Configuration(
-        ksize=25,
-        khmer_table_size=khmer_table_size,
-        khmer_num_tables=khmer_num_tables,
-        fastq_file=fastq_file
+        ksize = 25,
+        khmer_table_size = khmer_table_size,
+        khmer_num_tables = khmer_num_tables,
+        fastq_file = fastq_file
     )
-    bed_file = os.path.abspath('../../../data/CHM1.inversions_hg38.bed')
-    reference.ReferenceGenome(path=reference_genome)
-    read_tracks_from_bed_file(path=bed_file)
+    bed_file = os.path.join(os.path.dirname(__file__),'../../../data/CHM1.inversions_hg38.bed')
+    read_tracks_from_bed_file(path = bed_file)
+
+if __name__ == '__main__':
+    configure()
+ 

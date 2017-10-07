@@ -3,3 +3,4 @@ pybedtools
 biopython
 # comment this line first
 -e git+git@github.com:dib-lab/khmer.git#egg=khmer
+memory_profiler
