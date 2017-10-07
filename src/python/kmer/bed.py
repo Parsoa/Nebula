@@ -1,58 +1,44 @@
 import sys
+import os
 import time
+import pwd
 
-from kmer import (
-    reference,
-    config,
-    sets,
-)
+# from . import (
+#     reference,
+#     config,
+#     sets,
+# )
+
+# from kmer import reference
+# from kmer import config
+# from kmer import sets
+
+import reference
+import config
+import sets
 
 import pybedtools
 import khmer
 
+# @profile
 def read_tracks_from_bed_file(path):
+    print(__name__)
     c = config.Configuration()
     bedtools = pybedtools.BedTool(path)
-    #
-    print('reading sample ...')
-    start = time.clock()
-    fastq_counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
-    nseqs, nkmers = fastq_counts.consume_seqfile(c.fastq_file)
-    end = time.clock()
-    print('took ', end - start)
-    print('sample cached, ', nkmers, ' kmers')
+    # 
+    reference_counttable = count_reference_kmers()
+    sample_counttable = count_sample_kmers()
     #
     for track in bedtools:
         print('track: ', track)
-        counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
-        inverse_counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
+        reference_boundaries, variation_boundaries = extract_track_boundaries(track)
+        # 
+        reference_counttable, reference_kmers = extract_kmers_of_interest(reference_boundaries)
+        variation_counttable, variation_kmers = extract_kmers_of_interest(variation_boundaries)
         #
-        kmers = {}
-        inverse_kmers = {}
-        #
-        sequence = extract_reference_sequence(track)
-        (head, tail), (inverse_head, inverse_tail) = extract_sequence_boundaries(sequence)
-        print('reference: [', head, '.....', tail, ']')
-        print('inverse: [', inverse_head, '.....', inverse_tail, ']')
-        #
-        counts.consume(head)
-        counts.consume(tail)
-        #
-        inverse_counts.consume(inverse_head)
-        inverse_counts.consume(inverse_tail)
-        #
-        for seq in [head, tail] :
-            for kmer in counts.get_kmers(seq) :
-                # print(kmer, ':', counts.get_kmer_counts(kmer))
-                kmers[kmer] = True
-        #
-        for seq in [inverse_head, inverse_tail] :
-            for kmer in inverse_counts.get_kmers(seq) :
-                inverse_kmers[kmer] = True
-        #
-        print('reference kmers: ', len(kmers.keys()))
-        print('inverse kmers: ', len(inverse_kmers.keys()))
-        print('inverse/reference intersection: ', len(sets.calc_dictionary_intersection(kmers, inverse_kmers)))
+        print('reference kmers: ', len(reference_kmers.keys()))
+        print('variation kmers: ', len(variation_kmers.keys()))
+        print('reference/variation intersection: ', len(sets.calc_dictionary_intersection(reference_kmers, variation_kmers)))
         #
         reference_score = len(calc_jaccard_similarity(
             sets.calc_dictionary_difference(kmers, inverse_kmers), fastq_counts))
@@ -62,21 +48,59 @@ def read_tracks_from_bed_file(path):
         print('fastq/inverse similarity: ', inverse_score)
         print('decision: ', ('reference' if reference_score > inverse_score else ('inverse' if reference_score < inverse_score else 'undecisive')))
 
-    # print('common:', sets.print_dictionary_keys(sets.calc_dictionary_intersection(kmers, inverse_kmers)))
+def extract_kmers_of_interest(boundaries):
+    counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
+    #
+    kmers = {}
+    #
+    countt.consume(boundaries['head'])
+    countt.consume(boundaries['tail'])
+    #
+    for sequence in [boundaries['head'], boundaries['tail']]:
+        for kmer in counttable.get_kmers(sequence) :
+            kmers[kmer] = countt.get_kmer_counts(kmer)
+    return counttable, kmers
 
-def extract_reference_sequence(track):
-    # TODO: this might actually cause problem if it surpasses the boundaris of the chromosome
+def count_kmers_from_file(file):
+    c = config.Configuration()
+    #
+    counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
+    nseqs, nkmers = counttable.consume_seqfile(file)
+    #
+    return counttable, nkmer
+
+def count_reference_kmers():
+    print('reading reference genome ...')
+    c = config.Configuration()
+    start = time.clock()
+    #
+    counttable, nkmers = count_kmers_from_file(reference.ReferenceGenome().fasta)
+    #
+    end = time.clock()
+    print('took ', end - start)
+    print('kmers in reference genome: ', nkmers)
+    return counttable, nkmers
+
+def count_sample_kmers():
+    print('reading sample ...')
+    c = config.Configuration()
+    start = time.clock()
+    #
+    counttable, nkmers = count_kmers_from_file(c.fastq_file)
+    #
+    end = time.clock()
+    print('took ', end - start)
+    print('sample cached, ', nkmers, ' kmers')
+
+def count_variation_kmers(reference_counttable, track):
+    #TODO implement
+    sequence = extract_reference_sequence(track)
+
+def extract_track_boundaries(track):
     c = config.Configuration()
     interval = pybedtools.Interval(chrom=track.chrom, start=track.start - c.ksize, end=track.end + c.ksize)
-    # print('Interval: ', interval)
     bedtool = pybedtools.BedTool(str(interval), from_string=True)
-    sequence = bedtool.sequence(fi=reference.ReferenceGenome().fasta)
-    return sequence.seqfn
-
-def extract_sequence_boundaries(sequence):
-    # print(sequence)
-    c = config.Configuration()
-    f = open(sequence)
+    f = open(bedtool.sequence(fi=reference.ReferenceGenome().fasta))
     for i, line in enumerate(f):
         line = line.strip()
         if i == 1:
@@ -92,7 +116,7 @@ def extract_sequence_boundaries(sequence):
             inverse_tail = line[-2 * c.ksize:]
             # print('inverse head: ', inverse_head)
             # print('inverse tail: ', inverse_tail)
-            return (head.upper(), tail.upper()), (inverse_head.upper(), inverse_tail.upper())
+            return {'head': head.upper(), 'tail': tail.upper()}, {'head': inverse_head.upper(), 'tail': inverse_tail.upper()}
 
 def calc_jaccard_similarity(kmers, countgraph):
     result = {}
@@ -101,13 +125,24 @@ def calc_jaccard_similarity(kmers, countgraph):
             result[kmer] = True
     return result
 
-def extract_sample_sequence(track):
-    bedtool = pybedtools.BedTool(str(track), from_string=True)
-    sequence = bedtool.sequence(fi=reference.ReferenceGenome().fasta)
-    return sequence.seqfn
-
-def count_kmers(sequence):
-    c = config.Configuration()
-    counts = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
-    nseqs, nkmers = counts.consume_seqfile(sequence)
-    print(nseqs, nkmers)
+if __name__ == '__main__':
+    print('cwd: {}'.format(os.getcwd()))
+    khmer_table_size = 5e8
+    khmer_num_tables = 4
+    if sys.platform == "darwin":
+        print('Running on Mac OS X')
+        reference_genome = '/Users/' + pwd.getpwuid(os.getuid()).pw_name + '/Desktop/Davis/Projects/NebulousSerendipity/data/hg38.fa'
+        fastq_file = '../../../data/CHM1.samtoolsversion.head.fq'
+    else:
+        print('Running on Linux')
+        reference_genome = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
+        fastq_file='/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.fq'
+    config.Configuration(
+        ksize=25,
+        khmer_table_size=khmer_table_size,
+        khmer_num_tables=khmer_num_tables,
+        fastq_file=fastq_file
+    )
+    bed_file = os.path.abspath('../../../data/CHM1.inversions_hg38.bed')
+    reference.ReferenceGenome(path=reference_genome)
+    read_tracks_from_bed_file(path=bed_file)

@@ -2,6 +2,6 @@
     "files.associations": {
         "algorithm": "cpp"
     },
-    "python.formatting.provider": "yapf",
+    "python.formatting.provider": "autopep8",
     "python.linting.pylintEnabled": false
 }
