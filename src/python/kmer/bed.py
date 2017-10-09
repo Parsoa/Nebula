@@ -39,22 +39,28 @@ def read_tracks_from_bed_file():
     print(type(sample_counttable))
     #
     for track in bedtools:
-        print('track: ', track)
+        print('--------------------------------------------------------')
+        print('track: ', str(track).strip())
         reference_boundaries, variation_boundaries = extract_track_boundaries(track)
         # 
         reference_counttable, reference_kmers = extract_kmers_of_interest(reference_boundaries)
         variation_counttable, variation_kmers = extract_kmers_of_interest(variation_boundaries)
         #
         print('reference kmers: ', len(reference_kmers.keys()))
+        print(reference_kmers.keys())
         print('variation kmers: ', len(variation_kmers.keys()))
-        print('reference/variation intersection: ', len(sets.calc_dictionary_intersection(reference_kmers, variation_kmers)))
+        print(variation_kmers.keys())
+        intersection = sets.calc_dictionary_intersection(reference_kmers, variation_kmers)
+        print('reference/variation intersection: ', len(intersection), ' kmers')
+        print(intersection)
         #
-        reference_score = len(calc_jaccard_similarity(
+        reference_score = len(calc_similarity_score(
             sets.calc_dictionary_difference(reference_kmers, variation_kmers), sample_counttable))
         print('fastq/reference similarity: ', reference_score)
-        variation_score = len(calc_jaccard_similarity(
+        variation_score = len(calc_similarity_score(
             sets.calc_dictionary_difference(variation_kmers, reference_kmers), sample_counttable))
         print('fastq/variation similarity: ', variation_score)
+        print('========================================')
         print('decision: ', ('reference' if reference_score > variation_score else
                     ('variation' if reference_score < variation_score else 'undecisive')))
 
@@ -95,8 +101,16 @@ def count_reference_kmers():
 def count_sample_kmers():
     print('reading sample genome ...')
     c = config.Configuration()
+    # 
+    print('looking for cached counttable')
+    cache = c.fastq_file + '.ct'
+    if os.path.isfile(cache):
+        print('found at ', cache)
+        return khmer.Counttable.load(cache)
     #
+    print('not found, creating counttable ' + cache)
     counttable, nkmers = count_kmers_from_file(c.fastq_file)
+    counttable.save(cache)
     #
     print('sample counttable cached: ', nkmers, ' kmers recorded')
     return counttable
@@ -128,10 +142,12 @@ def extract_track_boundaries(track):
             # print('inverse tail: ', inverse_tail)
             return {'head': head.upper(), 'tail': tail.upper()}, {'head': inverse_head.upper(), 'tail': inverse_tail.upper()}
 
-def calc_jaccard_similarity(kmers, countgraph):
+def calc_similarity_score(kmers, counttable):
+    print('========================================')
     result = {}
     for kmer in kmers:
-        if countgraph.get_kmer_counts(kmer)[0] != 0 :
+        if counttable.get_kmer_counts(kmer)[0] != 0 :
+            print(kmer, 'sample: ', '{:04d}'.format(counttable.get_kmer_counts(kmer)[0]))
             result[kmer] = True
     return result
 
@@ -141,18 +157,18 @@ def configure():
     khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
-        reference.ReferenceGenome(os.path.join(os.path.dirname(__file__), '../../../data/hg38.fa'))
-        fastq_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.tiny.fq')
+        reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../data/hg38.fa')))
+        fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
     else:
         print('Running on Linux')
-        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.tiny.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
     config.Configuration(
         ksize = 25,
         khmer_table_size = khmer_table_size,
         khmer_num_tables = khmer_num_tables,
         fastq_file = fastq_file,
-        bed_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.inversions_hg38.bed')
+        bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../data/CHM1.inversions_hg38.bed'))
     )
 
 if __name__ == '__main__':

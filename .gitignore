@@ -1,4 +1,5 @@
 venv/
-data/hg38.fa
+data/*
+output/*
 *.fq
 *.pyc
