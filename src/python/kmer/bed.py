@@ -145,7 +145,7 @@ def configure():
         fastq_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.tiny.fq')
     else:
         print('Running on Linux')
-        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.tiny.fq'
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
     config.Configuration(
         ksize = 25,

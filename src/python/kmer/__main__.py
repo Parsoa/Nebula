@@ -21,7 +21,7 @@ if __name__ == '__main__':
     else:
         print('Running on Linux')
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
-        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.tiny.fq'
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
     config.Configuration(
         ksize = 25,
         khmer_table_size = khmer_table_size,
