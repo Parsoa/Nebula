@@ -157,18 +157,21 @@ def configure():
     khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
-        reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../data/hg38.fa')))
-        fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
+        reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../data/hg38.fa')))
+        fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
     else:
         print('Running on Linux')
-        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.tiny.fq'
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
     config.Configuration(
         ksize = 25,
         khmer_table_size = khmer_table_size,
         khmer_num_tables = khmer_num_tables,
         fastq_file = fastq_file,
-        bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../data/CHM1.inversions_hg38.bed'))
+        bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../data/CHM1.inversions_hg38.bed'))
     )
 
 if __name__ == '__main__':
