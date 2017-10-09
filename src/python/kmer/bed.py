@@ -1,7 +1,7 @@
 import sys
-import os
 import time
 import pwd
+import os
 
 from . import (
     reference,
@@ -12,13 +12,31 @@ from . import (
 import pybedtools
 import khmer
 
-# @profile
-def read_tracks_from_bed_file(path):
+def measure_time(f):
+    def wrapper():
+        start = time.clock()
+        result = f()
+        end = time.clock()
+        print('took ', end - start)
+        return result
+    return wrapper
+
+def conditionally(f):
+    print(__name__)
+    if __name__ == '__main__':
+        print('not profiling')
+        return f
+    print('profiling')
+    return profile(f)
+
+@conditionally
+def read_tracks_from_bed_file():
     c = config.Configuration()
-    bedtools = pybedtools.BedTool(path)
+    bedtools = pybedtools.BedTool(c.bed_file)
     # 
     # reference_counttable = count_reference_kmers()
-    # sample_counttable = count_sample_kmers()
+    sample_counttable = count_sample_kmers()
+    print(type(sample_counttable))
     #
     for track in bedtools:
         print('track: ', track)
@@ -32,24 +50,27 @@ def read_tracks_from_bed_file(path):
         print('reference/variation intersection: ', len(sets.calc_dictionary_intersection(reference_kmers, variation_kmers)))
         #
         reference_score = len(calc_jaccard_similarity(
-            sets.calc_dictionary_difference(kmers, inverse_kmers), fastq_counts))
+            sets.calc_dictionary_difference(reference_kmers, variation_kmers), sample_counttable))
         print('fastq/reference similarity: ', reference_score)
-        inverse_score = len(calc_jaccard_similarity(
-            sets.calc_dictionary_difference(inverse_kmers, kmers), fastq_counts))
-        print('fastq/inverse similarity: ', inverse_score)
-        print('decision: ', ('reference' if reference_score > inverse_score else ('inverse' if reference_score < inverse_score else 'undecisive')))
+        variation_score = len(calc_jaccard_similarity(
+            sets.calc_dictionary_difference(variation_kmers, reference_kmers), sample_counttable))
+        print('fastq/variation similarity: ', variation_score)
+        print('decision: ', ('reference' if reference_score > variation_score else
+                    ('variation' if reference_score < variation_score else 'undecisive')))
 
 def extract_kmers_of_interest(boundaries):
+    c = config.Configuration()
+    # 
     counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
     #
     kmers = {}
     #
-    countt.consume(boundaries['head'])
-    countt.consume(boundaries['tail'])
+    counttable.consume(boundaries['head'])
+    counttable.consume(boundaries['tail'])
     #
     for sequence in [boundaries['head'], boundaries['tail']]:
         for kmer in counttable.get_kmers(sequence) :
-            kmers[kmer] = countt.get_kmer_counts(kmer)
+            kmers[kmer] = counttable.get_kmer_counts(kmer)
     return counttable, kmers
 
 def count_kmers_from_file(file):
@@ -58,30 +79,27 @@ def count_kmers_from_file(file):
     counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
     nseqs, nkmers = counttable.consume_seqfile(file)
     #
-    return counttable, nkmer
+    return counttable, nkmers
 
+@measure_time
 def count_reference_kmers():
     print('reading reference genome ... ')
     c = config.Configuration()
-    start = time.clock()
     #
-    counttable, nkmers = count_kmers_from_file(reference.ReferenceGenome().fasta)
+    counttable, nkmers = count_kmers_from_file(reference.ReferenceGenome().path)
     #
-    end = time.clock()
-    print('took ', end - start)
-    print('kmers in reference genome: ', nkmers)
-    return counttable, nkmers
+    print('reference counttable cached: ', nkmers, ' kmers recorded')
+    return counttable
 
+@measure_time
 def count_sample_kmers():
-    print('reading sample ...')
+    print('reading sample genome ...')
     c = config.Configuration()
-    start = time.clock()
     #
     counttable, nkmers = count_kmers_from_file(c.fastq_file)
     #
-    end = time.clock()
-    print('took ', end - start)
-    print('sample cached, ', nkmers, ' kmers')
+    print('sample counttable cached: ', nkmers, ' kmers recorded')
+    return counttable
 
 def count_variation_kmers(reference_counttable, track):
     #TODO implement
@@ -89,10 +107,10 @@ def count_variation_kmers(reference_counttable, track):
 
 def extract_track_boundaries(track):
     c = config.Configuration()
-    interval = pybedtools.Interval(chrom=track.chrom, start=track.start - c.ksize, end=track.end + c.ksize)
-    bedtool = pybedtools.BedTool(str(interval), from_string=True)
-    print('reference genome: ' + reference.ReferenceGenome().path)
-    f = open(bedtool.sequence(fi = reference.ReferenceGenome().fasta))
+    interval = pybedtools.Interval(chrom = track.chrom, start = track.start - c.ksize,\
+        end = track.end + c.ksize)
+    bedtool = pybedtools.BedTool(str(interval), from_string = True)
+    f = open((bedtool.sequence(fi = reference.ReferenceGenome().fasta)).seqfn)
     for i, line in enumerate(f):
         line = line.strip()
         if i == 1:
@@ -117,7 +135,6 @@ def calc_jaccard_similarity(kmers, countgraph):
             result[kmer] = True
     return result
 
-
 def configure():
     # print('cwd: {}'.format(os.getcwd()))
     khmer_table_size = 5e8
@@ -125,20 +142,20 @@ def configure():
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         reference.ReferenceGenome(os.path.join(os.path.dirname(__file__), '../../../data/hg38.fa'))
-        fastq_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.fq')
+        fastq_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.samtoolsversion.head.tiny.fq')
     else:
         print('Running on Linux')
-        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.fq'
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.head.tiny.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
     config.Configuration(
         ksize = 25,
         khmer_table_size = khmer_table_size,
         khmer_num_tables = khmer_num_tables,
-        fastq_file = fastq_file
+        fastq_file = fastq_file,
+        bed_file = os.path.join(os.path.dirname(__file__), '../../../data/CHM1.inversions_hg38.bed')
     )
-    bed_file = os.path.join(os.path.dirname(__file__),'../../../data/CHM1.inversions_hg38.bed')
-    read_tracks_from_bed_file(path = bed_file)
 
 if __name__ == '__main__':
     configure()
+    read_tracks_from_bed_file()
  

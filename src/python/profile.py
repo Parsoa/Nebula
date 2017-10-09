@@ -1,5 +1,8 @@
 from kmer import bed
 
-if __name__ == '__main__' :
+def main():
     bed.configure()
     bed.read_tracks_from_bed_file()
+
+if __name__ == '__main__' :
+    main()
