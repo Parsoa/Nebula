@@ -152,7 +152,7 @@ def calc_similarity_score(kmers, counttable):
 
 def configure():
     # print('cwd: {}'.format(os.getcwd()))
-    khmer_table_size = 5e10
+    khmer_table_size = 5e9
     khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
