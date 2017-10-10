@@ -36,7 +36,6 @@ def read_tracks_from_bed_file():
     # 
     # reference_counttable = count_reference_kmers()
     sample_counttable = count_sample_kmers()
-    print(type(sample_counttable))
     #
     for track in bedtools:
         print('--------------------------------------------------------')
@@ -153,7 +152,7 @@ def calc_similarity_score(kmers, counttable):
 
 def configure():
     # print('cwd: {}'.format(os.getcwd()))
-    khmer_table_size = 5e8
+    khmer_table_size = 5e10
     khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
