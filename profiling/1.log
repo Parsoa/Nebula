@@ -1,0 +1,25 @@
+    41 5752.918 MiB 3815.398 MiB       for track in bedtools:
+    42 5752.914 MiB   -0.004 MiB           print('--------------------------------------------------------')
+    43 5752.914 MiB    0.000 MiB           print('track: ', str(track).strip())
+    44 5752.914 MiB    0.000 MiB           reference_boundaries, variation_boundaries = extract_track_boundaries(track)
+    45                                     #
+    46 5752.914 MiB    0.000 MiB           reference_counttable, reference_kmers = extract_kmers_of_interest(reference_boundaries)
+    47 5752.914 MiB    0.000 MiB           variation_counttable, variation_kmers = extract_kmers_of_interest(variation_boundaries)
+    48                                     #
+    49 5752.914 MiB    0.000 MiB           print('reference kmers: ', len(reference_kmers.keys()))
+    50 5752.914 MiB    0.000 MiB           print(reference_kmers.keys())
+    51 5752.914 MiB    0.000 MiB           print('variation kmers: ', len(variation_kmers.keys()))
+    52 5752.914 MiB    0.000 MiB           print(variation_kmers.keys())
+    53 5752.918 MiB    0.004 MiB           intersection = sets.calc_dictionary_intersection(reference_kmers, variation_kmers)
+    54 5752.918 MiB    0.000 MiB           print('reference/variation intersection: ', len(intersection), ' kmers')
+    55 5752.918 MiB    0.000 MiB           print(intersection)
+    56                                     #
+    57 5752.918 MiB    0.000 MiB           reference_score = len(calc_similarity_score(
+    58 5752.918 MiB    0.000 MiB               sets.calc_dictionary_difference(reference_kmers, variation_kmers), sample_counttable))
+    59 5752.918 MiB    0.000 MiB           print('fastq/reference similarity: ', reference_score)
+    60 5752.918 MiB    0.000 MiB           variation_score = len(calc_similarity_score(
+    61 5752.918 MiB    0.000 MiB               sets.calc_dictionary_difference(variation_kmers, reference_kmers), sample_counttable))
+    62 5752.918 MiB    0.000 MiB           print('fastq/variation similarity: ', variation_score)
+    63 5752.918 MiB    0.000 MiB           print('========================================')
+    64 5752.918 MiB    0.000 MiB           print('decision: ', ('reference' if reference_score > variation_score else
+    65 5752.918 MiB    0.000 MiB                       ('variation' if reference_score < variation_score else 'undecisive')))
