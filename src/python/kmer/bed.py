@@ -40,18 +40,20 @@ def read_tracks_from_bed_file():
     for track in bedtools:
         print('--------------------------------------------------------')
         print('track: ', str(track).strip())
-        reference_boundaries, variation_boundaries = extract_track_boundaries(track)
         # 
+        reference_boundaries, variation_boundaries = extract_track_boundaries(track)
         reference_counttable, reference_kmers = extract_kmers_of_interest(reference_boundaries)
         variation_counttable, variation_kmers = extract_kmers_of_interest(variation_boundaries)
         #
-        print('reference kmers: ', len(reference_kmers.keys()))
-        print(reference_kmers.keys())
-        print('variation kmers: ', len(variation_kmers.keys()))
-        print(variation_kmers.keys())
+        print('reference segment: ', len(reference_kmers.keys()), ' @ ',\
+            reference_boundaries['head'], ' ... ', reference_boundaries['tail'])
+        print('variation segment: ', len(variation_kmers.keys()), ' @ ',\
+            variation_boundaries['head'], ' ... ', variation_boundaries['tail'])
+        # 
         intersection = sets.calc_dictionary_intersection(reference_kmers, variation_kmers)
         print('reference/variation intersection: ', len(intersection), ' kmers')
-        print(intersection)
+        if intersection:
+            print(intersection)
         #
         reference_score = len(calc_similarity_score(
             sets.calc_dictionary_difference(reference_kmers, variation_kmers), sample_counttable))
@@ -152,7 +154,7 @@ def calc_similarity_score(kmers, counttable):
 
 def configure():
     # print('cwd: {}'.format(os.getcwd()))
-    khmer_table_size = 5e9
+    khmer_table_size = 16e9
     khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
