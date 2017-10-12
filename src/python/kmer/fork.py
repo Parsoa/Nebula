@@ -142,17 +142,22 @@ def extract_track_boundaries(track):
 
 def count_boundary_kmers(boundaries):
     c = config.Configuration()
-    # 
-    counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
     #
     kmers = {}
+    kmers = count_kmers(boundaries['head'], c.ksize, kmers)
+    kmers = count_kmers(boundaries['tail'], c.ksize, kmers)
+    print(kmers)
     #
-    counttable.consume(boundaries['head'])
-    counttable.consume(boundaries['tail'])
-    #
-    for sequence in [boundaries['head'], boundaries['tail']]:
-        for kmer in counttable.get_kmers(sequence) :
-            kmers[kmer] = counttable.get_kmer_counts(kmer)[0]
+    return kmers
+
+def count_kmers(str, k, kmers):
+    for i in range(0, len(str) - k):
+        kmer = str[i:i + k]
+        # print(kmer, ' ',  len(kmer))
+        if not kmer in kmers :
+            kmers[kmer] = 1
+        else :
+            kmers[kmer] = kmers[kmer] + 1
     return kmers
 
 # ============================================================================================================================ #
