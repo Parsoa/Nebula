@@ -32,16 +32,9 @@ def measure_time(f):
         start = time.clock()
         result = f()
         end = time.clock()
-        print('took ', end - start)
+        print(colorama.Fore.YELLOW + 'took ', end - start)
         return result
     return wrapper
-
-def conditionally(f):
-    if __name__ == '__main__':
-        print('not profiling')
-        return f
-    print('profiling')
-    return profile(f)
 
 # ============================================================================================================================ #
 # CountTable
@@ -68,10 +61,20 @@ def export_sample_counttable():
 
 @measure_time
 def import_sample_counttable():
-    print('importing counttable ...')
+    print(colorama.Fore.MAGENTA + 'importing counttable ...')
     c = config.Configuration()
     cache = c.fastq_file + '.ct'
-    return khmer.Counttable.load(cache)
+    counttable = khmer.Counttable.load(cache)
+    print(colorama.Fore.MAGENTA + 'done')
+    return counttable
+
+def count_kmers_from_file(file):
+    c = config.Configuration()
+    #
+    counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
+    nseqs, nkmers = counttable.consume_seqfile(file)
+    #
+    return counttable, nkmers
 
 # ============================================================================================================================ #
 # SV Tracks
@@ -156,35 +159,17 @@ def count_boundary_kmers(boundaries):
 # Reference CountTable
 # ============================================================================================================================ #
 
-@measure_time
-def count_reference_kmers():
-    print('reading reference genome ... ')
-    c = config.Configuration()
-    #
-    counttable, nkmers = count_kmers_from_file(reference.ReferenceGenome().path)
-    #
-    print('reference counttable cached: ', nkmers, ' kmers recorded')
-    return counttable
-
-def count_kmers_from_file(file):
-    c = config.Configuration()
-    #
-    counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
-    nseqs, nkmers = counttable.consume_seqfile(file)
-    #
-    return counttable, nkmers
-
 # ============================================================================================================================ #
 # Classification
 # ============================================================================================================================ #
 
-@conditionally
 def classify_sample():
     c = config.Configuration()
     #
     sample_counttable = import_sample_counttable()
     tracks = import_tracks()
     #
+    print(colorama.Fore.WHITE + 'classifying ... ')
     for track in tracks:
         print('--------------------------------------------------------')
         print('track: ', str(track).strip())
@@ -261,22 +246,20 @@ if __name__ == '__main__':
     configure()
     pid = os.fork()
     if pid == 0:
+        # child
         export_sample_counttable()
     else:
         print(colorama.Fore.WHITE + 'waiting for couttable creation ... ')
         os.waitpid(pid, 0)
         print(colorama.Fore.WHITE + 'counttable exported.')
-        print(colorama.Fore.WHITE + 'extracting reference/variation kmers')
         pid = os.fork()
         if pid == 0 :
-            print(colorama.Fore.GREEN + 'extracting track boundaries')
+            # child
             export_tracks()
-            print(colorama.Fore.GREEN + 'done')
         else:
-            print('waiting for kmers ... ')
+            print(colorama.Fore.WHITE + 'waiting for variation boundary kmers ... ')
             os.waitpid(pid, 0)
-            print('kmers exported.')
-            print('proceeding ... ')
+            print(colorama.Fore.WHITE + 'kmers exported.')
             classify_sample()
 
 # ============================================================================================================================ #
