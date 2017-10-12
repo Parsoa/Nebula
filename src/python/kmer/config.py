@@ -1,12 +1,14 @@
 class Configuration:
 
     class __impl:
-        def __init__(self, ksize, khmer_table_size, khmer_num_tables, fastq_file, bed_file):
+        def __init__(self, ksize, khmer_table_size, khmer_num_tables,\
+                fastq_file, bed_file, output_directory):
             self.ksize = ksize
             self.khmer_table_size = khmer_table_size
             self.khmer_num_tables = khmer_num_tables
             self.fastq_file = fastq_file
             self.bed_file = bed_file
+            self.output_directory = output_directory
 
         def kmer_size(self):
             return self.ksize
@@ -14,10 +16,10 @@ class Configuration:
     __instance = None
 
     def __init__(self, ksize=None, khmer_table_size=None, khmer_num_tables=None,\
-        fastq_file=None, bed_file=None):
+            fastq_file=None, bed_file=None, output_directory=None):
         if Configuration.__instance is None:
             Configuration.__instance = Configuration.__impl(ksize, khmer_table_size,\
-                khmer_num_tables, fastq_file, bed_file)
+                khmer_num_tables, fastq_file, bed_file, output_directory)
 
     def __getattr__(self, attr):
         return getattr(self.__instance, attr)

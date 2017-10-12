@@ -1,16 +1,16 @@
+import os
+import pwd
 import sys
 import time
-import pwd
-import os
 
 from . import (
-    reference,
-    config,
     sets,
+    config,
+    reference
 )
 
-import pybedtools
 import khmer
+import pybedtools
 
 def measure_time(f):
     def wrapper():
@@ -35,7 +35,7 @@ def read_tracks_from_bed_file():
     bedtools = pybedtools.BedTool(c.bed_file)
     # 
     # reference_counttable = count_reference_kmers()
-    sample_counttable = count_sample_kmers()
+    # sample_counttable = count_sample_kmers()
     #
     for track in bedtools:
         print('--------------------------------------------------------')
@@ -55,15 +55,15 @@ def read_tracks_from_bed_file():
         if intersection:
             print(intersection)
         #
-        reference_score = len(calc_similarity_score(
-            sets.calc_dictionary_difference(reference_kmers, variation_kmers), sample_counttable))
-        print('fastq/reference similarity: ', reference_score)
-        variation_score = len(calc_similarity_score(
-            sets.calc_dictionary_difference(variation_kmers, reference_kmers), sample_counttable))
-        print('fastq/variation similarity: ', variation_score)
-        print('========================================')
-        print('decision: ', ('reference' if reference_score > variation_score else
-                    ('variation' if reference_score < variation_score else 'undecisive')))
+        # reference_score = len(calc_similarity_score(
+        #     sets.calc_dictionary_difference(reference_kmers, variation_kmers), sample_counttable))
+        # print('fastq/reference similarity: ', reference_score)
+        # variation_score = len(calc_similarity_score(
+        #     sets.calc_dictionary_difference(variation_kmers, reference_kmers), sample_counttable))
+        # print('fastq/variation similarity: ', variation_score)
+        # print('========================================')
+        # print('decision: ', ('reference' if reference_score > variation_score else
+        #             ('variation' if reference_score < variation_score else 'undecisive')))
 
 def extract_kmers_of_interest(boundaries):
     c = config.Configuration()
@@ -153,17 +153,18 @@ def calc_similarity_score(kmers, counttable):
     return result
 
 def configure():
-    # print('cwd: {}'.format(os.getcwd()))
-    khmer_table_size = 16e9
-    khmer_num_tables = 4
     if sys.platform == "darwin":
         print('Running on Mac OS X')
+        khmer_table_size = 16e7
+        khmer_num_tables = 4
         reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa')))
         fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
     else:
         print('Running on Linux')
+        khmer_table_size = 16e9
+        khmer_num_tables = 4
         fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
     config.Configuration(
