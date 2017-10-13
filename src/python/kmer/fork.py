@@ -164,6 +164,8 @@ def count_kmers(str, k, kmers):
 # Reference CountTable
 # ============================================================================================================================ #
 
+# TODO
+
 # ============================================================================================================================ #
 # Classification
 # ============================================================================================================================ #
@@ -227,7 +229,7 @@ def configure():
             '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
     else:
         print('Running on Linux')
-        khmer_table_size = 16e9
+        khmer_table_size = 5e9
         khmer_num_tables = 4
         fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
