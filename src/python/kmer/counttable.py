@@ -15,6 +15,10 @@ from . import (
 import khmer
 import colorama
 
+# ============================================================================================================================ #
+# Counttable Import/Export/Creation
+# ============================================================================================================================ #
+
 @commons.measure_time
 def export_sample_counttable():
     c = config.Configuration()
