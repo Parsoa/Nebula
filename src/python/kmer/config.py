@@ -1,3 +1,17 @@
+import os
+import pwd
+import sys
+
+from . import (
+    reference,
+)
+
+import colorama
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class Configuration:
 
     class __impl:
@@ -26,4 +40,35 @@ class Configuration:
 
     def __setattr__(self, attr, value):
         return setattr(self.__instance, attr, value)
+
+# ============================================================================================================================ #
+# Configuration
+# ============================================================================================================================ #
+
+def configure():
+    if sys.platform == "darwin":
+        print('Running on Mac OS X')
+        khmer_table_size = 16e7
+        khmer_num_tables = 4
+        reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../data/hg38.fa')))
+        fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
+    else:
+        print('Running on Linux')
+        khmer_table_size = 5e9
+        khmer_num_tables = 4
+        fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
+        reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
+    Configuration(
+        ksize = 25,
+        khmer_table_size = khmer_table_size,
+        khmer_num_tables = khmer_num_tables,
+        fastq_file = fastq_file,
+        bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../data/CHM1.inversions_hg38.bed')),
+        output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output'))
+    )
+    colorama.init()
  
