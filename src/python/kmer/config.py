@@ -66,7 +66,7 @@ def configure():
         khmer_num_tables = khmer_num_tables,
         fastq_file = fastq_file,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/CHM1.inversions_hg38.bed')),
+            '../../../data/variations.bed')),
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output'))
     )
