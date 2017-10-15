@@ -1,5 +1,8 @@
 venv/
-data/*
+*.fa
+*.fai
+*.fq
+*.ct
 output/*
 *.fq
 *.pyc
