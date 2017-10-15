@@ -23,7 +23,7 @@ import pybedtools
 # Execution
 # ============================================================================================================================ #
 
-radius = 5
+radius = 50
 
 @commons.measure_time
 def refine_variation_boundaries():
@@ -33,6 +33,7 @@ def refine_variation_boundaries():
     #
     for track in bedtools:
         find_track_boundaries(track, sample_counttable)
+        break
 
 @commons.measure_time
 def find_track_boundaries(track, counttable):
@@ -40,8 +41,8 @@ def find_track_boundaries(track, counttable):
     print(colorama.Fore.GREEN + 'track: ', str(track).strip())
     #
     max = None
-    for start in range(track.start - radius, track.start + radius) :
-        for end in range(track.end - radius, track.end + radius) :
+    for start in range(-radius, radius) :
+        for end in range(-radius, radius) :
             try :
                 boundary = (start, end)
                 score = calc_boundary_score(track, boundary, counttable)
@@ -58,8 +59,9 @@ def calc_boundary_score(t, boundary, counttable):
     print(colorama.Fore.GREEN + '--------------------------------------------------------')
     print(colorama.Fore.GREEN + 'range: [', boundary[0], ', ', boundary[1], ']')
     track = copy.deepcopy(t)
-    track.start = boundary[0]
-    track.end   = boundary[1]
+    track.start = track.start + boundary[0]
+    track.end   = track.end   + boundary[1]
+    # print(colorama.Fore.GREEN + 'range: [', track.start, ', ', track.end, ']')
     reference_boundaries, variation_boundaries = bed.extract_track_boundaries(track)
     # we are not interested in the reference here
     variation_kmers = bed.count_boundary_kmers(variation_boundaries)
