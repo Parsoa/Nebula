@@ -69,14 +69,17 @@ def extract_track_boundaries(track):
     f = open((bedtool.sequence(fi = reference.ReferenceGenome().fasta)).seqfn)
     for i, line in enumerate(f):
         if i == 1:
-            line = line.strip()
+            line = line.strip().upper()
+            # print(colorama.Fore.CYAN + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize])[::-1], colorama.Fore.CYAN + line[-c.ksize:])
+            line = line[:c.ksize] + (line[c.ksize : -c.ksize])[::-1] + line[-c.ksize:]
             head = line[0:2 * c.ksize]
             tail = line[-2 * c.ksize:]
             # inverse this sequence
-            line = line[::-1]
+            # print(colorama.Fore.CYAN + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize])[::-1], colorama.Fore.CYAN + line[-c.ksize:])
+            line = line[:c.ksize] + (line[c.ksize : -c.ksize])[::-1] + line[-c.ksize:]
             inverse_head = line[0:2 * c.ksize]
             inverse_tail = line[-2 * c.ksize:]
-            print(colorama.Fore.GREEN + "inverse: ", inverse_head, '...', inverse_tail)
+            print(colorama.Fore.GREEN + "inverse: ", inverse_head.upper(), '...', inverse_tail.upper)
             return {'head': head.upper(), 'tail': tail.upper()}, {'head': inverse_head.upper(), 'tail': inverse_tail.upper()}
 
 def count_boundary_kmers(boundaries):
