@@ -76,6 +76,7 @@ def extract_track_boundaries(track):
             line = line[::-1]
             inverse_head = line[0:2 * c.ksize]
             inverse_tail = line[-2 * c.ksize:]
+            print(colorama.Fore.GREEN + "inverse: ", inverse_head, '...', inverse_tail)
             return {'head': head.upper(), 'tail': tail.upper()}, {'head': inverse_head.upper(), 'tail': inverse_tail.upper()}
 
 def count_boundary_kmers(boundaries):

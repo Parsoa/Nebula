@@ -66,7 +66,9 @@ def calc_boundary_score(t, boundary, counttable):
     # we are not interested in the reference here
     variation_kmers = bed.count_boundary_kmers(variation_boundaries)
     # 
+    print(variation_kmers)
     score = len(calc_similarity_score(variation_kmers, counttable))
+    # score = 0
     return score
 
 def calc_similarity_score(kmers, counttable):

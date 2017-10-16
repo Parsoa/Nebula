@@ -53,7 +53,7 @@ def configure():
         reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa')))
         fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/CHM1.samtoolsversion.head.tiny.fq'))
+            '../../../data/CHM1.samtoolsversion.head.fq'))
     else:
         print('Running on Linux')
         khmer_table_size = 16e9
