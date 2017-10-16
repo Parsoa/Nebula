@@ -33,7 +33,6 @@ def refine_variation_boundaries():
     #
     for track in bedtools:
         find_track_boundaries(track, sample_counttable)
-        break
 
 @commons.measure_time
 def find_track_boundaries(track, counttable):
@@ -52,6 +51,7 @@ def find_track_boundaries(track, counttable):
             except Exception as e:
                 print(e)
                 print(colorama.Fore.RED + 'boundary error, skipping')
+    print(colorama.Fore.GREEN + '########################################################')
     print('choice: ', max)
 
 # @commons.measure_time
