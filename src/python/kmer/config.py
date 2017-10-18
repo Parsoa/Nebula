@@ -46,6 +46,7 @@ class Configuration:
 # ============================================================================================================================ #
 
 def configure():
+    print(__name__)
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         khmer_table_size = 16e7
@@ -53,7 +54,7 @@ def configure():
         reference.ReferenceGenome(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa')))
         fastq_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/CHM1.samtoolsversion.head.fq'))
+            '../../../data/CHM1.samtoolsversion.head.small.fq'))
     else:
         print('Running on Linux')
         khmer_table_size = 16e9

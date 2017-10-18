@@ -3,12 +3,12 @@ import pwd
 
 from sys import platform
 
-from . import (
+from kmer import (
     bed,
-    fork
+    fork,
     sets,
     config,
-    reference
+    reference,
 )
 
 import khmer
