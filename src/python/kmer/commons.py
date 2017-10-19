@@ -19,6 +19,6 @@ def measure_time(f):
         start = time.clock()
         result = f(*argv)
         end = time.clock()
-        print(colorama.Fore.YELLOW + 'took ', end - start)
+        print(colorama.Fore.YELLOW + 'took ', '{:10.9f}'.format(end - start))
         return result
     return wrapper

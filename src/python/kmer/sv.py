@@ -13,6 +13,7 @@ from . import (
     commons,
     reference,
     counttable,
+    count_server,
 )
 
 import khmer
@@ -29,13 +30,12 @@ radius = 50
 def refine_variation_boundaries():
     c = config.Configuration()
     bedtools = pybedtools.BedTool(c.bed_file)
-    sample_counttable = counttable.import_sample_counttable()
     #
     for track in bedtools:
-        find_track_boundaries(track, sample_counttable)
+        find_track_boundaries(track)
 
 @commons.measure_time
-def find_track_boundaries(track, counttable):
+def find_track_boundaries(track):
     print(colorama.Fore.GREEN + '========================================================')
     print(colorama.Fore.GREEN + 'track: ', str(track).strip())
     #
@@ -44,7 +44,7 @@ def find_track_boundaries(track, counttable):
         for end in range(-radius, radius) :
             try :
                 boundary = (start, end)
-                score = calc_boundary_score(track, boundary, counttable)
+                score = calc_boundary_score(track, boundary)
                 print(colorama.Fore.GREEN + 'score: ', score)
                 max = (score, boundary) if not max else\
                     (score, boundary) if score > max[0] else max
@@ -55,7 +55,7 @@ def find_track_boundaries(track, counttable):
     print('choice: ', max)
 
 # @commons.measure_time
-def calc_boundary_score(t, boundary, counttable):
+def calc_boundary_score(t, boundary):
     print(colorama.Fore.GREEN + '--------------------------------------------------------')
     print(colorama.Fore.GREEN + 'range: [', boundary[0], ', ', boundary[1], ']')
     track = copy.deepcopy(t)
@@ -66,17 +66,19 @@ def calc_boundary_score(t, boundary, counttable):
     # we are not interested in the reference here
     variation_kmers = bed.count_boundary_kmers(variation_boundaries)
     # 
-    print(variation_kmers)
-    score = len(calc_similarity_score(variation_kmers, counttable))
+    # print(variation_kmers)
+    score = len(calc_similarity_score(variation_kmers))
     # score = 0
     return score
 
-def calc_similarity_score(kmers, counttable):
+def calc_similarity_score(kmers):
     result = {}
     for kmer in kmers:
-        if counttable.get_kmer_counts(kmer)[0] != 0 :
-            print(kmer, '{:04d}'.format(counttable.get_kmer_counts(kmer)[0]))
-            result[kmer] = True
+        count = count_server.get_kmer_count(kmer)
+        if count :
+            # print(kmer, '{:04d}'.format(counttable.get_kmer_counts(kmer)[0]))
+            print(kmer, '{:04d}'.format(count))
+            result[kmer] = count
     return result
 
 # ============================================================================================================================ #
@@ -84,15 +86,7 @@ def calc_similarity_score(kmers, counttable):
 # ============================================================================================================================ #
 
 def execute():
-    pid = os.fork()
-    if pid == 0:
-        # child
-        counttable.export_sample_counttable()
-    else:
-        print(colorama.Fore.WHITE + 'waiting for couttable creation ... ')
-        os.waitpid(pid, 0)
-        print(colorama.Fore.WHITE + 'counttable exported.')
-        refine_variation_boundaries()
+    refine_variation_boundaries()
 
 if __name__ == '__main__':
     config.configure()

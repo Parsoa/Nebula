@@ -26,25 +26,40 @@ import pybedtools
 def colorful_print(*args):
     print(colorama.Fore.CYAN, *args)
 
+@commons.measure_time
 def get_kmer_count(kmer):
-    print('kire khar')
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('localhost', 6985))
+    s.send(bytearray(kmer, 'ascii'))
+    response = s.recv(4) # integer size
+    count = struct.unpack('!i', response)[0]
+    return count
 
 class CountTableServerHandler(socketserver.BaseRequestHandler):
 
-    def setup(self):
+    sample_counttable = None
+
+    @staticmethod
+    def load_counttable():
+        if CountTableServerHandler.sample_counttable :
+            return
         colorful_print("loading counttable")
         counttable.export_sample_counttable()
-        self.counttable = counttable.import_sample_counttable()
+        CountTableServerHandler.sample_counttable = counttable.import_sample_counttable()
         colorful_print("done!")
+
+    def setup(self):
         return socketserver.BaseRequestHandler.setup(self)
 
     def handle(self):
-        colorful_print("handling request")
-        data = self.request.recv(1024)
-        colorful_print('recv: ', data)
-        # count = self.counttable.get_kmer_counts(data)
-        # colorful_print('count: ', count)
-        self.request.send(data)
+        CountTableServerHandler.load_counttable()
+        c = config.Configuration()
+        buffer = self.request.recv(c.ksize)
+        fmt = str(c.ksize) + 's'
+        kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
+        count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
+        colorful_print(kmer, ': ', count)
+        self.request.send(struct.pack('!i', count))
         return
 
     def finish(self):
