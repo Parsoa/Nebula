@@ -70,17 +70,16 @@ def extract_track_boundaries(track):
     for i, line in enumerate(f):
         if i == 1:
             line = line.strip().upper()
-            # print(colorama.Fore.CYAN + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize])[::-1], colorama.Fore.CYAN + line[-c.ksize:])
-            line = line[:c.ksize] + (line[c.ksize : -c.ksize])[::-1] + line[-c.ksize:]
+            # print(colorama.Fore.WHITE + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize]), colorama.Fore.WHITE + line[-c.ksize:])
             head = line[0:2 * c.ksize]
             tail = line[-2 * c.ksize:]
             # inverse this sequence
-            # print(colorama.Fore.CYAN + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize])[::-1], colorama.Fore.CYAN + line[-c.ksize:])
+            # print(colorama.Fore.WHITE + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize])[::-1], colorama.Fore.WHITE + line[-c.ksize:])
             line = line[:c.ksize] + (line[c.ksize : -c.ksize])[::-1] + line[-c.ksize:]
             inverse_head = line[0:2 * c.ksize]
             inverse_tail = line[-2 * c.ksize:]
-            print(colorama.Fore.GREEN + "inverse: ", inverse_head.upper(), '...', inverse_tail.upper())
-            return {'head': head.upper(), 'tail': tail.upper()}, {'head': inverse_head.upper(), 'tail': inverse_tail.upper()}
+            print(colorama.Fore.WHITE + "variation: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
+            return {'head': head, 'tail': tail}, {'head': inverse_head, 'tail': inverse_tail}
 
 def count_boundary_kmers(boundaries):
     c = config.Configuration()

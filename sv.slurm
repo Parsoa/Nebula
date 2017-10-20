@@ -13,4 +13,5 @@
 /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv/bin/activate
 cd ./src/python
+python -m kmer.count_server
 python -m kmer.sv

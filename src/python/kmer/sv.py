@@ -33,6 +33,8 @@ def refine_variation_boundaries():
     #
     for track in bedtools:
         find_track_boundaries(track)
+        # only the first one for the time being
+        return
 
 @commons.measure_time
 def find_track_boundaries(track):
@@ -40,8 +42,8 @@ def find_track_boundaries(track):
     print(colorama.Fore.GREEN + 'track: ', str(track).strip())
     #
     max = None
-    for start in range(-radius, radius) :
-        for end in range(-radius, radius) :
+    for start in range(-radius, radius + 1) :
+        for end in range(-radius, radius + 1) :
             try :
                 boundary = (start, end)
                 score = calc_boundary_score(track, boundary)
