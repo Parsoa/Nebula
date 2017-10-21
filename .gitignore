@@ -2,6 +2,7 @@ venv/
 
 *.fa
 *.fai
+*.ref
 *.fq
 
 *.ct

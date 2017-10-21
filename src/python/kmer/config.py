@@ -60,7 +60,7 @@ def configure():
         khmer_table_size = 16e9
         khmer_num_tables = 4
         fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
-        reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa')
+        reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     Configuration(
         ksize = 25,
         khmer_table_size = khmer_table_size,
