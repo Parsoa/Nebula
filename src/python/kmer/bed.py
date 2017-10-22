@@ -74,11 +74,13 @@ def extract_track_boundaries(track):
             head = line[0:2 * c.ksize]
             tail = line[-2 * c.ksize:]
             # inverse this sequence
-            # print(colorama.Fore.WHITE + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize])[::-1], colorama.Fore.WHITE + line[-c.ksize:])
+            print(colorama.Fore.WHITE + "sequence: ", line[:c.ksize], '#',\
+                colorama.Fore.BLUE + complement_sequence((line[c.ksize : -c.ksize])[::-1]), '#',\
+                colorama.Fore.WHITE + line[-c.ksize:])
             line = line[:c.ksize] + complement_sequence((line[c.ksize : -c.ksize])[::-1]) + line[-c.ksize:]
             inverse_head = line[0:2 * c.ksize]
             inverse_tail = line[-2 * c.ksize:]
-            print(colorama.Fore.WHITE + "variation: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
+            print(colorama.Fore.WHITE + "boundary: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
             return {'head': head, 'tail': tail}, {'head': inverse_head, 'tail': inverse_tail}
 
 def complement_sequence(seq):

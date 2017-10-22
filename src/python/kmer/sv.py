@@ -34,7 +34,7 @@ def refine_variation_boundaries():
     for track in bedtools:
         find_track_boundaries(track)
         # only the first one for the time being
-        return
+        # return
 
 @commons.measure_time
 def find_track_boundaries(track):

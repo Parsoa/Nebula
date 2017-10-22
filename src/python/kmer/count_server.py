@@ -26,7 +26,7 @@ import pybedtools
 def colorful_print(*args):
     print(colorama.Fore.CYAN, *args)
 
-@commons.measure_time
+# @commons.measure_time
 def get_kmer_count(kmer):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', 6985))
