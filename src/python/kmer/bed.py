@@ -61,6 +61,17 @@ def import_tracks():
         tracks = json.load(json_file)
         return tracks
 
+def extract_sequence(track):
+    c = config.Configuration()
+    interval = pybedtools.Interval(chrom = track.chrom, start = track.start - c.ksize,\
+        end = track.end + c.ksize)
+    bedtool = pybedtools.BedTool(str(interval), from_string = True)
+    f = open((bedtool.sequence(fi = reference.ReferenceGenome().fasta)).seqfn)
+    for i, line in enumerate(f):
+        if i == 1:
+            line = line.strip().upper()
+            return line
+
 def extract_track_boundaries(track):
     c = config.Configuration()
     interval = pybedtools.Interval(chrom = track.chrom, start = track.start - c.ksize,\

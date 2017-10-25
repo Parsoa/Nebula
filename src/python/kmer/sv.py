@@ -13,6 +13,7 @@ from . import (
     config,
     commons,
     reference,
+    variation,
     counttable,
     count_server,
 )
@@ -55,6 +56,7 @@ def refine_variation_boundaries():
                 name = re.sub(r'\s+', '_', str(track).strip()).strip()
                 print(colorama.Fore.GREEN + '========================================================')
                 print(colorama.Fore.GREEN + 'track: ', name, '@', index)
+                sv = variation.StructuralVariation(bed = track, sequence = extract_base_sequence(track))
                 output[name] = find_track_boundaries(track, index)
             print('instance ', index, ' done')
             # output manually, io redirection could get entangled with multiple client/servers
@@ -65,6 +67,10 @@ def refine_variation_boundaries():
         else:
             children.append(pid)
             print('spawned child ', pid)
+
+
+@commons.measure_time
+def find_all_possible_boundaries
 
 @commons.measure_time
 def find_track_boundaries(track, index):
