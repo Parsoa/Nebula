@@ -7,5 +7,5 @@ for i in range(0, 12):
         batch = json.load(json_file)
         tracks.update(batch)
 with open('./inversion_boundaries.json', 'w') as json_file:
-    json.dump(tracks, json_file)
+    json.dump(tracks, json_file, sort_keys=True, indent=4, separators=(',', ': '))
 
