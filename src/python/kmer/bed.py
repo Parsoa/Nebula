@@ -80,7 +80,7 @@ def extract_track_boundaries(track):
             line = line[:c.ksize] + complement_sequence((line[c.ksize : -c.ksize])[::-1]) + line[-c.ksize:]
             inverse_head = line[0:2 * c.ksize]
             inverse_tail = line[-2 * c.ksize:]
-            print(colorama.Fore.WHITE + "boundary: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
+            # print(colorama.Fore.WHITE + "boundary: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
             return {'head': head, 'tail': tail}, {'head': inverse_head, 'tail': inverse_tail}
 
 def complement_sequence(seq):
