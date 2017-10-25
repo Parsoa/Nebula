@@ -10,5 +10,6 @@ venv/
 *.log
 output/*
 !output/*.sh
+!output/*.py
 
 *.pyc
