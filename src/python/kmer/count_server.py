@@ -27,9 +27,9 @@ def colorful_print(*args):
     print(colorama.Fore.CYAN, *args)
 
 # @commons.measure_time
-def get_kmer_count(kmer):
+def get_kmer_count(kmer, index):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('localhost', 6985))
+    s.connect(('localhost', 6985 + index))
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size
     count = struct.unpack('!i', response)[0]
@@ -39,26 +39,16 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
 
     sample_counttable = None
 
-    @staticmethod
-    def load_counttable():
-        if CountTableServerHandler.sample_counttable :
-            return
-        colorful_print("loading counttable")
-        counttable.export_sample_counttable()
-        CountTableServerHandler.sample_counttable = counttable.import_sample_counttable()
-        colorful_print("done!")
-
     def setup(self):
         return socketserver.BaseRequestHandler.setup(self)
 
     def handle(self):
-        CountTableServerHandler.load_counttable()
         c = config.Configuration()
         buffer = self.request.recv(c.ksize)
         fmt = str(c.ksize) + 's'
         kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
         count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
-        colorful_print(kmer, ': ', count)
+        # colorful_print(kmer, ': ', count)
         self.request.send(struct.pack('!i', count))
         return
 
@@ -100,8 +90,30 @@ class CountTableServer(socketserver.TCPServer):
 
 if __name__ == '__main__':
     config.configure()
-    address = ('localhost', 6985)
-    server = CountTableServer(server_address = address, handler_class = CountTableServerHandler)
-    ip, port = server.server_address
-    colorful_print('ip: ', ip, ', port: ', port)
-    server.serve_forever()
+    c = config.Configuration()
+    # load k-mer counts
+    # this is shared between all children
+    colorful_print("loading counttable")
+    counttable.export_sample_counttable()
+    CountTableServerHandler.sample_counttable = counttable.import_sample_counttable()
+    colorful_print("done!")
+    #
+    children = []
+    print('spawning chlidren ...')
+    for i in range(0, c.server_count) :
+        pid = os.fork()
+        if pid == 0:
+            # child
+            print('starting server ', i)
+            address = ('localhost', 6985 + i)
+            server = CountTableServer(server_address = address, handler_class = CountTableServerHandler)
+            ip, port = server.server_address
+            colorful_print('ip: ', ip, ', port: ', port)
+            print('serving forever ', i, ' ...')
+            server.serve_forever()
+            exit()
+        else:
+            children.append(pid)
+    # only parent process will ever get here
+    os.waitpid(children[0], 0)
+

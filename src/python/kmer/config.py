@@ -23,6 +23,7 @@ class Configuration:
             self.fastq_file = fastq_file
             self.bed_file = bed_file
             self.output_directory = output_directory
+            self.server_count = 12
 
         def kmer_size(self):
             return self.ksize
