@@ -34,6 +34,7 @@ class Genotype(object):
         self.head = head
         self.tail = tail
         self.kmers = bed.count_boundary_kmers(head, tail)
+        self.kmer_list = list(self.kmers.keys())
         # print('distinc kmers in genotype: ', len(self.kmers))
 
 # ============================================================================================================================ #
@@ -62,12 +63,12 @@ def refine_variation_boundaries():
     children = []
     for index in batch:
         tracks = batch[index]
-        # create a child process
         pid = os.fork()
         if pid == 0:
-            # batch
+            # forked process
             run_batch(tracks, index)
         else:
+            # main process
             children.append(pid)
             print('spawned child ', pid)
 
@@ -79,7 +80,7 @@ def run_batch(tracks, index):
         print(colorama.Fore.GREEN + 'track: ', name, '@', index)
         sv = StructuralVariation(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
-    print('instance ', index, ' done')
+    print('process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/batch_' + str(index) + '.json')), 'w') as json_file:
@@ -96,27 +97,27 @@ def find_track_boundaries(sv , index):
             genotype = Genotype(head = head, tail = tail)
             key = str(begin) + '_' + str(end)
             frontier[key] = genotype
-    # there will be 2 *c.ksize kmers at max
+    # there will be c.ksize kmers at max
     for i in range(0, c.ksize) :
         print('i = ', i)
         print(len(frontier))
         remove = {}
-        for genotype in frontier :
-            keys = list(frontier[genotype].kmers.keys())
+        for key in frontier :
+            genotype = frontier[key]
             kmers = []
             n = 0
-            if 2 * i < len(keys):
-                kmers.append(keys[2 * i])
+            if 2 * i < len(genotype.kmer_list):
+                kmers.append(genotype.kmer_list[2 * i])
                 n = 1
-                if (2 * i) + 1 < len(keys):
-                    kmers.append(keys[2 * i + 1])
+                if (2 * i) + 1 < len(genotype.kmer_list):
+                    kmers.append(genotype.kmer_list[2 * i + 1])
                     n = 2
-            else:
+            else :
                 # due to repeats, it is possible that less than 2*ksize unique kmers appear
                 continue
             score = calc_similarity_score(kmers, index)
             if score != n :
-                remove[genotype] = True
+                remove[key] = True
         for genotype in remove:
             print('removed: ', genotype)
             frontier.pop(genotype, None)
