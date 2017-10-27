@@ -97,7 +97,7 @@ def find_track_boundaries(sv , index):
             key = str(begin) + '_' + str(end)
             frontier[key] = genotype
     # there will be 2 *c.ksize kmers at max
-    for i in range(0, 2 * c.ksize) :
+    for i in range(0, c.ksize) :
         print('i = ', i)
         remove = {}
         for genotype in frontier :
