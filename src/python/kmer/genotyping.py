@@ -116,8 +116,8 @@ def find_track_boundaries(sv , index):
             else :
                 # due to repeats, it is possible that less than 2*ksize unique kmers appear
                 continue
-            genotype.score += score
             score = calc_similarity_score(kmers, index)
+            genotype.score += score
             if score != n :
                 remove[key] = True
         for genotype in remove:
