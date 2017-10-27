@@ -76,6 +76,7 @@ def run_batch(tracks, index):
 @commons.measure_time
 def find_track_boundaries(sv , index):
     max = None
+    frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
             try :

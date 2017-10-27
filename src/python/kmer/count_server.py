@@ -32,11 +32,11 @@ def cache(f):
         if kmer in cache:
             print('miss')
             nonlocal misses
-            misses = 1
+            misses += 1
             return cache[kmer]
         nonlocal hits
         hits += 1
-        print('hit: ', hits / (hits + misses))
+        print('hit: ', hits / (hits + misses), 'hits: ', hits, ' misses: ', misses)
         cache[kmer] = f(kmer, index) 
         return cache[kmer]
     return wrapper
@@ -44,7 +44,7 @@ def cache(f):
 def colorful_print(*args):
     print(colorama.Fore.CYAN, *args)
 
-@cache
+# @cache
 def get_kmer_count(kmer, index):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', 6985 + index))
