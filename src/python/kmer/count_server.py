@@ -100,7 +100,7 @@ if __name__ == '__main__':
     #
     children = []
     print('spawning chlidren ...')
-    for i in range(0, c.server_count) :
+    for i in range(0, c.num_threads) :
         pid = os.fork()
         if pid == 0:
             # child

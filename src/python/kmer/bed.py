@@ -63,8 +63,8 @@ def import_tracks():
 
 def extract_sequence(track):
     c = config.Configuration()
-    interval = pybedtools.Interval(chrom = track.chrom, start = track.start - c.ksize,\
-        end = track.end + c.ksize)
+    interval = pybedtools.Interval(chrom = track.chrom, start = track.start,\
+        end = track.end)
     bedtool = pybedtools.BedTool(str(interval), from_string = True)
     f = open((bedtool.sequence(fi = reference.ReferenceGenome().fasta)).seqfn)
     for i, line in enumerate(f):
@@ -84,11 +84,11 @@ def extract_track_boundaries(track):
             # print(colorama.Fore.WHITE + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize]), colorama.Fore.WHITE + line[-c.ksize:])
             head = line[0:2 * c.ksize]
             tail = line[-2 * c.ksize:]
-            # inverse this sequence
+            # reverse-complement this sequence
             # print(colorama.Fore.WHITE + "sequence: ", line[:c.ksize], '#',\
                 #‌ colorama.Fore.BLUE + complement_sequence((line[c.ksize : -c.ksize])[::-1]), '#',\
                 # colorama.Fore.WHITE + line[-c.ksize:])
-            line = line[:c.ksize] + complement_sequence((line[c.ksize : -c.ksize])[::-1]) + line[-c.ksize:]
+            # line = line[:c.ksize] + complement_sequence((line[c.ksize : -c.ksize])[::-1]) + line[-c.ksize:]
             inverse_head = line[0:2 * c.ksize]
             inverse_tail = line[-2 * c.ksize:]
             # print(colorama.Fore.WHITE + "boundary: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
@@ -106,19 +106,18 @@ def complement_sequence(seq):
     #
     return seq
 
-def count_boundary_kmers(boundaries):
+def count_boundary_kmers(head, tail):
     c = config.Configuration()
     #
     kmers = {}
-    kmers = count_kmers(boundaries['head'], c.ksize, kmers)
-    kmers = count_kmers(boundaries['tail'], c.ksize, kmers)
+    kmers = count_kmers(head, c.ksize, kmers)
+    kmers = count_kmers(tail, c.ksize, kmers)
     #
     return kmers
 
 def count_kmers(str, k, kmers):
     for i in range(0, len(str) - k):
         kmer = str[i : i + k]
-        # print(kmer, ' ',  len(kmer))
         if not kmer in kmers :
             kmers[kmer] = 1
         else :
