@@ -45,7 +45,6 @@ def refine_variation_boundaries():
         batch[index].append(track)
         print('assigned ', name, ' to ', index)
         n = n + 1
-        continue
     # run each batch in a separate process
     children = []
     for index in batch:

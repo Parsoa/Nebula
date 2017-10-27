@@ -1,6 +1,6 @@
 import copy
 
-from . import (
+from kmer import (
     bed,
     sets,
     config,
@@ -49,7 +49,5 @@ class StructuralVariation(object):
         # print(colorama.Fore.BLUE, head)
         # print(colorama.Fore.WHITE, variation_boundaries['tail'])
         # print(colorama.Fore.BLUE, tail)
-        # if variation_boundaries['head'] == head and variation_boundaries['tail'] == tail :
-        #     print('match')
         return head, tail
 

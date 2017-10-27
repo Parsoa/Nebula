@@ -14,6 +14,8 @@ import colorama
 
 class Configuration:
 
+    kmer_cache_size = 10000
+
     class __impl:
         def __init__(self, ksize, khmer_table_size, khmer_num_tables,\
                 fastq_file, bed_file, output_directory, num_threads):
@@ -47,7 +49,6 @@ class Configuration:
 # ============================================================================================================================ #
 
 def configure():
-    print(__name__)
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         khmer_table_size = 16e7

@@ -7,7 +7,7 @@ import json
 import time
 import socketserver
 
-from . import (
+from kmer import (
     bed,
     sets,
     config,
@@ -18,15 +18,33 @@ from . import (
 
 import json
 import khmer
+import pylru
 import socket
 import struct
 import colorama
 import pybedtools
 
+def cache(f):
+    cache = pylru.lrucache(config.Configuration.kmer_cache_size)
+    hits = 0
+    misses = 0
+    def wrapper(kmer, index):
+        if kmer in cache:
+            print('miss')
+            nonlocal misses
+            misses = 1
+            return cache[kmer]
+        nonlocal hits
+        hits += 1
+        print('hit: ', hits / (hits + misses))
+        cache[kmer] = f(kmer, index) 
+        return cache[kmer]
+    return wrapper
+
 def colorful_print(*args):
     print(colorama.Fore.CYAN, *args)
 
-# @commons.measure_time
+@cache
 def get_kmer_count(kmer, index):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', 6985 + index))
