@@ -99,11 +99,10 @@ def find_track_boundaries(sv , index):
     # there will be 2 *c.ksize kmers at max
     for i in range(0, c.ksize) :
         print('i = ', i)
+        print(len(frontier))
         remove = {}
         for genotype in frontier :
-            # print(genotype)
-            genotype = frontier[genotype]
-            keys = list(genotype.kmers.keys())
+            keys = list(frontier[genotype].kmers.keys())
             kmers = []
             n = 0
             if 2 * i < len(keys):
@@ -119,9 +118,11 @@ def find_track_boundaries(sv , index):
             if score != n :
                 remove[genotype] = True
         for genotype in remove:
+            print('removed: ', genotype)
             frontier.pop(genotype, None)
     # check whatever that is left in the frontier
-    print(frontier)
+    for key in frontier:
+        print(frontier[key].head, '...', frontier[key].tail)
     # now check the reference counts to find the best match
     max = None
     # for begin in range(-radius, radius + 1) :
@@ -167,7 +168,7 @@ def calc_similarity_score(kmers, index):
             # print(kmer, '{:04d}'.format(counttable.get_kmer_counts(kmer)[0]))
             # print(kmer, '{:04d}'.format(count))
             result[kmer] = count
-    return result
+    return len(result)
 
 # ============================================================================================================================ #
 # Execution
