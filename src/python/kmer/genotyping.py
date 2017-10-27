@@ -34,6 +34,7 @@ class Genotype(object):
         self.head = head
         self.tail = tail
         self.kmers = bed.count_boundary_kmers(head, tail)
+        self.score = 0
         self.kmer_list = list(self.kmers.keys())
         # print('distinc kmers in genotype: ', len(self.kmers))
 
@@ -115,6 +116,7 @@ def find_track_boundaries(sv , index):
             else :
                 # due to repeats, it is possible that less than 2*ksize unique kmers appear
                 continue
+            genotype.score += score
             score = calc_similarity_score(kmers, index)
             if score != n :
                 remove[key] = True
@@ -154,7 +156,7 @@ def calc_boundary_score(head, tail, index):
     # track.end   = track.end   + boundary[1]
     # print(colorama.Fore.GREEN + 'range: [', track.start, ', ', track.end, ']')
     # reference_boundaries, variation_boundaries = bed.extract_track_boundaries(track)
-    # we are not interested in the reference here
+    # we are not interested in the reference hereq
     kmers = bed.count_boundary_kmers(head, tail)
     # print(variation_kmers)
     score = len(calc_similarity_score(kmers, index))

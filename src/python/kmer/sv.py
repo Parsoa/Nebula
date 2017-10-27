@@ -34,15 +34,14 @@ class StructuralVariation(object):
         # reference_boundaries, variation_boundaries = bed.extract_track_boundaries(track)
         #
         c = config.Configuration()
-        # adjust boundaries
-        # from [-R, R] to [0, 2R]
+        # adjust from [-R, R] to [0, 2R]
         begin = self.radius + begin
-        # from [-R, R] to [2R, 0]
+        # adjust from [-R, R] to [2R, 0]
         end = self.radius - end 
         #
         l = len(self.sequence)
         seq = self.sequence[begin : l - end]
-        # seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
+        seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
         head = seq[0:2 * c.ksize]
         tail = seq[-2 * c.ksize:]
         # print(colorama.Fore.WHITE, variation_boundaries['head'])
