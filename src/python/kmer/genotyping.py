@@ -103,7 +103,7 @@ def find_track_boundaries(sv , index):
             reference_kmers = bed.count_boundary_kmers(head, tail)
             head, tail = sv.get_interval_boundaries(begin, end, True)
             kmers = bed.count_boundary_kmers(head, tail)
-            break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end\
+            break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
             frontier[break_point] = True
     # there will be c.ksize kmers at max
