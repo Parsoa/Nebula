@@ -111,8 +111,10 @@ def find_track_boundaries(sv , index):
         for end in range(-radius, radius + 1) :
             head, tail = sv.get_interval_boundaries(begin, end, False)
             reference_kmers = bed.count_boundary_kmers(head, tail)
+            #
             head, tail = sv.get_interval_boundaries(begin, end, True)
             kmers = bed.count_boundary_kmers(head, tail)
+            #
             break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
             frontier[break_point] = True
@@ -146,6 +148,10 @@ def find_track_boundaries(sv , index):
     # now check the reference counts to find the best match
     results = {}
     for break_point in frontier :
+        for kmer in break_point.reference_kmers:
+            break_point.reference_kmers[kmer] = count_server.get_kmer_count(kmer, index)
+        for kmer in break_point.kmers:
+            break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index)
         results[break_point.name] = BreakPoint.to_json(break_point)
     return results
 
