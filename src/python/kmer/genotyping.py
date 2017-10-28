@@ -30,6 +30,18 @@ import pybedtools
 
 class BreakPoint(object):
 
+    @staticmethod
+    def to_json(break_point):
+        return {
+            'name': break_point.name,
+            'begin': break_point.begin,
+            'end': break_point.end,
+            'head': break_point.head,
+            'tail': break_point.tail,
+            'kmers': break_point.kmers,
+            'reference_kmers': break_point.reference_kmers
+        }
+
     def __init__(self, head, tail, begin, end, kmers, reference_kmers):
         self.name = '(' + str(begin) + ',' + str(end) + ')'
         self.begin = begin
@@ -134,7 +146,7 @@ def find_track_boundaries(sv , index):
     # now check the reference counts to find the best match
     results = {}
     for break_point in frontier :
-        results[break_point.name] = break_point
+        results[break_point.name] = BreakPoint.to_json(break_point)
     return results
 
 def calc_similarity_score(kmers, index):
