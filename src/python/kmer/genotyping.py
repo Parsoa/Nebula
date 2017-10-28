@@ -126,7 +126,7 @@ def find_track_boundaries(sv , index):
             if score != n :
                 remove[break_point] = True
         for break_point in remove:
-            print('removed: ', genotype)
+            print('removed: ', break_point.name)
             frontier.pop(break_point, None)
     # whatever that is left in the frontier is a possible break point
     for break_point in frontier:
