@@ -26,27 +26,17 @@ class StructuralVariation(object):
         track.end   = track.end   + self.radius + c.ksize
         self.sequence = bed.extract_sequence(track)
 
-    def get_interval_boundaries(self, begin, end):
-        # test
-        # track = copy.deepcopy(self.track)
-        # track.start = track.start + begin
-        # track.end   = track.end   + end
-        # reference_boundaries, variation_boundaries = bed.extract_track_boundaries(track)
-        #
+    def get_interval_boundaries(self, begin, end, complement):
         c = config.Configuration()
         # adjust from [-R, R] to [0, 2R]
         begin = self.radius + begin
         # adjust from [-R, R] to [2R, 0]
         end = self.radius - end 
         #
-        l = len(self.sequence)
-        seq = self.sequence[begin : l - end]
-        seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
+        seq = self.sequence[begin : len(self.sequence) - end]
+        if complement:
+            seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
         head = seq[0:2 * c.ksize]
         tail = seq[-2 * c.ksize:]
-        # print(colorama.Fore.WHITE, variation_boundaries['head'])
-        # print(colorama.Fore.BLUE, head)
-        # print(colorama.Fore.WHITE, variation_boundaries['tail'])
-        # print(colorama.Fore.BLUE, tail)
         return head, tail
 
