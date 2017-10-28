@@ -40,8 +40,6 @@ class BreakPoint(object):
         self.reference_kmers = reference_kmers
         self.kmer_list = list(self.kmers.keys())
         self.score = 0
-        head, tail = sv.get_interval_boundaries(begin, end, False)
-        reference_kmers = bed.count_boundary_kmers(head, tail)
 
 # ============================================================================================================================ #
 # Execution
