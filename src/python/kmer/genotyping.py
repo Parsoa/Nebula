@@ -97,8 +97,6 @@ def run_batch(tracks, index):
         sv = StructuralVariation(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
     print('process ', index, ' done')
-    # save the number of boundary candidates
-    output['candidates'] = len(output)
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/batch_' + str(index) + '.json')), 'w') as json_file:
@@ -153,6 +151,8 @@ def find_track_boundaries(sv , index):
         for kmer in break_point.kmers:
             break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index)
         results[break_point.name] = BreakPoint.to_json(break_point)
+        # save the number of boundary candidates
+        results['candidates'] = len(results)
     return results
 
 def calc_similarity_score(kmers, index):
