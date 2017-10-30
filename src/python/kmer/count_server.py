@@ -52,6 +52,10 @@ def cache(f):
         return cache[kmer]
     return wrapper
 
+# ================================================================================================= #
+# 
+# ================================================================================================= #
+
 # @cache
 def get_kmer_count(kmer, index):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -61,19 +65,19 @@ def get_kmer_count(kmer, index):
     count = struct.unpack('!i', response)[0]
     return count
 
-def count_kmers_exact(seqs):
+def count_kmers_exact_list(seqs):
     c = config.Configuration()
     kmers = {}
     for seq in seqs:
-        kmers = count_kmers_exact(seq, c.ksize, kmers)
+        kmers = count_kmers_exact_string(seq, c.ksize, kmers)
     return kmers
 
-def count_kmers_exact(str, k, kmers):
+def count_kmers_exact_string(str, k, kmers):
     for i in range(0, len(str) - k):
         kmer = str[i : i + k]
-        if not kmer in kmers :
+        if not kmer in kmers:
             kmers[kmer] = 1
-        else :
+        else:
             kmers[kmer] = kmers[kmer] + 1
     return kmers
 

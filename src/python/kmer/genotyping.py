@@ -131,10 +131,10 @@ def find_track_boundaries(sv , index):
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
             head, tail = sv.get_reference_signature_kmers(begin, end)
-            reference_kmers = count_server.count_kmers_exact(head, tail)
+            reference_kmers = count_server.count_kmers_exact_list(head, tail)
             #
             head, tail = sv.get_signature_kmers(begin, end, True)
-            kmers = count_server.count_kmers_exact(head, tail)
+            kmers = count_server.count_kmers_exact_list(head, tail)
             #
             break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
