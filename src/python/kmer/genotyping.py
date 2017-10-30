@@ -97,6 +97,8 @@ def run_batch(tracks, index):
         sv = StructuralVariation(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
     print('process ', index, ' done')
+    # save the number of boundary candidates
+    output['candidates'] = len(output)
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/batch_' + str(index) + '.json')), 'w') as json_file:
@@ -140,11 +142,9 @@ def find_track_boundaries(sv , index):
             if score != n :
                 remove[break_point] = True
         for break_point in remove:
-            print('removed: ', break_point.name)
+            # print('removed: ', break_point.name)
             frontier.pop(break_point, None)
     # whatever that is left in the frontier is a possible break point
-    for break_point in frontier:
-        print(break_point.head, '...', break_point.tail)
     # now check the reference counts to find the best match
     results = {}
     for break_point in frontier :
