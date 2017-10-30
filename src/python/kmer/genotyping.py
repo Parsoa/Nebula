@@ -8,6 +8,8 @@ import json
 import time
 import traceback
 
+from multiprocessing import Process
+
 from kmer import (
     bed,
     sets,
@@ -87,6 +89,7 @@ def refine_variation_boundaries():
             # main process
             children.append(pid)
             print('spawned child ', pid)
+    os.wait()
 
 def run_batch(tracks, index):
     output = {}
