@@ -95,7 +95,16 @@ def refine_variation_boundaries():
         print('pid ', pid, 'finished')
         if len(children) == 0:
             break
-    print('all children done', pid)
+    print('all children done, merging output', pid)
+    output = {}
+    for i in range(0, 12):
+        with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../output/batch_' + str(i) + '.json')), 'r') as json_file:
+            batch = json.load(json_file)
+            output.update(batch)
+    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/inversion_boundaries.json')), 'w') as json_file:
+        json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
 
 def run_batch(tracks, index):
     output = {}
