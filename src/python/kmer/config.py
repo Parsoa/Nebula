@@ -66,7 +66,7 @@ def configure():
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
         num_threads = 12
     Configuration(
-        ksize = 31,
+        ksize = 25,
         khmer_table_size = khmer_table_size,
         khmer_num_tables = khmer_num_tables,
         fastq_file = fastq_file,
