@@ -62,7 +62,7 @@ class BreakPoint(object):
 
 radius = 50
 
-# @commons.measure_time
+@commons.measure_time
 def refine_variation_boundaries():
     c = config.Configuration()
     bedtools = pybedtools.BedTool(c.bed_file)
@@ -130,7 +130,7 @@ def run_batch(tracks, index):
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     exit()
 
-@commons.measure_time
+# @commons.measure_time
 def find_track_boundaries(sv , index):
     c = config.Configuration()
     frontier = {}
