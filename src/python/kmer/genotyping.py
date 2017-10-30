@@ -78,7 +78,7 @@ def refine_variation_boundaries():
         print('assigned ', name, ' to ', index)
         n = n + 1
     # run each batch in a separate process
-    children = []
+    children = {}
     for index in batch:
         tracks = batch[index]
         pid = os.fork()
@@ -87,9 +87,16 @@ def refine_variation_boundaries():
             run_batch(tracks, index)
         else:
             # main process
-            children.append(pid)
+            children[pid] = True
             print('spawned child ', pid)
-    os.wait()
+    for child in children:
+        try:
+            os.kill(child, 0)
+        except OSError:
+            continue
+        else:
+            children.pop(child, None)
+    print('all children done', pid)
 
 def run_batch(tracks, index):
     output = {}
