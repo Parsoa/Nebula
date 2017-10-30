@@ -106,6 +106,14 @@ def complement_sequence(seq):
     #
     return seq
 
+def count_kmers_exact(seqs):
+    c = config.Configuration()
+    kmers = {}
+    for seq in seqs:
+        kmers = count_kmers(seq, c.ksize, kmers)
+    return kmers
+
+# depracate
 def count_boundary_kmers(head, tail):
     c = config.Configuration()
     #

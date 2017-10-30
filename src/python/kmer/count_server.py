@@ -53,6 +53,22 @@ def get_kmer_count(kmer, index):
     count = struct.unpack('!i', response)[0]
     return count
 
+def count_kmers_exact(seqs):
+    c = config.Configuration()
+    kmers = {}
+    for seq in seqs:
+        kmers = count_kmers(seq, c.ksize, kmers)
+    return kmers
+
+def count_kmers(str, k, kmers):
+    for i in range(0, len(str) - k):
+        kmer = str[i : i + k]
+        if not kmer in kmers :
+            kmers[kmer] = 1
+        else :
+            kmers[kmer] = kmers[kmer] + 1
+    return kmers
+
 class CountTableServerHandler(socketserver.BaseRequestHandler):
 
     sample_counttable = None

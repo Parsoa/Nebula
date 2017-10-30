@@ -96,6 +96,9 @@ def refine_variation_boundaries():
         if len(children) == 0:
             break
     print('all children done, merging output', pid)
+    merge_outputs()
+
+def merge_outputs():
     output = {}
     for i in range(0, 12):
         with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -127,11 +130,11 @@ def find_track_boundaries(sv , index):
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
-            head, tail = sv.get_interval_boundaries(begin, end, False)
-            reference_kmers = bed.count_boundary_kmers(head, tail)
+            head, tail = sv.get_signature_kmers(begin, end)
+            reference_kmers = count_server.count_kmers_exact(head, tail)
             #
-            head, tail = sv.get_interval_boundaries(begin, end, True)
-            kmers = bed.count_boundary_kmers(head, tail)
+            head, tail = sv.get_signature_kmers(begin, end, True)
+            kmers = count_server.count_kmers_exact(head, tail)
             #
             break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
