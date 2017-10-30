@@ -137,10 +137,11 @@ def find_track_boundaries(sv , index):
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
             head, tail = sv.get_signature_kmers(begin, end, True)
-            kmers = count_server.count_kmers_exact_list(head, tail)
             if not head:
                 # skip this candidate
                 continue
+            #
+            kmers = count_server.count_kmers_exact_list(head, tail)
             #
             ref_head, ref_tail = sv.get_reference_signature_kmers(begin, end)
             reference_kmers = count_server.count_kmers_exact_list(ref_head, ref_tail)
