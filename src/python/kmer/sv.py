@@ -26,7 +26,7 @@ class StructuralVariation(object):
         track.end   = track.end   + self.radius + c.ksize
         self.sequence = bed.extract_sequence(track)
 
-    def get_signature_kmers(self, begin, end):
+    def get_reference_signature_kmers(self, begin, end):
         c = config.Configuration()
         # adjust from [-R, R] to [0, 2R]
         begin = self.radius + begin
