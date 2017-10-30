@@ -64,14 +64,15 @@ def configure():
         khmer_num_tables = 4
         fastq_file = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         reference.ReferenceGenome('/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
-        num_threads = 12
+        num_threads = 48
     Configuration(
-        ksize = 25,
+        ksize = 31,
         khmer_table_size = khmer_table_size,
         khmer_num_tables = khmer_num_tables,
         fastq_file = fastq_file,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/variations.bed')),
+            '../../../data/CHM1_Lumpy.Del.100bp.bed')),
+            # '../../../data/variations.bed')),
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output')),
         num_threads = num_threads

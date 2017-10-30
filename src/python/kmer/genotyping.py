@@ -92,7 +92,7 @@ def refine_variation_boundaries():
     while True:
         (pid, e) = os.wait()
         children.pop(pid, None)
-        print('pid ', pid, 'finished')
+        print(colorama.Fore.RED, 'pid ', pid, 'finished')
         if len(children) == 0:
             break
     print('all children done, merging output', pid)
@@ -123,7 +123,7 @@ def run_batch(tracks, index):
         print(colorama.Fore.GREEN + 'track: ', name, '@', index)
         sv = Inversion(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
-    print('process ', index, ' done')
+    print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/batch_' + str(index) + '.json')), 'w') as json_file:
@@ -151,8 +151,8 @@ def find_track_boundaries(sv , index):
             frontier[break_point] = True
     # there will be c.ksize kmers at max
     for i in range(0, c.ksize) :
-        print('i = ', i)
-        print(len(frontier))
+        # print('i = ', i)
+        # print(len(frontier))
         remove = {}
         for break_point in frontier :
             kmers = []
