@@ -52,6 +52,9 @@ class Inversion(StructuralVariation):
             seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
         head = seq[0:2 * c.ksize]
         tail = seq[-2 * c.ksize:]
+        # ends will overlap
+        if 2 * ksize > len(seq) - 2 * ksize:
+            return None, None
         return head, tail
 
 class Deletion(StructuralVariation):

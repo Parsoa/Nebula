@@ -99,16 +99,22 @@ def refine_variation_boundaries():
     merge_outputs()
 
 def merge_outputs():
+    c = config.Configuration()
     output = {}
     for i in range(0, 12):
         with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
                 '../../../output/batch_' + str(i) + '.json')), 'r') as json_file:
             batch = json.load(json_file)
             output.update(batch)
+    bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/inversion_boundaries.json')), 'w') as json_file:
+            '../../../output/boundaries_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
-
+    # delete intermediate results
+    for i in range(0, 12):
+        os.remove(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/batch_' + str(i) + '.json')))
+    
 def run_batch(tracks, index):
     output = {}
     for track in tracks:
@@ -130,11 +136,14 @@ def find_track_boundaries(sv , index):
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
-            head, tail = sv.get_reference_signature_kmers(begin, end)
-            reference_kmers = count_server.count_kmers_exact_list(head, tail)
-            #
             head, tail = sv.get_signature_kmers(begin, end, True)
             kmers = count_server.count_kmers_exact_list(head, tail)
+            if not head:
+                # skip this candidate
+                continue
+            #
+            ref_head, ref_tail = sv.get_reference_signature_kmers(begin, end)
+            reference_kmers = count_server.count_kmers_exact_list(ref_head, ref_tail)
             #
             break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
