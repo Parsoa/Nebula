@@ -89,13 +89,12 @@ def refine_variation_boundaries():
             # main process
             children[pid] = True
             print('spawned child ', pid)
-    for child in children:
-        try:
-            os.kill(child, 0)
-        except OSError:
-            continue
-        else:
-            children.pop(child, None)
+    while True:
+        (pid, e) = os.wait()
+        children.pop(pid, None)
+        print('pid ', pid, 'finished')
+        if len(children) == 0:
+            break
     print('all children done', pid)
 
 def run_batch(tracks, index):
