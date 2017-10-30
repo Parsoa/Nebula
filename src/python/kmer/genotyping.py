@@ -52,6 +52,7 @@ class BreakPoint(object):
         self.reference_kmers = reference_kmers
         self.kmer_list = list(self.kmers.keys())
         self.score = 0
+        self.zygosity = None
 
 # ============================================================================================================================ #
 # Execution
@@ -74,7 +75,6 @@ def refine_variation_boundaries():
         batch[index].append(track)
         print('assigned ', name, ' to ', index)
         n = n + 1
-        break
     # run each batch in a separate process
     children = []
     for index in batch:
@@ -159,7 +159,7 @@ def calc_similarity_score(kmers, index):
     result = {}
     for kmer in kmers:
         count = count_server.get_kmer_count(kmer, index)
-        if count :
+        if count:
             result[kmer] = count
     return len(result)
 
