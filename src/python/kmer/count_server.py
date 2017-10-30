@@ -65,7 +65,7 @@ def get_kmer_count(kmer, index):
     count = struct.unpack('!i', response)[0]
     return count
 
-def count_kmers_exact_list(seqs*):
+def count_kmers_exact_list(*seqs):
     c = config.Configuration()
     kmers = {}
     for seq in seqs:
