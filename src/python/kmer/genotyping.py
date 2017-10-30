@@ -20,7 +20,7 @@ from kmer import (
     count_server,
 )
 
-from kmer.sv import StructuralVariation
+from kmer.sv import StructuralVariation, Inversion, Deletion
 
 import khmer
 import colorama
@@ -35,13 +35,13 @@ class BreakPoint(object):
     @staticmethod
     def to_json(break_point):
         return {
-            'name': break_point.name,
-            'begin': break_point.begin,
-            'end': break_point.end,
-            'head': break_point.head,
-            'tail': break_point.tail,
-            'kmers': break_point.kmers,
-            'reference_kmers': break_point.reference_kmers
+            # 'name': break_point.name,
+            # 'begin': break_point.begin,
+            # 'end': break_point.end,
+            '0 head': break_point.head,
+            '1 tail': break_point.tail,
+            '2 kmers': break_point.kmers,
+            '3 reference_kmers': break_point.reference_kmers
         }
 
     def __init__(self, head, tail, begin, end, kmers, reference_kmers):
@@ -115,7 +115,7 @@ def run_batch(tracks, index):
         name = re.sub(r'\s+', '_', str(track).strip()).strip()
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', name, '@', index)
-        sv = StructuralVariation(track = track, radius = radius)
+        sv = Inversion(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
     print('process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
@@ -166,6 +166,7 @@ def find_track_boundaries(sv , index):
     # whatever that is left in the frontier is a possible break point
     # now check the reference counts to find the best match
     results = {}
+    results['candidates'] = len(frontier)
     for break_point in frontier :
         for kmer in break_point.reference_kmers:
             break_point.reference_kmers[kmer] = count_server.get_kmer_count(kmer, index)
@@ -173,7 +174,6 @@ def find_track_boundaries(sv , index):
             break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index)
         results[break_point.name] = BreakPoint.to_json(break_point)
         # save the number of boundary candidates
-        results['candidates'] = len(results)
     return results
 
 def calc_similarity_score(kmers, index):

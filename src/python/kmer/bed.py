@@ -105,29 +105,3 @@ def complement_sequence(seq):
     seq = seq.replace('Z', 'C')
     #
     return seq
-
-def count_kmers_exact(seqs):
-    c = config.Configuration()
-    kmers = {}
-    for seq in seqs:
-        kmers = count_kmers(seq, c.ksize, kmers)
-    return kmers
-
-# depracate
-def count_boundary_kmers(head, tail):
-    c = config.Configuration()
-    #
-    kmers = {}
-    kmers = count_kmers(head, c.ksize, kmers)
-    kmers = count_kmers(tail, c.ksize, kmers)
-    #
-    return kmers
-
-def count_kmers(str, k, kmers):
-    for i in range(0, len(str) - k):
-        kmer = str[i : i + k]
-        if not kmer in kmers :
-            kmers[kmer] = 1
-        else :
-            kmers[kmer] = kmers[kmer] + 1
-    return kmers

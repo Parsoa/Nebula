@@ -24,6 +24,17 @@ import struct
 import colorama
 import pybedtools
 
+# ================================================================================================= #
+# Helpers
+# ================================================================================================= #
+
+def colorful_print(*args):
+    print(colorama.Fore.CYAN, *args)
+
+# ================================================================================================= #
+# Caching
+# ================================================================================================= #
+
 def cache(f):
     cache = pylru.lrucache(config.Configuration.kmer_cache_size)
     hits = 0
@@ -41,9 +52,6 @@ def cache(f):
         return cache[kmer]
     return wrapper
 
-def colorful_print(*args):
-    print(colorama.Fore.CYAN, *args)
-
 # @cache
 def get_kmer_count(kmer, index):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -57,10 +65,10 @@ def count_kmers_exact(seqs):
     c = config.Configuration()
     kmers = {}
     for seq in seqs:
-        kmers = count_kmers(seq, c.ksize, kmers)
+        kmers = count_kmers_exact(seq, c.ksize, kmers)
     return kmers
 
-def count_kmers(str, k, kmers):
+def count_kmers_exact(str, k, kmers):
     for i in range(0, len(str) - k):
         kmer = str[i : i + k]
         if not kmer in kmers :
@@ -68,6 +76,10 @@ def count_kmers(str, k, kmers):
         else :
             kmers[kmer] = kmers[kmer] + 1
     return kmers
+
+# ================================================================================================= #
+# 
+# ================================================================================================= #
 
 class CountTableServerHandler(socketserver.BaseRequestHandler):
 
@@ -82,7 +94,6 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
         fmt = str(c.ksize) + 's'
         kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
         count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
-        # colorful_print(kmer, ': ', count)
         self.request.send(struct.pack('!i', count))
         return
 
@@ -121,6 +132,10 @@ class CountTableServer(socketserver.TCPServer):
 
     def close_request(self, request_address):
         return socketserver.TCPServer.close_request(self, request_address)
+
+# ================================================================================================= #
+#
+# ================================================================================================= #
 
 if __name__ == '__main__':
     config.configure()

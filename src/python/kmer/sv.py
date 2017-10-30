@@ -64,8 +64,8 @@ class Deletion(StructuralVariation):
         end = self.radius - end 
         #
         seq = self.sequence[begin : len(self.sequence) - end]
-        if complement:
-            seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
+        if delete:
+            seq = seq[:c.ksize] + seq[-c.ksize:]
         head = seq[0:2 * c.ksize]
         tail = seq[-2 * c.ksize:]
         return head, tail
