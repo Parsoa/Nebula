@@ -26,6 +26,8 @@ import khmer
 import colorama
 import pybedtools
 
+c = config.Configuration()
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -35,9 +37,6 @@ class BreakPoint(object):
     @staticmethod
     def to_json(break_point):
         return {
-            # 'name': break_point.name,
-            # 'begin': break_point.begin,
-            # 'end': break_point.end,
             '0 head': break_point.head,
             '1 tail': break_point.tail,
             '2 kmers': break_point.kmers,
@@ -64,7 +63,6 @@ radius = 50
 
 @commons.measure_time
 def refine_variation_boundaries():
-    c = config.Configuration()
     bedtools = pybedtools.BedTool(c.bed_file)
     # split variations into batches
     n = 0
@@ -99,7 +97,6 @@ def refine_variation_boundaries():
     merge_outputs()
 
 def merge_outputs():
-    c = config.Configuration()
     output = {}
     for i in range(0, 12):
         with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -132,7 +129,22 @@ def run_batch(tracks, index):
 
 # @commons.measure_time
 def find_track_boundaries(sv , index):
-    c = config.Configuration()
+    frontier = extract_boundary_kmers()
+    # whatever that is left in the frontier is a possible break point
+    frontier = prune_boundary_candidates(frontier)
+    # now check the reference counts to find the best match
+    results = {}
+    results['candidates'] = len(frontier)
+    for break_point in frontier :
+        for kmer in break_point.reference_kmers:
+            break_point.reference_kmers[kmer] = count_server.get_kmer_count(kmer, index)
+        for kmer in break_point.kmers:
+            break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index)
+        results[break_point.name] = BreakPoint.to_json(break_point)
+        # save the number of boundary candidates
+    return results
+
+def extract_boundary_kmers()
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
@@ -149,6 +161,9 @@ def find_track_boundaries(sv , index):
             break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
             frontier[break_point] = True
+    return frontier
+
+def prune_boundary_candidates(frontier):
     # there will be c.ksize kmers at max
     for i in range(0, c.ksize) :
         # print('i = ', i)
@@ -173,18 +188,7 @@ def find_track_boundaries(sv , index):
         for break_point in remove:
             # print('removed: ', break_point.name)
             frontier.pop(break_point, None)
-    # whatever that is left in the frontier is a possible break point
-    # now check the reference counts to find the best match
-    results = {}
-    results['candidates'] = len(frontier)
-    for break_point in frontier :
-        for kmer in break_point.reference_kmers:
-            break_point.reference_kmers[kmer] = count_server.get_kmer_count(kmer, index)
-        for kmer in break_point.kmers:
-            break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index)
-        results[break_point.name] = BreakPoint.to_json(break_point)
-        # save the number of boundary candidates
-    return results
+    return frontier
 
 def prune_kmers(kmers):
     remove = {}
