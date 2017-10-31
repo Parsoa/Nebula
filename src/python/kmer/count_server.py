@@ -59,11 +59,14 @@ def cache(f):
 # @cache
 def get_kmer_count(kmer, index, reference):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('localhost', 6985 + index))
+    port = 0
     if reference:
+        port = 8569
         kmer = 'r' + kmer
     else:
+        port = 6985
         kmer = 's' + kmer
+    s.connect(('localhost', port + index))
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size
     count = struct.unpack('!i', response)[0]
@@ -157,12 +160,23 @@ if __name__ == '__main__':
     # load k-mer counts
     # this is shared between all children
     colorful_print("loading counttables ... ")
-    counttable.export_counttable(reference.ReferenceGenome().path)
-    counttable.export_counttable(c.fastq_file)
-    CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
-    CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
-    colorful_print("done!")
+    reference = os.fork()
+    if reference == 0:
+        # reference genome
+        counttable.export_counttable(reference.ReferenceGenome().path)
+        CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
+    else:
+        counttable.export_counttable(c.fastq_file)
+        CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
     #
+    port = 0
+    if reference == 0:
+        # reference genome server
+        port = 8569
+    else:
+        # sample server
+        port = 6985
+    # 
     children = []
     print('spawning chlidren ...')
     for i in range(0, c.num_threads) :
@@ -170,7 +184,7 @@ if __name__ == '__main__':
         if pid == 0:
             # child
             print('starting server ', i)
-            address = ('localhost', 6985 + i)
+            address = ('localhost', port + i)
             server = CountTableServer(server_address = address, handler_class = CountTableServerHandler)
             ip, port = server.server_address
             colorful_print('ip: ', ip, ', port: ', port)
@@ -181,4 +195,3 @@ if __name__ == '__main__':
             children.append(pid)
     # only parent process will ever get here
     os.waitpid(children[0], 0)
-
