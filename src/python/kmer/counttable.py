@@ -29,8 +29,8 @@ def export_counttable(seq_file):
         print(colorama.Fore.BLUE + 'found at ', cache)
         return
     #
-    print(colorama.Fore.BLUE + 'not found, generating counttable ' + cache)
-    counttable, nkmers = count_kmers_from_file()
+    print(colorama.Fore.BLUE + 'not found, generating counttable...')
+    counttable, nkmers = count_kmers_from_file(seq_file)
     counttable.save(cache)
     print(colorama.Fore.BLUE + 'done')
     #

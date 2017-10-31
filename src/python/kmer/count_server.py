@@ -29,7 +29,7 @@ import pybedtools
 # ================================================================================================= #
 
 def colorful_print(*args):
-    print(colorama.Fore.CYAN, *args)
+    print(colorama.Fore.CYAN, args)
 
 # ================================================================================================= #
 # Caching
@@ -107,7 +107,7 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
         if t == 'r' :
             count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
         else :
-            count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
+            count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
         self.request.send(struct.pack('!i', count))
         return
 
@@ -159,8 +159,8 @@ if __name__ == '__main__':
     colorful_print("loading counttables ... ")
     counttable.export_counttable(reference.ReferenceGenome().path)
     counttable.export_counttable(c.fastq_file)
-    CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
-    CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
+    # CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
+    # CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
     colorful_print("done!")
     #
     children = []
