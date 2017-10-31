@@ -139,9 +139,9 @@ def find_track_boundaries(sv , index):
     results['candidates'] = len(frontier)
     for break_point in frontier :
         for kmer in break_point.reference_kmers:
-            break_point.reference_kmers[kmer] = count_server.get_kmer_count(kmer, index)
+            break_point.reference_kmers[kmer] = count_server.get_kmer_count(kmer, index, False)
         for kmer in break_point.kmers:
-            break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index)
+            break_point.kmers[kmer] = count_server.get_kmer_count(kmer, index, False)
         results[break_point.name] = BreakPoint.to_json(break_point)
         # save the number of boundary candidates
     return results
