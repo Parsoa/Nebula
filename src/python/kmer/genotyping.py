@@ -167,6 +167,7 @@ def extract_boundary_kmers(sv):
     return frontier
 
 def prune_boundary_candidates(frontier):
+    c = config.Configuration()
     # there will be c.ksize kmers at max
     for i in range(0, c.ksize) :
         # print('i = ', i)
