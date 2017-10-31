@@ -35,18 +35,16 @@ class BreakPoint(object):
     @staticmethod
     def to_json(break_point):
         return {
-            '0 head': break_point.head,
-            '1 tail': break_point.tail,
+            '1 head': break_point.boundary,
             '2 kmers': break_point.kmers,
             '3 reference_kmers': break_point.reference_kmers
         }
 
-    def __init__(self, head, tail, begin, end, kmers, reference_kmers):
+    def __init__(self, boundary, begin, end, kmers, reference_kmers):
         self.name = '(' + str(begin) + ',' + str(end) + ')'
+        self.boundary = boundary
         self.begin = begin
         self.end = end
-        self.head = head
-        self.tail = tail
         self.kmers = kmers
         self.reference_kmers = reference_kmers
         self.kmer_list = list(self.kmers.keys())
@@ -119,7 +117,7 @@ def run_batch(tracks, index):
         name = re.sub(r'\s+', '_', str(track).strip()).strip()
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', name, '@', index)
-        sv = Inversion(track = track, radius = radius)
+        sv = Deletion(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
@@ -151,17 +149,14 @@ def extract_boundary_kmers(sv, index):
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
-            head, tail = sv.get_signature_kmers(begin, end, True)
-            if not head:
+            kmers, boundary = sv.get_signature_kmers(begin, end, True)
+            if not kmers:
                 # skip this candidate
                 continue
             #
-            kmers = count_server.count_kmers_exact_list(head, tail)
+            reference_kmers = sv.get_reference_signature_kmers(begin, end)
             #
-            ref_head, ref_tail = sv.get_reference_signature_kmers(begin, end)
-            reference_kmers = count_server.count_kmers_exact_list(ref_head, ref_tail)
-            #
-            break_point = BreakPoint(head = head, tail = tail, begin = begin, end = end,\
+            break_point = BreakPoint(boundary = boundary, begin = begin, end = end,\
                 kmers = kmers, reference_kmers = reference_kmers)
             frontier[break_point] = True
     return frontier
