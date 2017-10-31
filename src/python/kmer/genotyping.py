@@ -131,9 +131,9 @@ def run_batch(tracks, index):
 # @commons.measure_time
 def find_track_boundaries(sv , index):
     c = config.Configuration()
-    frontier = extract_boundary_kmers(sv)
+    frontier = extract_boundary_kmers(sv, index)
     # whatever that is left in the frontier is a possible break point
-    frontier = prune_boundary_candidates(frontier)
+    frontier = prune_boundary_candidates(frontier, sv, index)
     # now check the reference counts to find the best match
     results = {}
     results['candidates'] = len(frontier)
@@ -146,7 +146,7 @@ def find_track_boundaries(sv , index):
         # save the number of boundary candidates
     return results
 
-def extract_boundary_kmers(sv):
+def extract_boundary_kmers(sv, index):
     c = config.Configuration()
     frontier = {}
     for begin in range(-radius, radius + 1) :
@@ -166,7 +166,7 @@ def extract_boundary_kmers(sv):
             frontier[break_point] = True
     return frontier
 
-def prune_boundary_candidates(frontier):
+def prune_boundary_candidates(frontier, sv, index):
     c = config.Configuration()
     # there will be c.ksize kmers at max
     for i in range(0, c.ksize) :
