@@ -57,9 +57,13 @@ def cache(f):
 # ================================================================================================= #
 
 # @cache
-def get_kmer_count(kmer, index):
+def get_kmer_count(kmer, index, reference):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', 6985 + index))
+    if reference:
+        kmer = 'r' + kmer
+    else:
+        kmer = 's' + kmer
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size
     count = struct.unpack('!i', response)[0]
@@ -88,16 +92,22 @@ def count_kmers_exact_string(str, k, kmers):
 class CountTableServerHandler(socketserver.BaseRequestHandler):
 
     sample_counttable = None
+    reference_counttable = None
 
     def setup(self):
         return socketserver.BaseRequestHandler.setup(self)
 
     def handle(self):
         c = config.Configuration()
-        buffer = self.request.recv(c.ksize)
+        buffer = self.request.recv(c.ksize + 1)
         fmt = str(c.ksize) + 's'
         kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
-        count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
+        t = kmer[0]
+        kmer = kmer[1:]
+        if t == 'r' :
+            count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
+        else :
+            count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
         self.request.send(struct.pack('!i', count))
         return
 
@@ -146,9 +156,11 @@ if __name__ == '__main__':
     c = config.Configuration()
     # load k-mer counts
     # this is shared between all children
-    colorful_print("loading counttable")
-    counttable.export_sample_counttable()
-    CountTableServerHandler.sample_counttable = counttable.import_sample_counttable()
+    colorful_print("loading counttables ... ")
+    counttable.export_counttable(reference.ReferenceGenome().path)
+    counttable.export_counttable(c.fastq_file)
+    CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
+    CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
     colorful_print("done!")
     #
     children = []

@@ -71,8 +71,8 @@ def configure():
         khmer_num_tables = khmer_num_tables,
         fastq_file = fastq_file,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/CHM1_Lumpy.Del.100bp.bed')),
-            # '../../../data/variations.bed')),
+            # '../../../data/CHM1_Lumpy.Del.100bp.bed')),
+            '../../../data/variations.bed')),
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output')),
         num_threads = num_threads

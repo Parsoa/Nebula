@@ -186,10 +186,20 @@ def find_track_boundaries(sv , index):
         # save the number of boundary candidates
     return results
 
+def prune_kmers(kmers):
+    remove = {}
+    for kmer in kmers:
+        count = count_server.get_kmer_count(kmer, index, True)
+        if count:
+            remove.append(kmer)
+    for kmer in remove:
+        kmers.pop(kmer, None)
+    return kmer
+
 def calc_similarity_score(kmers, index):
     result = {}
     for kmer in kmers:
-        count = count_server.get_kmer_count(kmer, index)
+        count = count_server.get_kmer_count(kmer, index, False)
         if count:
             result[kmer] = count
     return len(result)
