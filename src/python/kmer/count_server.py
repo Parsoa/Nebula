@@ -160,7 +160,8 @@ if __name__ == '__main__':
     # load k-mer counts
     # this is shared between all children
     colorful_print("loading counttables ... ")
-    ref = os.fork()
+    # ref = os.fork()
+    ref = 1
     if ref == 0:
         # reference genome
         counttable.export_counttable(reference.ReferenceGenome().path)
