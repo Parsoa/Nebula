@@ -109,8 +109,11 @@ def merge_outputs():
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     # delete intermediate results
     for i in range(0, c.num_threads):
-        os.remove(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/batch_' + str(i) + '.json')))
+        try:
+            os.remove(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../output/batch_' + str(i) + '.json')))
+        except Exception as e:
+            continue
     
 def run_batch(tracks, index):
     c = config.Configuration()
