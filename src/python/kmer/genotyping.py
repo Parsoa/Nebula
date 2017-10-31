@@ -26,8 +26,6 @@ import khmer
 import colorama
 import pybedtools
 
-c = config.Configuration()
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -63,6 +61,7 @@ radius = 50
 
 @commons.measure_time
 def refine_variation_boundaries():
+    c = config.Configuration()
     bedtools = pybedtools.BedTool(c.bed_file)
     # split variations into batches
     n = 0
@@ -97,6 +96,7 @@ def refine_variation_boundaries():
     merge_outputs()
 
 def merge_outputs():
+    c = config.Configuration()
     output = {}
     for i in range(0, 12):
         with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -113,6 +113,7 @@ def merge_outputs():
             '../../../output/batch_' + str(i) + '.json')))
     
 def run_batch(tracks, index):
+    c = config.Configuration()
     output = {}
     for track in tracks:
         name = re.sub(r'\s+', '_', str(track).strip()).strip()
@@ -129,7 +130,8 @@ def run_batch(tracks, index):
 
 # @commons.measure_time
 def find_track_boundaries(sv , index):
-    frontier = extract_boundary_kmers()
+    c = config.Configuration()
+    frontier = extract_boundary_kmers(sv)
     # whatever that is left in the frontier is a possible break point
     frontier = prune_boundary_candidates(frontier)
     # now check the reference counts to find the best match
@@ -144,7 +146,8 @@ def find_track_boundaries(sv , index):
         # save the number of boundary candidates
     return results
 
-def extract_boundary_kmers():
+def extract_boundary_kmers(sv):
+    c = config.Configuration()
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
