@@ -105,7 +105,7 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
         t = kmer[0]
         kmer = kmer[1:]
         if t == 'r' :
-            count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
+            count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
         else :
             count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
         self.request.send(struct.pack('!i', count))
