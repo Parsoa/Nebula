@@ -157,9 +157,9 @@ if __name__ == '__main__':
     # load k-mer counts
     # this is shared between all children
     colorful_print("loading counttables ... ")
-    # counttable.export_counttable(reference.ReferenceGenome().path)
+    counttable.export_counttable(reference.ReferenceGenome().path)
     counttable.export_counttable(c.fastq_file)
-    # CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
+    CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
     CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
     colorful_print("done!")
     #
