@@ -57,10 +57,10 @@ def cache(f):
 # ================================================================================================= #
 
 # @cache
-def get_kmer_count(kmer, index, reference):
+def get_kmer_count(kmer, index, ref):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     port = 0
-    if reference:
+    if ref:
         port = 8569
         kmer = 'r' + kmer
     else:
@@ -160,8 +160,8 @@ if __name__ == '__main__':
     # load k-mer counts
     # this is shared between all children
     colorful_print("loading counttables ... ")
-    reference = os.fork()
-    if reference == 0:
+    ref = os.fork()
+    if ref == 0:
         # reference genome
         counttable.export_counttable(reference.ReferenceGenome().path)
         CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
@@ -170,7 +170,7 @@ if __name__ == '__main__':
         CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
     #
     port = 0
-    if reference == 0:
+    if ref == 0:
         # reference genome server
         port = 8569
     else:
