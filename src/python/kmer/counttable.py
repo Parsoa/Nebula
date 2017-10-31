@@ -39,7 +39,7 @@ def export_counttable(seq_file):
     return
 
 @commons.measure_time
-def import_sample_counttable(seq_file):
+def import_counttable(seq_file):
     print(colorama.Fore.MAGENTA + 'importing counttable for ', seq_file)
     c = config.Configuration()
     cache = seq_file + '.ct'

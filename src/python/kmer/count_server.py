@@ -100,14 +100,14 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
     def handle(self):
         c = config.Configuration()
         buffer = self.request.recv(c.ksize + 1)
-        fmt = str(c.ksize) + 's'
+        fmt = str(c.ksize + 1) + 's'
         kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
         t = kmer[0]
         kmer = kmer[1:]
         if t == 'r' :
-            count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
+            count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
         else :
-            count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
+            count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
         self.request.send(struct.pack('!i', count))
         return
 
@@ -157,10 +157,10 @@ if __name__ == '__main__':
     # load k-mer counts
     # this is shared between all children
     colorful_print("loading counttables ... ")
-    counttable.export_counttable(reference.ReferenceGenome().path)
+    # counttable.export_counttable(reference.ReferenceGenome().path)
     counttable.export_counttable(c.fastq_file)
     # CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
-    # CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
+    CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
     colorful_print("done!")
     #
     children = []
