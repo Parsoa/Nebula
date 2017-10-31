@@ -144,7 +144,7 @@ def find_track_boundaries(sv , index):
         # save the number of boundary candidates
     return results
 
-def extract_boundary_kmers()
+def extract_boundary_kmers():
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
