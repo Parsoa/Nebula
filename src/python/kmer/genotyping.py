@@ -15,7 +15,6 @@ from kmer import (
     sets,
     config,
     commons,
-    reference,
     counttable,
     count_server,
 )
@@ -109,6 +108,7 @@ def merge_outputs():
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     # delete intermediate results
     for i in range(0, c.num_threads):
+        # this might fail if there were less samples than threads
         try:
             os.remove(os.path.abspath(os.path.join(os.path.dirname(__file__),\
                 '../../../output/batch_' + str(i) + '.json')))

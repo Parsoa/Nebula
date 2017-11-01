@@ -9,7 +9,6 @@ from . import (
     sets,
     config,
     commons,
-    reference,
 )
 
 import khmer

@@ -5,7 +5,6 @@ from kmer import (
     sets,
     config,
     commons,
-    reference,
 )
 
 import colorama

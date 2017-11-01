@@ -5,6 +5,7 @@ import sys
 import copy
 import json
 import time
+import argparse
 import socketserver
 
 from kmer import (
@@ -12,7 +13,6 @@ from kmer import (
     sets,
     config,
     commons,
-    reference,
     counttable,
 )
 
@@ -58,14 +58,9 @@ def cache(f):
 
 # @cache
 def get_kmer_count(kmer, index, ref):
+    c = config.Configuration()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    port = 0
-    if ref:
-        port = 8569
-        kmer = 'r' + kmer
-    else:
-        port = 6985
-        kmer = 's' + kmer
+    port = c.reference_count_sevrer_port if ref else c.sample_count_sevrer_port
     s.connect(('localhost', port + index))
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size
@@ -94,23 +89,17 @@ def count_kmers_exact_string(str, k, kmers):
 
 class CountTableServerHandler(socketserver.BaseRequestHandler):
 
-    sample_counttable = None
-    reference_counttable = None
+    khmer_counttable = None
 
     def setup(self):
         return socketserver.BaseRequestHandler.setup(self)
 
     def handle(self):
         c = config.Configuration()
-        buffer = self.request.recv(c.ksize + 1)
-        fmt = str(c.ksize + 1) + 's'
+        buffer = self.request.recv(c.ksize)
+        fmt = str(c.ksize) + 's'
         kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
-        t = kmer[0]
-        kmer = kmer[1:]
-        if t == 'r' :
-            count = CountTableServerHandler.reference_counttable.get_kmer_counts(kmer)[0]
-        else :
-            count = CountTableServerHandler.sample_counttable.get_kmer_counts(kmer)[0]
+        count = CountTableServerHandler.khmer_counttable.get_kmer_counts(kmer)[0]
         self.request.send(struct.pack('!i', count))
         return
 
@@ -157,26 +146,33 @@ class CountTableServer(socketserver.TCPServer):
 if __name__ == '__main__':
     config.configure()
     c = config.Configuration()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("genome")
+    args = parser.parse_args()
+    colorful_print("loading counttables ... ")
     # load k-mer counts
     # this is shared between all children
-    colorful_print("loading counttables ... ")
-    # ref = os.fork()
-    ref = 1
-    if ref == 0:
-        # reference genome
-        counttable.export_counttable(reference.ReferenceGenome().path)
-        CountTableServerHandler.reference_counttable = counttable.import_counttable(reference.ReferenceGenome().path)
-    else:
-        counttable.export_counttable(c.fastq_file)
-        CountTableServerHandler.sample_counttable = counttable.import_counttable(c.fastq_file)
-    #
     port = 0
-    if ref == 0:
-        # reference genome server
-        port = 8569
+    if args.genome == 'hg19':
+        port = c.reference_count_server_port
+        counttable.export_counttable()
+        CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg19)
+    elif args.genome == 'hg38':
+        port = c.reference_count_server_port
+        counttable.export_counttable()
+        CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg38)
+    elif args.genome == 'chm1':
+        port = c.sample_count_sevrer_port
+        counttable.export_counttable(c.fastq_file)
+        CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_chm1)
     else:
-        # sample server
-        port = 6985
+        if os.path.isfile(args.genome):
+            port = c.sample_count_sevrer_port
+            counttable.export_counttable(args.genome)
+            CountTableServerHandler.khmer_counttable = counttable.import_counttable(args.genome)
+        else:
+            print('invalid genome option, aborting ... ')
+            exit()
     # 
     children = []
     print('spawning chlidren ...')
