@@ -60,7 +60,7 @@ def cache(f):
 def get_kmer_count(kmer, index, ref):
     c = config.Configuration()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    port = c.reference_count_sevrer_port if ref else c.sample_count_sevrer_port
+    port = c.reference_count_server_port if ref else c.sample_count_server_port
     s.connect(('localhost', port + index))
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size
@@ -162,12 +162,12 @@ if __name__ == '__main__':
         counttable.export_counttable()
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg38)
     elif args.genome == 'chm1':
-        port = c.sample_count_sevrer_port
+        port = c.sample_count_server_port
         counttable.export_counttable(c.fastq_file)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_chm1)
     else:
         if os.path.isfile(args.genome):
-            port = c.sample_count_sevrer_port
+            port = c.sample_count_server_port
             counttable.export_counttable(args.genome)
             CountTableServerHandler.khmer_counttable = counttable.import_counttable(args.genome)
         else:

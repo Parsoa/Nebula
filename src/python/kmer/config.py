@@ -24,8 +24,8 @@ class Configuration:
                         khmer_num_tables,\
                         khmer_table_size,\
                         output_directory,\
-                        sample_count_sevrer_port,\
-                        reference_count_sevrer_port):
+                        sample_count_server_port,\
+                        reference_count_server_port):
             self.ksize = ksize
             self.bed_file = bed_file
             self.genome_chm1 = genome_chm1
@@ -35,8 +35,8 @@ class Configuration:
             self.khmer_num_tables = khmer_num_tables
             self.khmer_table_size = khmer_table_size
             self.output_directory = output_directory
-            self.sample_count_sevrer_port = sample_count_sevrer_port
-            self.reference_count_sevrer_port = reference_count_sevrer_port
+            self.sample_count_server_port = sample_count_sevrer_port
+            self.reference_count_server_port = reference_count_sevrer_port
 
         def kmer_size(self):
             return self.ksize
@@ -92,8 +92,8 @@ def configure():
         khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output')),
-        sample_count_sevrer_port = 6985,
-        reference_count_sevrer_port = 8569,
+        sample_count_server_port = 6985,
+        reference_count_server_port = 8569,
     )
     colorama.init()
  
