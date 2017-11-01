@@ -25,7 +25,7 @@ class Configuration:
                         khmer_table_size,\
                         output_directory,\
                         sample_count_sevrer_port,\
-                        sample_count_sevrer_port):
+                        reference_count_sevrer_port):
             self.ksize = ksize
             self.bed_file = bed_file
             self.genome_chm1 = genome_chm1
