@@ -33,9 +33,10 @@ class StructuralVariation(object):
         end = self.radius - end 
         #
         seq = self.sequence[begin : len(self.sequence) - end]
-        head = seq[0:2 * c.ksize]
-        tail = seq[-2 * c.ksize:]
-        return head, tail
+        self.ref_head = seq[0:2 * c.ksize]
+        self.ref_tail = seq[-2 * c.ksize:]
+        kmers = count_server.count_kmers_exact_list(self.ref_head, self.ref_tail)
+        return kmers
 
 class Inversion(StructuralVariation):
 
@@ -54,7 +55,13 @@ class Inversion(StructuralVariation):
         # ends will overlap
         if 2 * c.ksize > len(seq) - 2 * c.ksize:
             return None, None
-        return head, tail
+        self.head = head
+        self.tail = tail
+        kmers = count_server.count_kmers_exact_list(head, tail)
+        return kmers, {'head': head, 'tail': tail}
+
+    def get_boundaries():
+        return 
 
 class Deletion(StructuralVariation):
 
@@ -67,8 +74,7 @@ class Deletion(StructuralVariation):
         #
         seq = self.sequence[begin : len(self.sequence) - end]
         if delete:
-            seq = seq[:c.ksize] + seq[-c.ksize:]
-        head = seq[0:2 * c.ksize]
-        tail = seq[-2 * c.ksize:]
-        return head, tail
+            seq = seq[:c.ksize] + seq[len(self.sequence) - c.ksize:]
+        kmers = count_server.count_kmers_exact_list(seq)
+        return kmers, seq
 
