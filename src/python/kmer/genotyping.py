@@ -34,9 +34,9 @@ class BreakPoint(object):
     @staticmethod
     def to_json(break_point):
         return {
-            '1 head': break_point.boundary,
-            '2 kmers': break_point.kmers,
-            '3 reference_kmers': break_point.reference_kmers
+            'boundary': break_point.boundary,
+            'kmers': break_point.kmers,
+            'reference_kmers': break_point.reference_kmers
         }
 
     def __init__(self, boundary, begin, end, kmers, reference_kmers):
@@ -57,7 +57,7 @@ class BreakPoint(object):
 radius = 50
 
 @commons.measure_time
-def refine_variation_boundaries():
+def execute():
     c = config.Configuration()
     bedtools = pybedtools.BedTool(c.bed_file)
     # split variations into batches
@@ -90,7 +90,7 @@ def refine_variation_boundaries():
         if len(children) == 0:
             break
     print('all children done, merging output', pid)
-    merge_outputs()
+    # merge_outputs()
 
 def merge_outputs():
     c = config.Configuration()
@@ -156,8 +156,6 @@ def extract_boundary_kmers(sv, index):
             if not kmers:
                 # skip this candidate
                 continue
-            # exclude those kmers that appear somewhere in reference genome
-            prune_kmers(kmers)
             reference_kmers = sv.get_reference_signature_kmers(begin, end)
             #
             break_point = BreakPoint(boundary = boundary, begin = begin, end = end,\
@@ -193,15 +191,6 @@ def prune_boundary_candidates(frontier, sv, index):
             frontier.pop(break_point, None)
     return frontier
 
-def prune_kmers(kmers):
-    remove = {}
-    for kmer in kmers:
-        count = count_server.get_kmer_count(kmer, index, True)
-        if count:
-            remove.append(kmer)
-    for kmer in remove:
-        kmers.pop(kmer, None)
-
 def calc_similarity_score(kmers, index):
     result = {}
     for kmer in kmers:
@@ -214,9 +203,9 @@ def calc_similarity_score(kmers, index):
 # Execution
 # ============================================================================================================================ #
 
-def execute():
-    refine_variation_boundaries()
-
 if __name__ == '__main__':
     config.configure()
+    count_server.run_server('chm1')
     execute()
+    # free-up memory for next round
+    count_server.kill()

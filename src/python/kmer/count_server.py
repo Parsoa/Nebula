@@ -8,6 +8,8 @@ import time
 import argparse
 import socketserver
 
+from subprocess import call
+
 from kmer import (
     bed,
     sets,
@@ -55,6 +57,9 @@ def cache(f):
 # ================================================================================================= #
 # 
 # ================================================================================================= #
+
+def kill():
+    call(["pkill", "-f", "count_server"])
 
 # @cache
 def get_kmer_count(kmer, index, ref):
@@ -143,38 +148,33 @@ class CountTableServer(socketserver.TCPServer):
 #
 # ================================================================================================= #
 
-if __name__ == '__main__':
-    config.configure()
+def run_server(genome):
     c = config.Configuration()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("genome")
-    args = parser.parse_args()
-    colorful_print("loading counttables ... ")
     # load k-mer counts
     # this is shared between all children
     port = 0
-    if args.genome == 'hg19':
+    if genome == 'hg19':
         port = c.reference_count_server_port
         counttable.export_counttable(c.genome_hg19)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg19)
-    elif args.genome == 'hg38':
+    elif genome == 'hg38':
         port = c.reference_count_server_port
         counttable.export_counttable(c.genome_hg38)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg38)
-    elif args.genome == 'chm1':
+    elif genome == 'chm1':
         port = c.sample_count_server_port
         counttable.export_counttable(c.genome_chm1)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_chm1)
     else:
-        if os.path.isfile(args.genome):
+        if os.path.isfile(genome):
             port = c.sample_count_server_port
-            counttable.export_counttable(args.genome)
-            CountTableServerHandler.khmer_counttable = counttable.import_counttable(args.genome)
+            counttable.export_counttable(genome)
+            CountTableServerHandler.khmer_counttable = counttable.import_counttable(genome)
         else:
             print('invalid genome option, aborting ... ')
             exit()
     # 
-    children = []
+    children = {}
     print('spawning chlidren ...')
     for i in range(0, c.num_threads) :
         pid = os.fork()
@@ -187,8 +187,26 @@ if __name__ == '__main__':
             colorful_print('ip: ', ip, ', port: ', port)
             print('serving forever ', i, ' ...')
             server.serve_forever()
+            # will never exit
             exit()
         else:
-            children.append(pid)
+            # parent
+            children[pid] = True
     # only parent process will ever get here
-    os.waitpid(children[0], 0)
+    return children
+
+if __name__ == '__main__':
+    config.configure()
+    c = config.Configuration()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("genome")
+    args = parser.parse_args()
+    colorful_print("loading counttables ... ")
+    # 
+    children = run_server(args.genome)
+    while True:
+        (pid, e) = os.wait()
+        children.pop(pid, None)
+        print(colorama.Fore.RED, 'pid ', pid, 'finished')
+        if len(children) == 0:
+            break
