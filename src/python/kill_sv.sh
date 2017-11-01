@@ -1,7 +1,7 @@
-ps -A | grep "genotyping"
+ps -A | grep "break_point"
 #for pid in $(ps aux | grep "genotyping" | cut -d " " -f 2); do
 #    echo $pid
 #    kill -9 $pid
 #done
-pkill -f "genotyping"
-ps -A | grep "genotyping"
+pkill -f "break_point"
+ps -A | grep "break_point"
