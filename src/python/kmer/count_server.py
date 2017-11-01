@@ -155,15 +155,15 @@ if __name__ == '__main__':
     port = 0
     if args.genome == 'hg19':
         port = c.reference_count_server_port
-        counttable.export_counttable()
+        counttable.export_counttable(c.genome_hg19)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg19)
     elif args.genome == 'hg38':
         port = c.reference_count_server_port
-        counttable.export_counttable()
+        counttable.export_counttable(c.genome_hg38)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_hg38)
     elif args.genome == 'chm1':
         port = c.sample_count_server_port
-        counttable.export_counttable(c.fastq_file)
+        counttable.export_counttable(c.genome_chm1)
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.genome_chm1)
     else:
         if os.path.isfile(args.genome):
