@@ -66,11 +66,15 @@ def execute():
     batch = {}
     for track in bedtools:
         name = re.sub(r'\s+', '_', str(track).strip()).strip()
+        if track.end - track.start > 1000000:
+            print(colorama.Fore.RED, 'skipping ', name, ', too large')
+            # too large skip
+            continue
         index = n % c.num_threads 
         if not index in batch :
             batch[index] = []
         batch[index].append(track)
-        print('assigned ', name, ' to ', index)
+        print(colorama.Fore.BLUE, 'assigned ', name, ' to ', index)
         n = n + 1
     # run each batch in a separate process
     children = {}
@@ -83,14 +87,14 @@ def execute():
         else:
             # main process
             children[pid] = True
-            print('spawned child ', pid)
+            print(colorama.Fore.BLUE, 'spawned child ', pid)
     while True:
         (pid, e) = os.wait()
         children.pop(pid, None)
         print(colorama.Fore.RED, 'pid ', pid, 'finished')
         if len(children) == 0:
             break
-    print('all children done, merging output', pid)
+    print(colorama.Fore.BLUE, 'all children done, merging output', pid)
     # merge_outputs()
 
 def merge_outputs():

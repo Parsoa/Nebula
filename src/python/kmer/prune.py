@@ -15,8 +15,8 @@ from kmer import (
     sets,
     config,
     commons,
-    geotyping,
     counttable,
+    break_point,
     count_server,
 )
 
@@ -59,7 +59,7 @@ def execute():
         if len(children) == 0:
             break
     print('all forks done, merging output ...', pid)
-    genoptyping.merge_outputs()
+    break_point.merge_outputs()
 
 def run_batch(tracks, index):
     c = config.Configuration()
