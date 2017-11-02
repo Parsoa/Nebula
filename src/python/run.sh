@@ -1,2 +1,2 @@
-python -m kmer.break_point
-python -m kmer.prune
+python -m kmer.break_point --reference hg19
+python -m kmer.prune --reference hg19

@@ -103,7 +103,11 @@ def prune_kmers(kmers):
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
-    config.configure()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--reference")
+    args = parser.parse_args()
+    # 
+    config.configure(args)
     count_server.run_server('hg19')
     execute()
     count_server.kill()

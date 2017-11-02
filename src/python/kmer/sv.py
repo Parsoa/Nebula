@@ -5,6 +5,7 @@ from kmer import (
     sets,
     config,
     commons,
+    count_server,
 )
 
 import colorama

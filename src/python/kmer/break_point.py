@@ -6,6 +6,7 @@ import sys
 import copy
 import json
 import time
+import argparse
 import traceback
 
 from multiprocessing import Process
@@ -204,7 +205,11 @@ def calc_similarity_score(kmers, index):
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
-    config.configure()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--reference")
+    args = parser.parse_args()
+    # 
+    config.configure(args)
     count_server.run_server('chm1')
     execute()
     # free-up memory for next round

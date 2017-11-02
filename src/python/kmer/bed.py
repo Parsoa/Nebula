@@ -65,7 +65,7 @@ def extract_sequence(track):
     interval = pybedtools.Interval(chrom = track.chrom, start = track.start,\
         end = track.end)
     bedtool = pybedtools.BedTool(str(interval), from_string = True)
-    f = open((bedtool.sequence(fi = reference.ReferenceGenome().fasta)).seqfn)
+    f = open(bedtool.sequence(c.reference_genome).seqfn)
     for i, line in enumerate(f):
         if i == 1:
             line = line.strip().upper()
