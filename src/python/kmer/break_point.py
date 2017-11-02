@@ -109,6 +109,9 @@ def merge_outputs():
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/boundaries_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
+    
+def clean_up():
+    c = config.Configuration()
     # delete intermediate results
     for i in range(0, c.num_threads):
         # this might fail if there were less samples than threads
