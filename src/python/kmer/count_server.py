@@ -196,12 +196,13 @@ def run_server(genome):
     return children
 
 if __name__ == '__main__':
-    config.configure()
-    c = config.Configuration()
     parser = argparse.ArgumentParser()
     parser.add_argument("genome")
     args = parser.parse_args()
     colorful_print("loading counttables ... ")
+    # 
+    config.configure(args)
+    c = config.Configuration()
     # 
     children = run_server(args.genome)
     while True:

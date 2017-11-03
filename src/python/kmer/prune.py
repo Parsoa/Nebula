@@ -90,6 +90,7 @@ def run_batch(tracks, index):
     exit()
 
 def prune_boundary_candidates(track, index):
+    print(track)
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     for candidate in track:
@@ -122,6 +123,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # 
     config.configure(args)
-    count_server.run_server('hg19')
+    # count_server.run_server('hg19')
     execute()
     count_server.kill()
