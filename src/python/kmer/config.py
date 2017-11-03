@@ -59,7 +59,7 @@ class Configuration:
 # Configuration
 # ============================================================================================================================ #
 
-def configure(reference_genome = 'hg38', bed_file = CHM1_Lumpy.Del.100bp.bed):
+def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed"):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
