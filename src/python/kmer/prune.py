@@ -81,7 +81,7 @@ def run_batch(tracks, index):
     for track in tracks:
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', track, '@', index)
-        tracks[track] = prune_boundary_candidates(track, index)
+        tracks[track] = prune_boundary_candidates(tracks[track], index)
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
