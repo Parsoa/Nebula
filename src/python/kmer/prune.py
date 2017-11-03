@@ -94,12 +94,12 @@ def prune_boundary_candidates(track, index):
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     for candidate in track:
-        kmers = candidate['kmers']
+        kmers = track[candidate]['kmers']
         prune_kmers(kmers)
         if len(kmers) == 0:
             remove[candidate] = True
             continue
-        candidate['kmers'] = kmers
+        track[candidate]['kmers'] = kmers
     for candidate in remove:
         tracks.pop(candidate, None)
     return track
