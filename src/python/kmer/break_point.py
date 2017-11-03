@@ -216,7 +216,7 @@ if __name__ == '__main__':
     parser.add_argument("--reference")
     args = parser.parse_args()
     # 
-    config.configure(args)
+    config.configure(reference = args.reference)
     count_server.run_server('chm1')
     execute()
     # free-up memory for next round

@@ -59,14 +59,14 @@ class Configuration:
 # Configuration
 # ============================================================================================================================ #
 
-def configure(args):
+def configure(reference = None):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/CHM1.samtoolsversion.head.small.fq'))
         genome_hg19 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa'))
-        genome_hg38 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+        genome_hg38 = os.path.absath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa'))
         num_threads = 1
         khmer_num_tables = 4
@@ -80,7 +80,10 @@ def configure(args):
         khmer_num_tables = 4
         khmer_table_size = 16e9
     #
-    reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38
+    if reference:
+        reference_genome = genome_hg19 if reference == 'hg19' else genome_hg38
+    else:
+        reference_genome = 'hg38'
     Configuration(
         ksize = 31,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\

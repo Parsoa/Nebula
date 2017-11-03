@@ -201,7 +201,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     colorful_print("loading counttables ... ")
     # 
-    config.configure(args)
+    config.configure()
     c = config.Configuration()
     # 
     children = run_server(args.genome)

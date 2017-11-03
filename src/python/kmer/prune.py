@@ -122,7 +122,7 @@ if __name__ == '__main__':
     parser.add_argument("--reference")
     args = parser.parse_args()
     # 
-    config.configure(args)
+    config.configure(reference = args.reference)
     # count_server.run_server('hg19')
     execute()
     count_server.kill()
