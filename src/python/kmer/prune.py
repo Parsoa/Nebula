@@ -99,7 +99,7 @@ def prune_boundary_candidates(track, index):
     remove = {}
     for candidate in track:
         # skip the json key holding the number of candidates
-        if candidate.find('candidate'):
+        if candidate.find('candidate') != -1:
             continue
         kmers = track[candidate]['kmers']
         prune_kmers(kmers, index)
