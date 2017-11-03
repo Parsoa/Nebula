@@ -98,12 +98,14 @@ def prune_boundary_candidates(track, index):
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     for candidate in track:
+        # skip the json key holding the number of candidates
+        if candidate.find('candidate'):
+            continue
         kmers = track[candidate]['kmers']
         prune_kmers(kmers, index)
         if len(kmers) == 0:
             remove[candidate] = True
             continue
-        track[candidate]['kmers'] = kmers
     for candidate in remove:
         tracks.pop(candidate, None)
     return track
