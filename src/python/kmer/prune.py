@@ -66,10 +66,15 @@ def merge_outputs():
     c = config.Configuration()
     output = {}
     for i in range(0, c.num_threads):
-        with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../output/batch_prune_' + str(i) + '.json')), 'r') as json_file:
-            batch = json.load(json_file)
-            output.update(batch)
+        # might fail because there weren't as many as i processes
+        try:
+            with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                    '../../../output/batch_prune_' + str(i) + '.json')), 'r') as json_file:
+                batch = json.load(json_file)
+                output.update(batch)
+        except Exception as e:
+            print(e)
+            continue
     bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/boundaries_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
@@ -90,12 +95,11 @@ def run_batch(tracks, index):
     exit()
 
 def prune_boundary_candidates(track, index):
-    print(track)
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     for candidate in track:
         kmers = track[candidate]['kmers']
-        prune_kmers(kmers)
+        prune_kmers(kmers, index)
         if len(kmers) == 0:
             remove[candidate] = True
             continue
@@ -104,7 +108,7 @@ def prune_boundary_candidates(track, index):
         tracks.pop(candidate, None)
     return track
 
-def prune_kmers(kmers):
+def prune_kmers(kmers, index):
     remove = {}
     for kmer in kmers:
         count = count_server.get_kmer_count(kmer, index, True)
@@ -125,4 +129,4 @@ if __name__ == '__main__':
     config.configure(reference = args.reference)
     # count_server.run_server('hg19')
     execute()
-    count_server.kill()
+    # count_server.kill()
