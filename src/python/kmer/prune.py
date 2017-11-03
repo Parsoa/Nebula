@@ -107,7 +107,7 @@ def prune_boundary_candidates(track, index):
             remove[candidate] = True
             continue
     for candidate in remove:
-        tracks.pop(candidate, None)
+        track.pop(candidate, None)
     return track
 
 def prune_kmers(kmers, index):
