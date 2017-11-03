@@ -60,7 +60,20 @@ def execute():
         if len(children) == 0:
             break
     print('all forks done, merging output ...', pid)
-    break_point.merge_outputs()
+    merge_outputs()
+
+def merge_outputs():
+    c = config.Configuration()
+    output = {}
+    for i in range(0, c.num_threads):
+        with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../output/batch_prune_' + str(i) + '.json')), 'r') as json_file:
+            batch = json.load(json_file)
+            output.update(batch)
+    bed_file_name = c.bed_file.split('/')[-1]
+    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/boundaries_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
+        json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
 
 def run_batch(tracks, index):
     c = config.Configuration()
@@ -72,7 +85,7 @@ def run_batch(tracks, index):
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/batch_' + str(index) + '.json')), 'w') as json_file:
+            '../../../output/batch_prune_' + str(index) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     exit()
 
