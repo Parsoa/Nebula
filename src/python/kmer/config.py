@@ -59,7 +59,7 @@ class Configuration:
 # Configuration
 # ============================================================================================================================ #
 
-def configure(reference = None):
+def configure(reference_genome = None, bed_file = CHM1_Lumpy.Del.100bp.bed):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -80,20 +80,16 @@ def configure(reference = None):
         khmer_num_tables = 4
         khmer_table_size = 16e9
     #
-    if reference:
-        reference_genome = genome_hg19 if reference == 'hg19' else genome_hg38
-    else:
-        reference_genome = 'hg38'
     Configuration(
         ksize = 31,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/CHM1_Lumpy.Del.100bp.bed')),
+            '../../../data/' + bed_file)),
             # '../../../data/variations.bed')),
         genome_chm1 = genome_chm1,
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         num_threads = num_threads,
-        reference_genome = reference_genome,
+        reference_genome = genome_hg19 if reference_genome == 'hg19' else genome_hg38,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\

@@ -214,10 +214,9 @@ def calc_similarity_score(kmers, index):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference")
+    parser.add_argument("--bed")
     args = parser.parse_args()
     # 
-    config.configure(reference = args.reference)
-    count_server.run_server('chm1')
+    config.configure(reference_genome = args.reference, bed_file = args.bed)
+    #
     execute()
-    # free-up memory for next round
-    count_server.kill()
