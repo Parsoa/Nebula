@@ -113,7 +113,7 @@ def prune_kmers(kmers, index):
     for kmer in kmers:
         count = count_server.get_kmer_count(kmer, index, True)
         if count:
-            remove.append(kmer)
+            remove[kmer] = True
     for kmer in remove:
         kmers.pop(kmer, None)
 
