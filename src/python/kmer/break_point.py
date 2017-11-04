@@ -160,7 +160,7 @@ def extract_boundary_kmers(sv, index):
     frontier = {}
     for begin in range(-radius, radius + 1) :
         for end in range(-radius, radius + 1) :
-            kmers, boundary = sv.get_signature_kmers(begin, end, True)
+            kmers, boundary = sv.get_signature_kmers(begin, end)
             if not kmers:
                 # skip this candidate
                 continue

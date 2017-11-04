@@ -28,12 +28,10 @@ class StructuralVariation(object):
 
     def get_reference_signature_kmers(self, begin, end):
         c = config.Configuration()
-        # adjust from [-R, R] to [0, 2R]
-        begin = self.radius + begin
-        # adjust from [-R, R] to [2R, 0]
-        end = self.radius - end 
+        begin = (self.radius + c.ksize) + begin - c.ksize
+        end = (len(self.sequence) - self.radius - c.ksize) + end + c.ksize
+        seq = self.sequence[begin : end]
         #
-        seq = self.sequence[begin : len(self.sequence) - end]
         self.ref_head = seq[0:2 * c.ksize]
         self.ref_tail = seq[-2 * c.ksize:]
         kmers = count_server.count_kmers_exact_list(self.ref_head, self.ref_tail)
@@ -41,21 +39,22 @@ class StructuralVariation(object):
 
 class Inversion(StructuralVariation):
 
-    def get_signature_kmers(self, begin, end, complement):
+    def get_signature_kmers(self, begin, end):
         c = config.Configuration()
-        # adjust from [-R, R] to [0, 2R]
-        begin = self.radius + begin
-        # adjust from [-R, R] to [2R, 0]
-        end = self.radius - end 
+        begin = (self.radius + c.ksize) + begin - c.ksize
+        end = (len(self.sequence) - self.radius - c.ksize) + end + c.ksize
+        seq = self.sequence[begin : end]
+        # ends will overlap
+        if begin >  end:
+            return None, None
         #
-        seq = self.sequence[begin : len(self.sequence) - end]
-        if complement:
-            seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
+        seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
         head = seq[0:2 * c.ksize]
         tail = seq[-2 * c.ksize:]
         # ends will overlap
         if 2 * c.ksize > len(seq) - 2 * c.ksize:
             return None, None
+        #
         self.head = head
         self.tail = tail
         kmers = count_server.count_kmers_exact_list(head, tail)
@@ -66,16 +65,16 @@ class Inversion(StructuralVariation):
 
 class Deletion(StructuralVariation):
 
-    def get_signature_kmers(self, begin, end, delete):
+    def get_signature_kmers(self, begin, end):
         c = config.Configuration()
-        # adjust from [-R, R] to [0, 2R]
-        begin = self.radius + begin
-        # adjust from [-R, R] to [2R, 0]
-        end = self.radius - end 
+        begin = (self.radius + c.ksize) + begin - c.ksize
+        end = (len(self.sequence) - self.radius - c.ksize) + end + c.ksize
+        seq = self.sequence[begin : end]
+        # ends will overlap
+        if begin >  end:
+            return None, None
         #
-        seq = self.sequence[begin : len(self.sequence) - end]
-        if delete:
-            seq = seq[:c.ksize] + seq[len(self.sequence) - c.ksize:]
+        seq = seq[:c.ksize] + seq[-c.ksize:]
         kmers = count_server.count_kmers_exact_list(seq)
         return kmers, seq
 
