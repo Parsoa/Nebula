@@ -66,7 +66,7 @@ def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed"):
             '../../../data/CHM1.samtoolsversion.head.small.fq'))
         genome_hg19 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa'))
-        genome_hg38 = os.path.absath(os.path.join(os.path.dirname(__file__),\
+        genome_hg38 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa'))
         num_threads = 1
         khmer_num_tables = 4

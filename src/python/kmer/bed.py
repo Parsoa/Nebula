@@ -71,25 +71,6 @@ def extract_sequence(track):
             line = line.strip().upper()
             return line
 
-def extract_track_boundaries(track):
-    c = config.Configuration()
-    interval = pybedtools.Interval(chrom = track.chrom, start = track.start - c.ksize,\
-        end = track.end + c.ksize)
-    bedtool = pybedtools.BedTool(str(interval), from_string = True)
-    f = open((bedtool.sequence(fi = reference.ReferenceGenome().fasta)).seqfn)
-    for i, line in enumerate(f):
-        if i == 1:
-            line = line.strip().upper()
-            # print(colorama.Fore.WHITE + line[:c.ksize], colorama.Fore.BLUE + (line[c.ksize : -c.ksize]), colorama.Fore.WHITE + line[-c.ksize:])
-            head = line[0:2 * c.ksize]
-            tail = line[-2 * c.ksize:]
-            # reverse-complement this sequence
-            # line = line[:c.ksize] + complement_sequence((line[c.ksize : -c.ksize])[::-1]) + line[-c.ksize:]
-            inverse_head = line[0:2 * c.ksize]
-            inverse_tail = line[-2 * c.ksize:]
-            # print(colorama.Fore.WHITE + "boundary: ", colorama.Fore.BLUE + inverse_head, '...', inverse_tail)
-            return {'head': head, 'tail': tail}, {'head': inverse_head, 'tail': inverse_tail}
-
 def complement_sequence(seq):
     # A-> C and C->A
     seq = seq.replace('A', 'Z')

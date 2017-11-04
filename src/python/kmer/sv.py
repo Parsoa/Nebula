@@ -1,4 +1,5 @@
 import copy
+import time
 
 from kmer import (
     bed,
