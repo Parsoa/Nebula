@@ -134,7 +134,7 @@ def run_batch(tracks, index):
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/batch_' + str(index) + '.json')), 'w') as json_file:
-        json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
+        json.dump(output, json_file, sort_keys=False, indent=4, separators=(',', ': '))
     exit()
 
 # @commons.measure_time

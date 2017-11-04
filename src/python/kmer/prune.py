@@ -101,22 +101,18 @@ def prune_boundary_candidates(track, index):
         if candidate.find('candidate') != -1:
             continue
         kmers = track[candidate]['kmers']
-        prune_kmers(kmers, index)
-        if len(kmers) == 0:
+        if not has_novel_kmers(kmers, index):
             remove[candidate] = True
-            continue
     for candidate in remove:
         track.pop(candidate, None)
     return track
 
-def prune_kmers(kmers, index):
-    remove = {}
+def has_novel_kmers(kmers, index):
     for kmer in kmers:
         count = count_server.get_kmer_count(kmer, index, True)
-        if count:
-            remove[kmer] = True
-    for kmer in remove:
-        kmers.pop(kmer, None)
+        if count == 0:
+            return True
+    return False
 
 # ============================================================================================================================ #
 # Execution
