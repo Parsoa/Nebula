@@ -101,18 +101,36 @@ def prune_boundary_candidates(track, index):
         if candidate.find('candidate') != -1:
             continue
         kmers = track[candidate]['kmers']
+        # quickly dismiess
         if not has_novel_kmers(kmers, index):
             remove[candidate] = True
+            continue
+        # do the more time-consuming check
+        if not has_unique_novel_kmers(track, candidate, kmers, index):
+            remove[candidate] = True
+            continue
     for candidate in remove:
         track.pop(candidate, None)
     return track
 
 def has_novel_kmers(kmers, index):
+    # checks if this candidate has a kmer that has not occured in the reference genome
     for kmer in kmers:
         count = count_server.get_kmer_count(kmer, index, True)
         if count == 0:
+            # it is a novel kmer
             return True
     return False
+
+def has_unique_novel_kmers(track, break_point, kmers, index):
+    # checks if this candidate has a kmer that hasn't occurred in any other candidate
+    for kmer in kmers:
+        for candidate in track:
+            if candidate != break_point:
+                if kmer in track[candidate]['kmers']:
+                    return False
+    return True
+
 
 # ============================================================================================================================ #
 # Execution
