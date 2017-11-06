@@ -85,7 +85,9 @@ def run_batch(tracks, index):
     for track in tracks:
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', track, '@', index)
+        print(colorama.Fore.GREEN, len(track))
         tracks[track] = prune_boundary_candidates(tracks[track], index)
+        print(colorama.Fore.GREEN, len(track))
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -122,12 +124,15 @@ def has_novel_kmers(kmers, index):
             return True
     return False
 
-def has_unique_novel_kmers(track, break_point, kmers, index):
+def has_unique_novel_kmers(track, candidate, kmers, index):
     # checks if this candidate has a kmer that hasn't occurred in any other candidate
     for kmer in kmers:
-        for candidate in track:
+        for break_point in track:
+            # skip the wicked candidate count key
+            if break_point.find('candidate') != -1:
+                continue
             if candidate != break_point:
-                if kmer in track[candidate]['kmers']:
+                if kmer in track[break_point]['kmers']:
                     return False
     return True
 
