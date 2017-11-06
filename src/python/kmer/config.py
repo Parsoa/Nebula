@@ -21,6 +21,7 @@ class Configuration:
                         genome_hg19,\
                         genome_hg38,\
                         num_threads,\
+                        variation_type,\
                         reference_genome,\
                         khmer_num_tables,\
                         khmer_table_size,\
@@ -33,15 +34,13 @@ class Configuration:
             self.genome_hg19 = genome_hg19
             self.genome_hg38 = genome_hg38
             self.num_threads = num_threads
+            self.variation_type = variation_type
             self.reference_genome = reference_genome
             self.khmer_num_tables = khmer_num_tables
             self.khmer_table_size = khmer_table_size
             self.output_directory = output_directory
             self.sample_count_server_port = sample_count_server_port
             self.reference_count_server_port = reference_count_server_port
-
-        def kmer_size(self):
-            return self.ksize
 
     __instance = None
 
@@ -59,7 +58,7 @@ class Configuration:
 # Configuration
 # ============================================================================================================================ #
 
-def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed"):
+def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed", variation_type = 'Deletion'):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -88,6 +87,7 @@ def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed"):
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         num_threads = num_threads,
+        variation_type = variation_type,
         reference_genome = genome_hg19 if reference_genome == 'hg19' else genome_hg38,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,

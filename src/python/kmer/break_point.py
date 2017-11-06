@@ -123,12 +123,13 @@ def clean_up():
     
 def run_batch(tracks, index):
     c = config.Configuration()
+    sv_class = StructuralVariation.get_sv_class()
     output = {}
     for track in tracks:
         name = re.sub(r'\s+', '_', str(track).strip()).strip()
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', name, '@', index)
-        sv = Deletion(track = track, radius = radius)
+        sv = sv_class(track = track, radius = radius)
         output[name] = find_track_boundaries(sv, index)
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
@@ -214,9 +215,11 @@ def calc_similarity_score(kmers, index):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference")
+    parser.add_argument("--type")
     parser.add_argument("--bed")
     args = parser.parse_args()
     # 
-    config.configure(reference_genome = args.reference, bed_file = args.bed)
+    config.configure(reference_genome = args.reference, bed_file = args.bed,\
+        variation_type = args.type)
     #
     execute()

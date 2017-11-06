@@ -100,7 +100,7 @@ def prune_boundary_candidates(track, index):
     remove = {}
     for candidate in track:
         # skip the json key holding the number of candidates
-        if candidate.find('candidate') != -1:
+        if candidate.find('candidates') != -1:
             continue
         kmers = track[candidate]['kmers']
         # quickly dismiess
@@ -113,6 +113,7 @@ def prune_boundary_candidates(track, index):
             continue
     for candidate in remove:
         track.pop(candidate, None)
+    track['candidates'] = len(track) - 1
     return track
 
 def has_novel_kmers(kmers, index):
@@ -129,13 +130,12 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
     for kmer in kmers:
         for break_point in track:
             # skip the wicked candidate count key
-            if break_point.find('candidate') != -1:
+            if break_point.find('candidates') != -1:
                 continue
             if candidate != break_point:
                 if kmer in track[break_point]['kmers']:
                     return False
     return True
-
 
 # ============================================================================================================================ #
 # Execution
