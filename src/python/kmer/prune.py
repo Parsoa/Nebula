@@ -98,11 +98,17 @@ def run_batch(tracks, index):
 def prune_boundary_candidates(track, index):
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
+    contigs = {}
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
             continue
         kmers = track[candidate]['kmers']
+        contig = track[candidate]['boundary']
+        if not contig in contigs:
+            contigs[contig] = 1
+        else:
+            contigs[contig] = contigs[contig] + 1
         # quickly dismiess
         if not has_novel_kmers(kmers, index):
             remove[candidate] = True
@@ -114,6 +120,7 @@ def prune_boundary_candidates(track, index):
     for candidate in remove:
         track.pop(candidate, None)
     track['candidates'] = len(track) - 1
+    track['contigs'] = contigs
     return track
 
 def has_novel_kmers(kmers, index):
