@@ -88,9 +88,7 @@ def run_batch(tracks, index):
     for track in tracks:
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', track, '@', index)
-        print(colorama.Fore.GREEN, len(track))
         tracks[track] = aggregate_novel_kmers(tracks[track], index)
-        print(colorama.Fore.GREEN, len(track))
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -100,28 +98,29 @@ def run_batch(tracks, index):
 
 def aggregate_novel_kmers(track, index):
     contigs = {}
-    novel_kmers = {}
+    novel_kmers_count = 0
+    remove = {}
+    n = 0.0
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
             continue
         kmers = track[candidate]['kmers']
-        contig = track[candidate]['boundary']
-        if not contig in contigs:
-            contigs[contig] = 1
-        else:
-            contigs[contig] = contigs[contig] + 1
-        #
-        for novel_kmer in get_novel_kmers(kmers, index):
-            if novel_kmer in novel_kmers:
-                novel_kmers[novel_kmer].append(candidate)
-            else:
-                novel_kmers[novel_kmer] = [candidate]
-    return {
-        'contig_count': len(contigs),
-        'contigs': contigs,
-        'novel_kmers': novel_kmers,
-    }
+        if not has_unique_novel_kmers(track, candidate, kmers, index):
+            remove[candidate] = True
+            continue
+        novel_kmers = get_novel_kmers(kmers, index)
+        track[candidate]['novel_kmer_count'] = len(novel_kmers)
+        track['candidates'].pop('kmers', None)
+        track['candidates'].pop('reference_kmers', None)
+        track['candidates']['novel_kmers'] = novel_kmers
+        novel_kmer_count += len(novel_kmers)
+        n = n + 1
+    track['average_novel_kmer_count'] = novel_kmer_count / n
+    track['contig_count'] = len(contigs)
+    track['candidates'] = len(track) - 1
+    track['contigs'] = contigs
+    return track
 
 def get_novel_kmers(kmers, index):
     novel_kmers = {}
@@ -172,17 +171,29 @@ def has_novel_kmers(kmers, index):
             return True
     return False
 
+def is_kmer_novel(kmer, index):
+    count = count_server.get_kmer_count(kmer, index, True)
+    return count == 0
+
 def has_unique_novel_kmers(track, candidate, kmers, index):
-    # checks if this candidate has a kmer that hasn't occurred in any other candidate
+    # checks if this candidate has a novel kmer that hasn't occurred in any other candidate
     for kmer in kmers:
-        for break_point in track:
-            # skip the wicked candidate count key
-            if break_point.find('candidates') != -1:
-                continue
-            if candidate != break_point:
-                if kmer in track[break_point]['kmers']:
-                    return False
-    return True
+        if is_kmer_novel(kmer, index):
+            found = False
+            for break_point in track:
+                # skip the wicked candidate count key
+                if break_point.find('candidates') != -1:
+                    continue
+                if candidate != break_point:
+                    # this kmer appears in at least one other break point so no need to go further
+                    if kmer in track[break_point]['kmers']:
+                        found = True
+                        break
+            # we didn't find this novel kmer anywhere so it should be unique, no need to check others
+            if not found:
+                return True
+    # we haven't returned yet so we didn't find any uniquely novel kmers
+    return False
 
 # ============================================================================================================================ #
 # Execution
