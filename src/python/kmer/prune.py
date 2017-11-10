@@ -41,7 +41,7 @@ def execute():
         path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/batch_' + str(index) + '.json'))
         if os.path.isfile(path):
-            max_index = index
+            max_index = index + 1
     # run each batch
     children = {}
     for index in range(0, max_index):
@@ -80,19 +80,35 @@ def merge_outputs():
         except Exception as e:
             print(e)
             continue
-    draw_distribution_charts(output)
     bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
+    draw_distribution_charts(output)
+    clean_up()
+
+def clean_up():
+    for i in range(0, c.num_threads):
+        # might fail because there weren't as many as i processes
+        path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/batch_prune_' + str(i) + '.json'))
+        if os.path.isfile(path):
+                os.remove(path)
 
 def draw_distribution_charts(tracks):
     c = config.Configuration()
-    bins = []
+    bins = {}
     for track in tracks:
-        bins.append(tracks[track]['breakpoint_without_novel'])
-    data = [go.Histogram(x = bins)]
-    bed_file_name = c.bed_file.split('/')[-1]
+        n = tracks[track]['breakpoint_without_novel']
+        if not n in bins:
+            bins[n] = 1
+        else:
+            bins[n] = bins[n] + 1
+        bins.append()
+    data = [go.Bar(
+        x = bins.keys(),
+        y = list(map(lambda x: bins[x], bins.keys()))
+    )]
     plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.html')))
 
