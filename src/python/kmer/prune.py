@@ -93,13 +93,13 @@ def clean_up():
         path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/batch_prune_' + str(i) + '.json'))
         if os.path.isfile(path):
-                os.remove(path)
+            os.remove(path)
 
 def draw_distribution_charts(tracks):
     c = config.Configuration()
     bins = {}
     for track in tracks:
-        n = tracks[track]['breakpoint_without_novel']
+        n = str(tracks[track]['breakpoint_without_novel'])
         if not n in bins:
             bins[n] = 1
         else:
