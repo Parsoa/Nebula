@@ -104,7 +104,6 @@ def draw_distribution_charts(tracks):
             bins[n] = 1
         else:
             bins[n] = bins[n] + 1
-        bins.append()
     data = [go.Bar(
         x = bins.keys(),
         y = list(map(lambda x: bins[x], bins.keys()))
