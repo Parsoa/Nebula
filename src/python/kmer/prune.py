@@ -100,31 +100,34 @@ def aggregate_novel_kmers(track, index):
     novel_kmer_count = 0.0
     remove = {}
     n = 0
+    found = False
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
             continue
         kmers = track[candidate]['kmers']
+        remove[candidate] = True
         if not has_novel_kmers(kmers, index):
-            remove[candidate] = True
-            continue
-        novel_kmers = get_novel_kmers(kmers, index)
-        track[candidate]['novel_kmers'] = novel_kmers
-        track[candidate]['novel_kmer_count'] = len(novel_kmers)
-        novel_kmer_count += len(novel_kmers)
-        n = n + 1
+            found = True
+            break
+        # novel_kmers = get_novel_kmers(kmers, index)
+        # track[candidate]['novel_kmers'] = novel_kmers
+        # track[candidate]['novel_kmer_count'] = len(novel_kmers)
+        # novel_kmer_count += len(novel_kmers)
+        # n = n + 1
     # remove those break points without uniquely novel kmers
     for candidate in remove:
         track.pop(candidate, None)
     # cleanup unwanted keys
-    for candidate in track:
-        # skip the json key holding the number of candidates
-        if candidate.find('candidates') != -1:
-            continue
-        track[candidate].pop('kmers', None)
-        track[candidate].pop('reference_kmers', None)
-    track['average_novel_kmer_count'] = -1 if n < 1 else novel_kmer_count / n
-    track['candidates'] = n
+    # for candidate in track:
+    #     # skip the json key holding the number of candidates
+    #     if candidate.find('candidates') != -1:
+    #         continue
+    #     track[candidate].pop('kmers', None)
+    #     track[candidate].pop('reference_kmers', None)
+    track['breakpoint_without_novel'] = found
+    # track['average_novel_kmer_count'] = -1 if n < 1 else novel_kmer_count / n
+    # track['candidates'] = n
     return track
 
 def get_novel_kmers(kmers, index):
