@@ -97,16 +97,15 @@ def run_batch(tracks, index):
     exit()
 
 def aggregate_novel_kmers(track, index):
-    contigs = {}
-    novel_kmer_count = 0
+    novel_kmer_count = 0.0
     remove = {}
-    n = 0.0
+    n = 0
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
             continue
         kmers = track[candidate]['kmers']
-        if not has_unique_novel_kmers(track, candidate, kmers, index):
+        if not has_novel_kmers(kmers, index):
             remove[candidate] = True
             continue
         novel_kmers = get_novel_kmers(kmers, index)
@@ -125,9 +124,7 @@ def aggregate_novel_kmers(track, index):
         track[candidate].pop('kmers', None)
         track[candidate].pop('reference_kmers', None)
     track['average_novel_kmer_count'] = -1 if n < 1 else novel_kmer_count / n
-    track['contig_count'] = len(contigs)
-    track['candidates'] = len(track) - 1
-    track['contigs'] = contigs
+    track['candidates'] = n
     return track
 
 def get_novel_kmers(kmers, index):
@@ -173,9 +170,7 @@ def prune_boundary_candidates(track, index):
 def has_novel_kmers(kmers, index):
     # checks if this candidate has a kmer that has not occured in the reference genome
     for kmer in kmers:
-        count = count_server.get_kmer_count(kmer, index, True)
-        if count == 0:
-            # it is a novel kmer
+        if is_kmer_novel(kmer, index):
             return True
     return False
 

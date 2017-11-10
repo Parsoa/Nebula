@@ -80,7 +80,7 @@ def count_kmers_exact_list(*seqs):
     return kmers
 
 def count_kmers_exact_string(str, k, kmers):
-    for i in range(0, len(str) - k):
+    for i in range(0, len(str) - k + 1):
         kmer = str[i : i + k]
         if not kmer in kmers:
             kmers[kmer] = 1
