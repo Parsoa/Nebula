@@ -33,24 +33,25 @@ import pybedtools
 
 def execute():
     c = config.Configuration()
-    # split cnadidates into batches
-    batch = {}
+    # find the number of processes to spawn
+    max_index = 0
     for index in range(0, c.num_threads):
         path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/batch_' + str(index) + '.json'))
         if os.path.isfile(path):
-            with open(path, 'r') as json_file:
-                print('reading batch ', index)
-                batch[index] = json.load(json_file)
-    print('load-balancing ...')
+            max_index = index
     # run each batch
     children = {}
-    for index in batch:
-        tracks = batch[index]
+    for index in range(0, max_index):
         pid = os.fork()
         if pid == 0:
             # forked process
-            run_batch(tracks, index)
+            path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../output/batch_' + str(index) + '.json'))
+            with open(path, 'r') as json_file:
+                print('reading batch ', index)
+                batch = json.load(json_file)
+                run_batch(batch, index)
         else:
             # main process
             children[pid] = True
