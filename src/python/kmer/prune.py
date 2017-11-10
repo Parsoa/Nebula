@@ -198,5 +198,3 @@ if __name__ == '__main__':
     config.configure(reference_genome = args.reference)
     #
     execute()
-
-GTGGATTTTCTCTTTATGCCAGATCAGAGCT    TGGCTAGCCAGTTTTCCTGGCACCATTTATT
