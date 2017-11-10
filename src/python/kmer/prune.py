@@ -114,11 +114,13 @@ def aggregate_novel_kmers(track, index):
         track[candidate]['novel_kmer_count'] = len(novel_kmers)
         novel_kmer_count += len(novel_kmers)
         n = n + 1
-        # cleanup unwanted keys
-        track[candidate].pop('kmers', None)
-        track[candidate].pop('reference_kmers', None)
+    # remove those break points without uniquely novel kmers
     for candidate in remove:
         track.pop(candidate, None)
+    # cleanup unwanted keys
+    for candidate in track:
+        track[candidate].pop('kmers', None)
+        track[candidate].pop('reference_kmers', None)
     track['average_novel_kmer_count'] = novel_kmer_count / n
     track['contig_count'] = len(contigs)
     track['candidates'] = len(track) - 1
