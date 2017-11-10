@@ -108,6 +108,7 @@ def draw_distribution_charts(tracks):
         x = bins.keys(),
         y = list(map(lambda x: bins[x], bins.keys()))
     )]
+    bed_file_name = c.bed_file.split('/')[-1]
     plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.html')))
 
