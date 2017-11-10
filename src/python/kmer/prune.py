@@ -111,16 +111,14 @@ def aggregate_novel_kmers(track, index):
         else:
             contigs[contig] = contigs[contig] + 1
         #
-        track[candidate]['novel_kmers'] = get_novel_kmers(kmers, index)
-        track[candidate].pop('reference_kmers', None)
-        track[candidate].pop('kmers', None)
-        # if novel_kmers:
-        #     novel_kmers = sets.calc_dictionary_intersection(novel_kmers, track[candidate]['novel_kmers'])
-        # else:
-        #     novel_kmers = track[candidate]['novel_kmers']
+        for novel_kmer in get_novel_kmers(kmers, index):
+            if novel_kmer in novel_kmers:
+                novel_kmers[novel_kmer].append(candidate)
+            else:
+                novel_kmers[novel_kmer] = [candidate]
+    track.pop('candidates', None)
     track['contig_count'] = len(contigs)
-    # track['novel_kmers'] = novel_kmers
-    track['candidates'] = len(track) - 1
+    track['novel_kmers'] = novel_kmers
     track['contigs'] = contigs
     return track
 
@@ -138,7 +136,6 @@ def prune_boundary_candidates(track, index):
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     contigs = {}
-    novel_kmers = {}
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
