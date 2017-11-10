@@ -27,7 +27,7 @@ import khmer
 import colorama
 import pybedtools
 import plotly.offline as plotly
-import plotly.graph_objs as go
+import plotly.graph_objs as graph_objs
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -88,6 +88,7 @@ def merge_outputs():
     clean_up()
 
 def clean_up():
+    c = config.Configuration()
     for i in range(0, c.num_threads):
         # might fail because there weren't as many as i processes
         path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -104,8 +105,8 @@ def draw_distribution_charts(tracks):
             bins[n] = 1
         else:
             bins[n] = bins[n] + 1
-    data = [go.Bar(
-        x = bins.keys(),
+    data = [graph_objs.Bar(
+        x = list(bins.keys()),
         y = list(map(lambda x: bins[x], bins.keys()))
     )]
     bed_file_name = c.bed_file.split('/')[-1]
@@ -126,34 +127,31 @@ def run_batch(tracks, index):
     exit()
 
 def aggregate_novel_kmers(track, index):
-    n = 0
     remove = {}
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
             continue
         kmers = track[candidate]['kmers']
-        remove[candidate] = True
         if not has_novel_kmers(kmers, index):
-            n += 1
-        # novel_kmers = get_novel_kmers(kmers, index)
-        # track[candidate]['novel_kmers'] = novel_kmers
-        # track[candidate]['novel_kmer_count'] = len(novel_kmers)
-        # novel_kmer_count += len(novel_kmers)
-        # n = n + 1
+            remove[candidate] = True
+        n = 0
+        remove_kmer = {}
+        for kmer in kmers:
+            if not is_kmer_novel(kmer):
+                remove_kmer[kmer] = True
+            else:
+                if kmers[kmer] > 5:
+                    n = n + 1
+        for kmer in remove_kmer:
+            kmers.pop(kmer, None)
+        track[candidate]['kmers'] = kmers
+        track[candidate]['high_coverage_novel_kmers'] = n
+        track[candidate].pop('boundary', None)
+        track[candidate].pop('reference_kmers', None)
     # remove those break points without uniquely novel kmers
     for candidate in remove:
         track.pop(candidate, None)
-    # cleanup unwanted keys
-    # for candidate in track:
-    #     # skip the json key holding the number of candidates
-    #     if candidate.find('candidates') != -1:
-    #         continue
-    #     track[candidate].pop('kmers', None)
-    #     track[candidate].pop('reference_kmers', None)
-    track['breakpoint_without_novel'] = n
-    # track['average_novel_kmer_count'] = -1 if n < 1 else novel_kmer_count / n
-    # track['candidates'] = n
     return track
 
 def get_novel_kmers(kmers, index):
