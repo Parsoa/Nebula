@@ -138,7 +138,7 @@ def aggregate_novel_kmers(track, index):
         n = 0
         remove_kmer = {}
         for kmer in kmers:
-            if not is_kmer_novel(kmer):
+            if not is_kmer_novel(kmer, index):
                 remove_kmer[kmer] = True
             else:
                 if kmers[kmer] > 5:
