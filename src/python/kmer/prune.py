@@ -90,7 +90,7 @@ def draw_distribution_charts(tracks):
     c = config.Configuration()
     bins = []
     for track in tracks:
-        bins.append(track['breakpoint_without_novel'])
+        bins.append(tracks[track]['breakpoint_without_novel'])
     data = [go.Histogram(x = bins)]
     bed_file_name = c.bed_file.split('/')[-1]
     plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
