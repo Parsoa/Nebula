@@ -4,5 +4,6 @@ biopython
 colorama
 memory_profiler
 pylru
+plotly
 # comment this line first
 #-e git+git@github.com:dib-lab/khmer.git#egg=khmer

@@ -26,6 +26,8 @@ from kmer.sv import StructuralVariation, Inversion, Deletion
 import khmer
 import colorama
 import pybedtools
+import plotly.offline as plotly
+import plotly.graph_objs as go
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -78,10 +80,21 @@ def merge_outputs():
         except Exception as e:
             print(e)
             continue
+    draw_distribution_charts(output)
     bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
+
+def draw_distribution_charts(tracks):
+    c = config.Configuration()
+    bins = []
+    for track in tracks:
+        bins.append(track['breakpoint_without_novel'])
+    data = [go.Histogram(x = bins)]
+    bed_file_name = c.bed_file.split('/')[-1]
+    plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+        '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.html')))
 
 def run_batch(tracks, index):
     c = config.Configuration()
@@ -97,10 +110,8 @@ def run_batch(tracks, index):
     exit()
 
 def aggregate_novel_kmers(track, index):
-    novel_kmer_count = 0.0
-    remove = {}
     n = 0
-    found = False
+    remove = {}
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
@@ -108,8 +119,7 @@ def aggregate_novel_kmers(track, index):
         kmers = track[candidate]['kmers']
         remove[candidate] = True
         if not has_novel_kmers(kmers, index):
-            found = True
-            break
+            n += 1
         # novel_kmers = get_novel_kmers(kmers, index)
         # track[candidate]['novel_kmers'] = novel_kmers
         # track[candidate]['novel_kmer_count'] = len(novel_kmers)
@@ -125,7 +135,7 @@ def aggregate_novel_kmers(track, index):
     #         continue
     #     track[candidate].pop('kmers', None)
     #     track[candidate].pop('reference_kmers', None)
-    track['breakpoint_without_novel'] = found
+    track['breakpoint_without_novel'] = n
     # track['average_novel_kmer_count'] = -1 if n < 1 else novel_kmer_count / n
     # track['candidates'] = n
     return track
