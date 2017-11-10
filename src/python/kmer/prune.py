@@ -84,7 +84,7 @@ def merge_outputs():
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
-    draw_distribution_charts(output)
+    # draw_distribution_charts(output)
     clean_up()
 
 def clean_up():
@@ -128,6 +128,8 @@ def run_batch(tracks, index):
 
 def aggregate_novel_kmers(track, index):
     remove = {}
+    m = 0
+    total = 0.0
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
@@ -149,9 +151,12 @@ def aggregate_novel_kmers(track, index):
         track[candidate]['high_coverage_novel_kmers'] = n
         track[candidate].pop('boundary', None)
         track[candidate].pop('reference_kmers', None)
+        total += n
+        m += 1
     # remove those break points without uniquely novel kmers
     for candidate in remove:
         track.pop(candidate, None)
+    track[candidate]['average_high_coverage_novel_kmers'] = total / m
     return track
 
 def get_novel_kmers(kmers, index):
