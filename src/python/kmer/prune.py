@@ -124,7 +124,7 @@ def aggregate_novel_kmers(track, index):
             continue
         track[candidate].pop('kmers', None)
         track[candidate].pop('reference_kmers', None)
-    track['average_novel_kmer_count'] = novel_kmer_count / n
+    track['average_novel_kmer_count'] = -1 if n < 1 else novel_kmer_count / n
     track['contig_count'] = len(contigs)
     track['candidates'] = len(track) - 1
     track['contigs'] = contigs
