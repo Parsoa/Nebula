@@ -40,7 +40,9 @@ def execute():
             '../../../output/batch_' + str(index) + '.json'))
         if os.path.isfile(path):
             with open(path, 'r') as json_file:
+                print('reading batch ', index)
                 batch[index] = json.load(json_file)
+    print('load-balancing ...')
     # run each batch
     children = {}
     for index in batch:
@@ -86,7 +88,7 @@ def run_batch(tracks, index):
         print(colorama.Fore.GREEN + '========================================================')
         print(colorama.Fore.GREEN + 'track: ', track, '@', index)
         print(colorama.Fore.GREEN, len(track))
-        tracks[track] = prune_boundary_candidates(tracks[track], index)
+        tracks[track] = aggregate_novel_kmers(tracks[track], index)
         print(colorama.Fore.GREEN, len(track))
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
@@ -95,10 +97,48 @@ def run_batch(tracks, index):
         json.dump(tracks, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     exit()
 
+def aggregate_novel_kmers(track, index):
+    contigs = {}
+    novel_kmers = None
+    for candidate in track:
+        # skip the json key holding the number of candidates
+        if candidate.find('candidates') != -1:
+            continue
+        kmers = track[candidate]['kmers']
+        contig = track[candidate]['boundary']
+        if not contig in contigs:
+            contigs[contig] = 1
+        else:
+            contigs[contig] = contigs[contig] + 1
+        #
+        track[candidate]['novel_kmers'] = get_novel_kmers(kmers, index)
+        track[candidate].pop('reference_kmers', None)
+        track[candidate].pop('kmers', None)
+        # if novel_kmers:
+        #     novel_kmers = sets.calc_dictionary_intersection(novel_kmers, track[candidate]['novel_kmers'])
+        # else:
+        #     novel_kmers = track[candidate]['novel_kmers']
+    track['contig_count'] = len(contigs)
+    # track['novel_kmers'] = novel_kmers
+    track['candidates'] = len(track) - 1
+    track['contigs'] = contigs
+    return track
+
+def get_novel_kmers(kmers, index):
+    novel_kmers = {}
+    for kmer in kmers:
+        if not kmer in novel_kmers:
+            count = count_server.get_kmer_count(kmer, index, True)
+            if count != 0:
+                # this is a novel kmer
+                novel_kmers[kmer] = True
+    return novel_kmers
+
 def prune_boundary_candidates(track, index):
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     contigs = {}
+    novel_kmers = {}
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
@@ -111,14 +151,16 @@ def prune_boundary_candidates(track, index):
             contigs[contig] = contigs[contig] + 1
         # quickly dismiess
         if not has_novel_kmers(kmers, index):
-            remove[candidate] = True
-            continue
+           remove[candidate] = True
+           continue
         # do the more time-consuming check
         if not has_unique_novel_kmers(track, candidate, kmers, index):
-            remove[candidate] = True
-            continue
+           remove[candidate] = True
+           continue
+        track[candidate].pop('reference_kmers', None)
     for candidate in remove:
         track.pop(candidate, None)
+    track['contig_count'] = len(contigs)
     track['candidates'] = len(track) - 1
     track['contigs'] = contigs
     return track
@@ -156,3 +198,5 @@ if __name__ == '__main__':
     config.configure(reference_genome = args.reference)
     #
     execute()
+
+GTGGATTTTCTCTTTATGCCAGATCAGAGCT    TGGCTAGCCAGTTTTCCTGGCACCATTTATT
