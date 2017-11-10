@@ -99,7 +99,7 @@ def run_batch(tracks, index):
 
 def aggregate_novel_kmers(track, index):
     contigs = {}
-    novel_kmers = None
+    novel_kmers = {}
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
