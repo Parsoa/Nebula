@@ -119,6 +119,9 @@ def aggregate_novel_kmers(track, index):
         track.pop(candidate, None)
     # cleanup unwanted keys
     for candidate in track:
+        # skip the json key holding the number of candidates
+        if candidate.find('candidates') != -1:
+            continue
         track[candidate].pop('kmers', None)
         track[candidate].pop('reference_kmers', None)
     track['average_novel_kmer_count'] = novel_kmer_count / n
