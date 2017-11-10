@@ -156,7 +156,7 @@ def aggregate_novel_kmers(track, index):
     # remove those break points without uniquely novel kmers
     for candidate in remove:
         track.pop(candidate, None)
-    track[candidate]['average_high_coverage_novel_kmers'] = -1 if m == 0 else total / m
+    track['average_high_coverage_novel_kmers'] = -1 if m == 0 else total / m
     return track
 
 def get_novel_kmers(kmers, index):
