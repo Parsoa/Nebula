@@ -104,7 +104,6 @@ def aggregate_novel_kmers(track, index):
     for candidate in track:
         # skip the json key holding the number of candidates
         if candidate.find('candidates') != -1:
-            track.pop(candidate, None)
             continue
         kmers = track[candidate]['kmers']
         contig = track[candidate]['boundary']
@@ -118,11 +117,11 @@ def aggregate_novel_kmers(track, index):
                 novel_kmers[novel_kmer].append(candidate)
             else:
                 novel_kmers[novel_kmer] = [candidate]
-        track.pop(candidate, None)
-    track['contig_count'] = len(contigs)
-    track['novel_kmers'] = novel_kmers
-    track['contigs'] = contigs
-    return track
+    return {
+        'contig_count': len(contigs),
+        'contigs': contigs,
+        'novel_kmers': novel_kmers,
+    }
 
 def get_novel_kmers(kmers, index):
     novel_kmers = {}
