@@ -98,7 +98,7 @@ def run_batch(tracks, index):
 
 def aggregate_novel_kmers(track, index):
     contigs = {}
-    novel_kmers_count = 0
+    novel_kmer_count = 0
     remove = {}
     n = 0.0
     for candidate in track:
