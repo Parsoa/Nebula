@@ -80,9 +80,10 @@ def merge_outputs():
         except Exception as e:
             print(e)
             continue
+    t = str(time.clock())
     bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
+            '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '_' + t + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     # draw_distribution_charts(output)
     clean_up()
