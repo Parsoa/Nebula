@@ -162,7 +162,7 @@ def find_thread_count():
             max_index = index + 1
     return max_index
 
-def distribute_workload(job_name, previous_job_name, num_threads, func):
+def distribute_workload(job_name, previous_job_name, func, num_threads):
     for index in range(0, num_threads):
         pid = os.fork()
         if pid == 0:
