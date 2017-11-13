@@ -120,9 +120,29 @@ def map_novel_kmer_overlap(track, index):
                 if not kmer in overlap:
                     overlap[kmer] = []
                 overlap[kmer].append(event)
-    track.pop('novel_kmers', None)
     track['overlap'] = overlap
+    track['overlap_percentage'] = float(len(novel_kmers)) / float(len(overlap))
+    track.pop('novel_kmers', None)
     return track
+
+def draw_novel_kmer_overlap_plot(tracks, job_name):
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+        '../../../output/merge_' + job_name + '.html'))
+    x = list(map(lambda x: tracks[x]['overlap_percentage'], tracks))
+    trace = graph_objs.Histogram(
+        x = x,
+        histnorm = 'count',
+        xbins = dict(
+            start = 0.0,
+            end = 1.0,
+            size = 0.05
+        )
+    )
+    layout = graph_objs.Layout(
+        title = 'Novel kmer Overlap'
+    )
+    fig = graph_objs.Figure(data = [trace], layout = layout)
+    plotly.plot(fig, filename = path)
 
 def aggregate_novel_kmers(track, index):
     remove = {}
@@ -201,7 +221,7 @@ def wait_for_children(children):
         if len(children) == 0:
             break
 
-def merge_outputs(job_name, num_threads):
+def merge_outputs(job_name, num_threads, merge_function):
     c = config.Configuration()
     output = {}
     for i in range(0, num_threads):
@@ -209,6 +229,8 @@ def merge_outputs(job_name, num_threads):
                 '../../../output/batch_' + job_name + str(i) + '.json')), 'r') as json_file:
             batch = json.load(json_file)
             output.update(batch)
+    if merge_function:
+        merge_function(output, job_name)
     bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/merge_' + job_name + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
@@ -235,7 +257,7 @@ def find_high_coverage_novel_kmers():
     children = distribute_workload(job_name, previous_job_name, aggregate_novel_kmers, num_threads)
     wait_for_children(children)
     print('all forks done, merging output ...')
-    merge_outputs(job_name, num_threads)
+    merge_outputs(job_name, num_threads, None)
     # clean_up(job_name, num_threads)
 
 def find_novel_kmer_overlap_map():
@@ -252,7 +274,7 @@ def find_novel_kmer_overlap_map():
     children = distribute_workload(job_name, previous_job_name, map_novel_kmer_overlap, num_threads)
     wait_for_children(children)
     print('all forks done, merging output ...')
-    merge_outputs(job_name, num_threads)
+    merge_outputs(job_name, num_threads, draw_novel_kmer_overlap_plot)
     # clean_up(job_name, num_threads)
 
 # ============================================================================================================================ #
@@ -287,4 +309,5 @@ if __name__ == '__main__':
     # 
     config.configure(reference_genome = args.reference)
     #
-    find_high_coverage_novel_kmers()
+    find_novel_kmer_overlap_map()
+    # find_high_coverage_novel_kmers()
