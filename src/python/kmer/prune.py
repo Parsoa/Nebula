@@ -173,8 +173,7 @@ def distribute_workload(job_name, previous_job_name, func, num_threads):
             with open(path, 'r') as json_file:
                 print('reading batch ', index)
                 batch = json.load(json_file)
-                run_batch(batch, iclear
-                ndex, func, job_name)
+                run_batch(batch, index, func, job_name)
         else:
             # main process
             children[pid] = True
@@ -184,7 +183,7 @@ def distribute_workload(job_name, previous_job_name, func, num_threads):
 def run_batch(batch, index, func, job_name):
     c = config.Configuration()
     for track in batch:
-        print(colorama.Fore.GREEN + '========================================================')
+        # print(colorama.Fore.GREEN + '========================================================')
         # print(colorama.Fore.GREEN + 'batch: ', batch, '@', index)
         batch[track] = func(batch[track], index)
     print(colorama.Fore.GREEN, 'process ', index, ' done')
