@@ -121,7 +121,7 @@ def map_novel_kmer_overlap(track, index):
                     overlap[kmer] = []
                 overlap[kmer].append(event)
     track['overlap'] = overlap
-    track['overlap_percentage'] = float(len(novel_kmers)) / float(len(overlap))
+    track['overlap_percentage'] = -1 if len(overlap) == 0 else float(len(overlap)) / float(len(novel_kmers))
     track.pop('novel_kmers', None)
     return track
 
