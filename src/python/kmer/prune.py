@@ -162,9 +162,7 @@ def aggregate_novel_kmers(track, track_name, index):
         for kmer in kmers:
             if is_kmer_novel(kmer, index):
                 if not kmer in novel_kmers:
-                    novel_kmers[kmer] = 1
-                else:
-                    novel_kmers[kmer] = novel_kmers[kmer] + 1
+                    novel_kmers[kmer] = kmers[kmer]
     # remove every candidate, this has to be lightweight
     for candidate in remove:
         track.pop(candidate, None)
