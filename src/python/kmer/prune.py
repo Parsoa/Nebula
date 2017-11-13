@@ -208,10 +208,9 @@ def merge_outputs(job_name, num_threads):
                 '../../../output/batch_' + job_name + str(i) + '.json')), 'r') as json_file:
             batch = json.load(json_file)
             output.update(batch)
-    t = str(time.clock())
     bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/merge_' + job_name + bed_file_name + '_' + str(c.ksize) + '_' + t + '.json')), 'w') as json_file:
+            '../../../output/merge_' + job_name + bed_file_name + '_' + str(c.ksize) + '.json')), 'w') as json_file:
         json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
 
 def clean_up(job_name, num_threads):
