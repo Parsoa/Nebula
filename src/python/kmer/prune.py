@@ -265,6 +265,7 @@ def find_novel_kmer_overlap_map():
     previous_job_name = 'novel_'
     job_name = 'overlap_'
     # prepare
+    bed_file_name = c.bed_file.split('/')[-1]
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
         '../../../output/merge_' + previous_job_name + bed_file_name + '_' + str(c.ksize) + '_' + t + '.json')), 'w') as json_file:
         global events
