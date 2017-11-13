@@ -210,7 +210,7 @@ def run_batch(batch, index, func, job_name):
     for track in batch:
         # print(colorama.Fore.GREEN + '========================================================')
         # print(colorama.Fore.GREEN + 'batch: ', batch, '@', index)
-        batch[track] = func(batch, track, index)
+        batch[track] = func(batch[track], track, index)
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
