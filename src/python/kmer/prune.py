@@ -189,7 +189,7 @@ def run_batch(batch, index, func, job_name):
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/batch_' + job_name + '_' + str(index) + '.json')), 'w') as json_file:
+            '../../../output/batch_' + job_name + str(index) + '.json')), 'w') as json_file:
         json.dump(batch, json_file, sort_keys=True, indent=4, separators=(',', ': '))
     exit()
 
