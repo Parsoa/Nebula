@@ -169,7 +169,7 @@ def aggregate_novel_kmers(track, track_name, index):
     for candidate in remove:
         track.pop(candidate, None)
     # keep only those with high enough coverage
-    novel_kmers = list(filter(lambda kmer: novel_kmers[kmer] > 5, novel_kmers))
+    # novel_kmers = list(filter(lambda kmer: novel_kmers[kmer] > 5, novel_kmers))
     track['novel_kmers'] = novel_kmers
     return track
 
