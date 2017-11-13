@@ -124,7 +124,7 @@ def map_novel_kmer_overlap(track, track_name, index):
                         overlap[kmer] = []
                     overlap[kmer].append(event)
     track['overlap'] = overlap
-    track['merge_overlap_CHM1_Lumpy.Del.100bp.bed_31.json'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
+    track['overlap_percentage'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
     track.pop('novel_kmers', None)
     return track
 
@@ -250,7 +250,7 @@ def clean_up(job_name, num_threads):
         os.remove(path)
 
 # ============================================================================================================================ #
-# ============================================================================================================================ #
+# job descriptions
 # ============================================================================================================================ #
 
 def find_high_coverage_novel_kmers():
@@ -286,23 +286,6 @@ def find_novel_kmer_overlap_map():
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #            
-
-def draw_distribution_charts(tracks):
-    c = config.Configuration()
-    bins = {}
-    for track in tracks:
-        n = str(tracks[track]['breakpoint_without_novel'])
-        if not n in bins:
-            bins[n] = 1
-        else:
-            bins[n] = bins[n] + 1
-    data = [graph_objs.Bar(
-        x = list(bins.keys()),
-        y = list(map(lambda x: bins[x], bins.keys()))
-    )]
-    bed_file_name = c.bed_file.split('/')[-1]
-    plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-        '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.html')))
 
 # ============================================================================================================================ #
 # Execution
