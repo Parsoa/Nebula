@@ -80,7 +80,7 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
 # map functions
 # ============================================================================================================================ #
 
-def prune_boundary_candidates(track, index):
+def prune_boundary_candidates(track, track_name, index):
     # remove those candidates with high number of kmers ocurring in reference
     remove = {}
     contigs = {}
@@ -110,18 +110,21 @@ def prune_boundary_candidates(track, index):
     track['contigs'] = contigs
     return track
 
-def map_novel_kmer_overlap(track, index):
+# ============================================================================================================================ #
+
+def map_novel_kmer_overlap(track, track_name, index):
     novel_kmers = track['novel_kmers']
     overlap = {}
     global events
     for event in events:
-        for kmer in novel_kmers:
-            if kmer in events[event]['novel_kmers']:
-                if not kmer in overlap:
-                    overlap[kmer] = []
-                overlap[kmer].append(event)
+        if event != track_name:
+            for kmer in novel_kmers:
+                if kmer in events[event]['novel_kmers']:
+                    if not kmer in overlap:
+                        overlap[kmer] = []
+                    overlap[kmer].append(event)
     track['overlap'] = overlap
-    track['overlap_percentage'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
+    track['merge_overlap_CHM1_Lumpy.Del.100bp.bed_31.json'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
     track.pop('novel_kmers', None)
     return track
 
@@ -144,7 +147,9 @@ def draw_novel_kmer_overlap_plot(tracks, job_name):
     fig = graph_objs.Figure(data = [trace], layout = layout)
     plotly.plot(fig, filename = path)
 
-def aggregate_novel_kmers(track, index):
+# ============================================================================================================================ #
+
+def aggregate_novel_kmers(track, track_name, index):
     remove = {}
     novel_kmers = {}
     for candidate in track:
@@ -205,7 +210,7 @@ def run_batch(batch, index, func, job_name):
     for track in batch:
         # print(colorama.Fore.GREEN + '========================================================')
         # print(colorama.Fore.GREEN + 'batch: ', batch, '@', index)
-        batch[track] = func(batch[track], index)
+        batch[track] = func(batch, track, index)
     print(colorama.Fore.GREEN, 'process ', index, ' done')
     # output manually, io redirection could get entangled with multiple client/servers
     with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
