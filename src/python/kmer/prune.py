@@ -168,7 +168,7 @@ def distribute_workload(job_name, previous_job_name, num_threads, func):
         if pid == 0:
             # forked process
             path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../output/batch_' previous_job_name + str(index) + '.json'))
+                '../../../output/batch_' + previous_job_name + str(index) + '.json'))
             with open(path, 'r') as json_file:
                 print('reading batch ', index)
                 batch = json.load(json_file)
