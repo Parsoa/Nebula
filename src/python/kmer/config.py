@@ -20,7 +20,7 @@ class Configuration:
                         genome_chm1,\
                         genome_hg19,\
                         genome_hg38,\
-                        num_threads,\
+                        max_threads,\
                         variation_type,\
                         reference_genome,\
                         khmer_num_tables,\
@@ -33,7 +33,7 @@ class Configuration:
             self.genome_chm1 = genome_chm1
             self.genome_hg19 = genome_hg19
             self.genome_hg38 = genome_hg38
-            self.num_threads = num_threads
+            self.max_threads = max_threads
             self.variation_type = variation_type
             self.reference_genome = reference_genome
             self.khmer_num_tables = khmer_num_tables
@@ -67,7 +67,7 @@ def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed", 
             '../../../data/hg38.fa'))
         genome_hg38 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/hg38.fa'))
-        num_threads = 1
+        max_threads = 1
         khmer_num_tables = 4
         khmer_table_size = 16e7
     else:
@@ -75,7 +75,7 @@ def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed", 
         genome_chm1 = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
         genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
-        num_threads = 48
+        max_threads = 48
         khmer_num_tables = 4
         khmer_table_size = 16e9
     #
@@ -86,7 +86,7 @@ def configure(reference_genome = 'hg38', bed_file = "CHM1_Lumpy.Del.100bp.bed", 
         genome_chm1 = genome_chm1,
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
-        num_threads = num_threads,
+        max_threads = max_threads,
         variation_type = variation_type,
         reference_genome = genome_hg19 if reference_genome == 'hg19' else genome_hg38,
         khmer_num_tables = khmer_num_tables,

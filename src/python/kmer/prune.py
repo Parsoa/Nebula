@@ -29,136 +29,11 @@ import pybedtools
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
+events = {}
+
 # ============================================================================================================================ #
+# kmer helpers
 # ============================================================================================================================ #
-# ============================================================================================================================ #
-
-def execute():
-    c = config.Configuration()
-    # find the number of processes to spawn
-    max_index = 0
-    for index in range(0, c.num_threads):
-        path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/batch_' + str(index) + '.json'))
-        if os.path.isfile(path):
-            max_index = index + 1
-    # run each batch
-    children = {}
-    for index in range(0, max_index):
-        pid = os.fork()
-        if pid == 0:
-            # forked process
-            path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../output/batch_' + str(index) + '.json'))
-            with open(path, 'r') as json_file:
-                print('reading batch ', index)
-                batch = json.load(json_file)
-                run_batch(batch, index)
-        else:
-            # main process
-            children[pid] = True
-            print('spawned child ', pid)
-    while True:
-        (pid, e) = os.wait()
-        children.pop(pid, None)
-        print(colorama.Fore.RED, 'pid ', pid, 'finished')
-        if len(children) == 0:
-            break
-    print('all forks done, merging output ...', pid)
-    merge_outputs()
-
-def merge_outputs():
-    c = config.Configuration()
-    output = {}
-    for i in range(0, c.num_threads):
-        # might fail because there weren't as many as i processes
-        try:
-            with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                    '../../../output/batch_prune_' + str(i) + '.json')), 'r') as json_file:
-                batch = json.load(json_file)
-                output.update(batch)
-        except Exception as e:
-            print(e)
-            continue
-    t = str(time.clock())
-    bed_file_name = c.bed_file.split('/')[-1]
-    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '_' + t + '.json')), 'w') as json_file:
-        json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
-    # draw_distribution_charts(output)
-    clean_up()
-
-def clean_up():
-    c = config.Configuration()
-    for i in range(0, c.num_threads):
-        # might fail because there weren't as many as i processes
-        path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/batch_prune_' + str(i) + '.json'))
-        if os.path.isfile(path):
-            os.remove(path)
-
-def draw_distribution_charts(tracks):
-    c = config.Configuration()
-    bins = {}
-    for track in tracks:
-        n = str(tracks[track]['breakpoint_without_novel'])
-        if not n in bins:
-            bins[n] = 1
-        else:
-            bins[n] = bins[n] + 1
-    data = [graph_objs.Bar(
-        x = list(bins.keys()),
-        y = list(map(lambda x: bins[x], bins.keys()))
-    )]
-    bed_file_name = c.bed_file.split('/')[-1]
-    plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-        '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.html')))
-
-def run_batch(tracks, index):
-    c = config.Configuration()
-    for track in tracks:
-        print(colorama.Fore.GREEN + '========================================================')
-        print(colorama.Fore.GREEN + 'track: ', track, '@', index)
-        tracks[track] = aggregate_novel_kmers(tracks[track], index)
-    print(colorama.Fore.GREEN, 'process ', index, ' done')
-    # output manually, io redirection could get entangled with multiple client/servers
-    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/batch_prune_' + str(index) + '.json')), 'w') as json_file:
-        json.dump(tracks, json_file, sort_keys=True, indent=4, separators=(',', ': '))
-    exit()
-
-def aggregate_novel_kmers(track, index):
-    remove = {}
-    m = 0
-    total = 0.0
-    for candidate in track:
-        # skip the json key holding the number of candidates
-        if candidate.find('candidates') != -1:
-            continue
-        kmers = track[candidate]['kmers']
-        if not has_novel_kmers(kmers, index):
-            remove[candidate] = True
-        n = 0
-        remove_kmer = {}
-        for kmer in kmers:
-            if not is_kmer_novel(kmer, index):
-                remove_kmer[kmer] = True
-            else:
-                if kmers[kmer] > 5:
-                    n = n + 1
-        for kmer in remove_kmer:
-            kmers.pop(kmer, None)
-        track[candidate]['kmers'] = kmers
-        track[candidate]['high_coverage_novel_kmers'] = n
-        track[candidate].pop('boundary', None)
-        track[candidate].pop('reference_kmers', None)
-        total += n
-        m += 1
-    # remove those break points without uniquely novel kmers
-    for candidate in remove:
-        track.pop(candidate, None)
-    track['average_high_coverage_novel_kmers'] = -1 if m == 0 else total / m
-    return track
 
 def get_novel_kmers(kmers, index):
     novel_kmers = {}
@@ -169,36 +44,6 @@ def get_novel_kmers(kmers, index):
                 # this is a novel kmer
                 novel_kmers[kmer] = True
     return novel_kmers
-
-def prune_boundary_candidates(track, index):
-    # remove those candidates with high number of kmers ocurring in reference
-    remove = {}
-    contigs = {}
-    for candidate in track:
-        # skip the json key holding the number of candidates
-        if candidate.find('candidates') != -1:
-            continue
-        kmers = track[candidate]['kmers']
-        contig = track[candidate]['boundary']
-        if not contig in contigs:
-            contigs[contig] = 1
-        else:
-            contigs[contig] = contigs[contig] + 1
-        # quickly dismiess
-        if not has_novel_kmers(kmers, index):
-           remove[candidate] = True
-           continue
-        # do the more time-consuming check
-        if not has_unique_novel_kmers(track, candidate, kmers, index):
-           remove[candidate] = True
-           continue
-        track[candidate].pop('reference_kmers', None)
-    for candidate in remove:
-        track.pop(candidate, None)
-    track['contig_count'] = len(contigs)
-    track['candidates'] = len(track) - 1
-    track['contigs'] = contigs
-    return track
 
 def has_novel_kmers(kmers, index):
     # checks if this candidate has a kmer that has not occured in the reference genome
@@ -232,6 +77,206 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
     return False
 
 # ============================================================================================================================ #
+# map functions
+# ============================================================================================================================ #
+
+def prune_boundary_candidates(track, index):
+    # remove those candidates with high number of kmers ocurring in reference
+    remove = {}
+    contigs = {}
+    for candidate in track:
+        # skip the json key holding the number of candidates
+        if candidate.find('candidates') != -1:
+            continue
+        kmers = track[candidate]['kmers']
+        contig = track[candidate]['boundary']
+        if not contig in contigs:
+            contigs[contig] = 1
+        else:
+            contigs[contig] = contigs[contig] + 1
+        # quickly dismiess
+        if not has_novel_kmers(kmers, index):
+           remove[candidate] = True
+           continue
+        # do the more time-consuming check
+        if not has_unique_novel_kmers(track, candidate, kmers, index):
+           remove[candidate] = True
+           continue
+        track[candidate].pop('reference_kmers', None)
+    for candidate in remove:
+        track.pop(candidate, None)
+    track['contig_count'] = len(contigs)
+    track['candidates'] = len(track) - 1
+    track['contigs'] = contigs
+    return track
+
+def map_novel_kmer_overlap(track, index):
+    novel_kmers = track['novel_kmers']
+    overlap = {}
+    global events
+    for event in events:
+        for kmer in novel_kmers:
+            if kmer in events[event]['novel_kmers']:
+                if not kmer in overlap:
+                    overlap[kmer] = []
+                overlap[kmer].append(event)
+    track.pop('novel_kmers', None)
+    track['overlap'] = overlap
+    return track
+
+def aggregate_novel_kmers(track, index):
+    remove = {}
+    novel_kmers = {}
+    for candidate in track:
+        # remove all candidates eventually
+        remove[candidate] = True
+        # skip the json key holding the number of candidates
+        if candidate.find('candidates') != -1:
+            continue
+        kmers = track[candidate]['kmers']
+        for kmer in kmers:
+            if is_kmer_novel(kmer, index):
+                if not kmer in novel_kmers:
+                    novel_kmers[kmer] = 1
+                else:
+                    novel_kmers[kmer] = novel_kmers[kmer] + 1
+    # remove every candidate, this has to be lightweight
+    for candidate in remove:
+        track.pop(candidate, None)
+    # keep only those with high enough coverage
+    novel_kmers = list(filter(lambda kmer: novel_kmers[kmer] > 5, novel_kmers))
+    track['novel_kmers'] = novel_kmers
+    return track
+
+# ============================================================================================================================ #
+# concurrency helpers
+# ============================================================================================================================ #
+
+def find_thread_count():
+    c = config.Configuration()
+    max_index = 0
+    for index in range(0, c.max_threads):
+        path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/batch_' + str(index) + '.json'))
+        if os.path.isfile(path):
+            max_index = index + 1
+    return max_index
+
+def distribute_workload(job_name, previous_job_name, num_threads, func):
+    for index in range(0, num_threads):
+        pid = os.fork()
+        if pid == 0:
+            # forked process
+            path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../output/batch_' previous_job_name + str(index) + '.json'))
+            with open(path, 'r') as json_file:
+                print('reading batch ', index)
+                batch = json.load(json_file)
+                run_batch(batch, index, func, job_name)
+        else:
+            # main process
+            children[pid] = True
+            print('spawned child ', pid)
+    return children
+
+def run_batch(batch, index, func, job_name):
+    c = config.Configuration()
+    for track in batch:
+        print(colorama.Fore.GREEN + '========================================================')
+        print(colorama.Fore.GREEN + 'batch: ', batch, '@', index)
+        batch[track] = func(batch[track], index)
+    print(colorama.Fore.GREEN, 'process ', index, ' done')
+    # output manually, io redirection could get entangled with multiple client/servers
+    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/batch_' + job_name + '_' + str(index) + '.json')), 'w') as json_file:
+        json.dump(batch, json_file, sort_keys=True, indent=4, separators=(',', ': '))
+    exit()
+
+def wait_for_children(children):
+    while True:
+        (pid, e) = os.wait()
+        children.pop(pid, None)
+        print(colorama.Fore.RED, 'pid ', pid, 'finished')
+        if len(children) == 0:
+            break
+
+def merge_outputs(job_name, num_threads):
+    c = config.Configuration()
+    output = {}
+    for i in range(0, num_threads):
+        with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../output/batch_' + job_name + str(i) + '.json')), 'r') as json_file:
+            batch = json.load(json_file)
+            output.update(batch)
+    t = str(time.clock())
+    bed_file_name = c.bed_file.split('/')[-1]
+    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/merge_' + job_name + bed_file_name + '_' + str(c.ksize) + '_' + t + '.json')), 'w') as json_file:
+        json.dump(output, json_file, sort_keys=True, indent=4, separators=(',', ': '))
+
+def clean_up(job_name, num_threads):
+    c = config.Configuration()
+    for i in range(0, num_threads):
+        # might fail because there weren't as many as i processes
+        path = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/batch_' + job_name + str(i) + '.json'))
+        os.remove(path)
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+def find_high_coverage_novel_kmers():
+    c = config.Configuration()
+    previous_job_name = ''
+    job_name = 'novel_'
+    # 
+    num_threads = find_thread_count()
+    children = distribute_workload(job_name, previous_job_name, find_high_coverage_novel_kmers, num_threads)
+    wait_for_children(children)
+    print('all forks done, merging output ...')
+    merge_outputs(job_name, num_threads)
+    # clean_up(job_name, num_threads)
+
+def find_novel_kmer_overlap_map():
+    c = config.Configuration()
+    previous_job_name = 'novel_'
+    job_name = 'overlap_'
+    # prepare
+    with open(os.path.abspath(os.path.join(os.path.dirname(__file__),\
+        '../../../output/merge_' + previous_job_name + bed_file_name + '_' + str(c.ksize) + '_' + t + '.json')), 'w') as json_file:
+        global events
+        events = json.load(json_file)
+    # 
+    num_threads = find_thread_count()
+    children = distribute_workload(job_name, previous_job_name, map_novel_kmer_overlap, num_threads)
+    wait_for_children(children)
+    print('all forks done, merging output ...')
+    merge_outputs(job_name, num_threads)
+    # clean_up(job_name, num_threads)
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #            
+
+def draw_distribution_charts(tracks):
+    c = config.Configuration()
+    bins = {}
+    for track in tracks:
+        n = str(tracks[track]['breakpoint_without_novel'])
+        if not n in bins:
+            bins[n] = 1
+        else:
+            bins[n] = bins[n] + 1
+    data = [graph_objs.Bar(
+        x = list(bins.keys()),
+        y = list(map(lambda x: bins[x], bins.keys()))
+    )]
+    bed_file_name = c.bed_file.split('/')[-1]
+    plotly.plot(data, filename = os.path.abspath(os.path.join(os.path.dirname(__file__),\
+        '../../../output/boundaries_prune_' + bed_file_name + '_' + str(c.ksize) + '.html')))
+
+# ============================================================================================================================ #
 # Execution
 # ============================================================================================================================ #
 
@@ -242,4 +287,4 @@ if __name__ == '__main__':
     # 
     config.configure(reference_genome = args.reference)
     #
-    execute()
+    find_high_coverage_novel_kmers()
