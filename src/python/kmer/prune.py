@@ -232,7 +232,7 @@ def find_high_coverage_novel_kmers():
     job_name = 'novel_'
     # 
     num_threads = find_thread_count()
-    children = distribute_workload(job_name, previous_job_name, find_high_coverage_novel_kmers, num_threads)
+    children = distribute_workload(job_name, previous_job_name, aggregate_novel_kmers, num_threads)
     wait_for_children(children)
     print('all forks done, merging output ...')
     merge_outputs(job_name, num_threads)
