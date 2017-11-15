@@ -18,16 +18,6 @@ class StructuralVariation(object):
         self.radius = radius
         self.extract_base_sequence()
 
-    @staticmethod
-    def get_sv_class():
-        c = config.Configuration()
-        if c.variation_type == 'Inversion':
-            return sv.Inversion
-        elif c.variation_type == 'Deletion':
-            return sv.Deletion
-        else:
-            return sv.Inversion
-
     def extract_base_sequence(self):
         track = copy.deepcopy(self.track)
         # this is the largest sequence that we will ever need for this track

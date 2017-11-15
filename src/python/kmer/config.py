@@ -39,6 +39,7 @@ class Configuration:
             self.khmer_num_tables = khmer_num_tables
             self.khmer_table_size = khmer_table_size
             self.output_directory = output_directory
+            self.count_server_port = sample_count_server_port
             self.sample_count_server_port = sample_count_server_port
             self.reference_count_server_port = reference_count_server_port
 
