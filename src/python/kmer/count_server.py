@@ -176,7 +176,7 @@ def run_server(genome):
     # 
     children = {}
     print('spawning chlidren ...')
-    for i in range(0, c.num_threads) :
+    for i in range(0, c.max_threads) :
         pid = os.fork()
         if pid == 0:
             # child
