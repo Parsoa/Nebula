@@ -27,7 +27,7 @@ class Job(object):
         self.batch = {}
         self.children = {}
 
-    def prepare():
+    def prepare(self):
         pass
 
     def execute(self):
@@ -49,7 +49,7 @@ class Job(object):
                 max_index = index + 1
         self.num_threads = max_index
 
-    def load_inputs():
+    def load_inputs(self):
         for index in range(0, self.num_threads):
             path = os.path.join(self.get_output_directory(), 'batch_' + self.previous_job_name + str(index) + '.json')
             with open(path, 'r') as json_file:
