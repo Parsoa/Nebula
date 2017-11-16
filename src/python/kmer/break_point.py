@@ -192,5 +192,5 @@ if __name__ == '__main__':
     # 
     config.configure(reference_genome = args.reference, bed_file = args.bed)
     #
-    break_point_job = BreakPointJob(job_name = 'break_point', previous_job_name = '')
+    break_point_job = BreakPointJob(job_name = 'break_point_', previous_job_name = '')
     break_point_job.execute()

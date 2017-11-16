@@ -41,7 +41,7 @@ class Job(object):
         self.distribute_workload()
         self.wait_for_children()
         self._reduce()
-        self.clean_up()
+        # self.clean_up()
 
     def find_thread_count(self):
         c = config.Configuration()
@@ -129,4 +129,5 @@ class Job(object):
     def create_output_directories(self):
         dir = self.get_output_directory()
         if not os.path.exists(dir):
+            print('creating directory: ', dir)
             os.makedirs(dir)
