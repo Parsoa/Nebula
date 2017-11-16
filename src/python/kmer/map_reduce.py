@@ -60,7 +60,7 @@ class Job(object):
             pid = os.fork()
             if pid == 0:
                 # forked process
-                self.run_batch(self.batch[i])
+                self.run_batch(self.batch[index])
             else:
                 # main process
                 self.children[pid] = True
