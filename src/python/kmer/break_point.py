@@ -68,6 +68,7 @@ class BreakPointJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         bedtools = pybedtools.BedTool(c.bed_file)
+        self.radius = 50
         # split variations into batches
         n = 0
         for track in bedtools:
@@ -86,11 +87,11 @@ class BreakPointJob(map_reduce.Job):
 
     def run_batch(self, batch):
         c = config.Configuration()
-        sv_class = self.get_sv_type()
+        sv_type = self.get_sv_type()
         output = {}
         for track in tracks:
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            sv = sv_class(track = track, radius = radius)
+            sv = sv_type(track = track, radius = self.radius)
             output[name] = self.transform(sv)
         self.output_batch(output)
         print(colorama.Fore.GREEN, 'process ', self.index, ' done')
@@ -130,8 +131,8 @@ class BreakPointJob(map_reduce.Job):
     def extract_boundary_kmers(self, sv):
         c = config.Configuration()
         frontier = {}
-        for begin in range(-radius, radius + 1) :
-            for end in range(-radius, radius + 1) :
+        for begin in range(-self.radius, self.radius + 1) :
+            for end in range(-self.radius, self.radius + 1) :
                 kmers, boundary = sv.get_signature_kmers(begin, end)
                 if not kmers:
                     # skip this candidate
@@ -186,12 +187,10 @@ class BreakPointJob(map_reduce.Job):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference")
-    parser.add_argument("--type")
     parser.add_argument("--bed")
     args = parser.parse_args()
     # 
-    config.configure(reference_genome = args.reference, bed_file = args.bed,\
-        variation_type = args.type)
+    config.configure(reference_genome = args.reference, bed_file = args.bed)
     #
     break_point_job = BreakPointJob(job_name = 'break_point', previous_job_name = '')
     break_point_job.execute()
