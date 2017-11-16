@@ -141,5 +141,7 @@ class Job(object):
     def create_output_directories(self):
         dir = self.get_output_directory()
         if not os.path.exists(dir):
-            print('creating directory: ', dir)
+            os.makedirs(dir)
+        dir = self.get_current_job_directory()
+        if not os.path.exists(dir):
             os.makedirs(dir)
