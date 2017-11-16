@@ -123,10 +123,10 @@ class BreakPointJob(map_reduce.Job):
         bed_file_name = c.bed_file.split('/')[-1]
         sv_type = bed_file_name.split('.')[-2]
         if sv_type == 'DEL':
-            return sv.Deletion
+            return Deletion
         if sv_type == 'INV':
-            return sv.Inversion
-        return sv.StructuralVariation
+            return Inversion
+        return StructuralVariation
 
     def extract_boundary_kmers(self, sv):
         c = config.Configuration()
