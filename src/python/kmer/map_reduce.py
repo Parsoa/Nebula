@@ -36,7 +36,7 @@ class Job(object):
         self.find_thread_count()
         self.load_inputs()
         self.distribute_workload()
-        self.wait_for_children(children)
+        self.wait_for_children()
         self._reduce()
         self.clean_up()
 
@@ -60,6 +60,7 @@ class Job(object):
             pid = os.fork()
             if pid == 0:
                 # forked process
+                self.index = index
                 self.run_batch(self.batch[index])
             else:
                 # main process
@@ -78,7 +79,7 @@ class Job(object):
 
     def output_batch(self, batch):
         # output manually, io redirection could get entangled with multiple client/servers
-        with open(os.path.join(self.get_output_directory(), 'batch_' + self.job_name + str(index) + '.json'), 'w') as json_file:
+        with open(os.path.join(self.get_output_directory(), 'batch_' + self.job_name + str(self.index) + '.json'), 'w') as json_file:
             json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
         exit()
 
@@ -120,4 +121,10 @@ class Job(object):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/' + bed_file_name + '/' + str(c.ksize)))
+            '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/'))
+
+    def create_output_directories(self):
+        dir = self.get_output_directory()
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+

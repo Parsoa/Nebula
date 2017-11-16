@@ -75,13 +75,13 @@ class BreakPointJob(map_reduce.Job):
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
             # too large, skip
             if track.end - track.start > 1000000:
-                print(colorama.Fore.RED, 'skipping ', name, ', too large')
+                print(colorama.Fore.RED + 'skipping ', name, ', too large')
                 continue
             index = n % c.max_threads 
             if not index in self.batch:
                 self.batch[index] = []
             self.batch[index].append(track)
-            print(colorama.Fore.BLUE, 'assigned ', name, ' to ', index)
+            print(colorama.Fore.BLUE + 'assigned ', name, ' to ', index)
             n = n + 1
         self.num_threads = len(self.batch)
 
@@ -89,7 +89,7 @@ class BreakPointJob(map_reduce.Job):
         c = config.Configuration()
         sv_type = self.get_sv_type()
         output = {}
-        for track in tracks:
+        for track in batch:
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
             sv = sv_type(track = track, radius = self.radius)
             output[name] = self.transform(sv)
@@ -163,7 +163,7 @@ class BreakPointJob(map_reduce.Job):
                         n = 2
                 else :
                     continue
-                score = calc_similarity_score(kmers, index)
+                score = self.calc_similarity_score(kmers)
                 break_point.score += score
                 if score != n :
                     remove[break_point] = True
@@ -172,10 +172,10 @@ class BreakPointJob(map_reduce.Job):
                 frontier.pop(break_point, None)
         return frontier
 
-    def calc_similarity_score(kmers, index):
+    def calc_similarity_score(self, kmers):
         result = {}
         for kmer in kmers:
-            count = count_server.get_kmer_count(kmer, index, False)
+            count = count_server.get_kmer_count(kmer, self.index, False)
             if count:
                 result[kmer] = count
         return len(result)
