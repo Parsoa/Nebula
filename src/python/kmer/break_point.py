@@ -118,7 +118,7 @@ class BreakPointJob(map_reduce.Job):
     # job-specific helpers
     # ============================================================================================================================ #
 
-    def get_sv_type():
+    def get_sv_type(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         sv_type = bed_file_name.split('.')[-2]
