@@ -47,14 +47,14 @@ class Job(object):
         c = config.Configuration()
         max_index = 0
         for index in range(0, c.max_threads):
-            path = os.path.join(self.get_output_directory(), 'batch_' + self.previous_job_name + str(index) + '.json')
+            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             if os.path.isfile(path):
                 max_index = index + 1
         self.num_threads = max_index
 
     def load_inputs(self):
         for index in range(0, self.num_threads):
-            path = os.path.join(self.get_output_directory(), 'batch_' + self.previous_job_name + str(index) + '.json')
+            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             with open(path, 'r') as json_file:
                 self.batch[index] = json.load(json_file)
 
@@ -82,7 +82,7 @@ class Job(object):
 
     def output_batch(self, batch):
         # output manually, io redirection could get entangled with multiple client/servers
-        with open(os.path.join(self.get_output_directory(), 'batch_' + self.job_name + str(self.index) + '.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w') as json_file:
             json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
         exit()
 
@@ -105,26 +105,38 @@ class Job(object):
         c = config.Configuration()
         output = {}
         for i in range(0, self.num_threads):
-            with open(os.path.join(self.get_output_directory(), 'batch_' + self.job_name + str(i) + '.json'), 'r') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
                 batch = json.load(json_file)
                 output.update(batch)
         self.merge(output)
         self.plot(output)
-        with open(os.path.join(self.get_output_directory(), 'merge_' + self.job_name + '.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
     def clean_up(self):
         c = config.Configuration()
         for i in range(0, self.num_threads):
             # might fail because there weren't as many as i processes
-            path = os.path.join(self.get_output_directory(), 'batch_' + self.job_name + str(i) + '.json')
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             os.remove(path)
+
+    # ============================================================================================================================ #
+    # filesystem helpers
+    # ============================================================================================================================ #
 
     def get_output_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/'))
+
+    def get_previous_job_directory(self):
+        # get rid of the final _
+        return os.path.abspath(os.path.join(self.get_current_job_directory(), self.previous_job_name[:-1]))
+
+    def get_current_job_directory(self):
+        # get rid of the final _
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1]))
 
     def create_output_directories(self):
         dir = self.get_output_directory()

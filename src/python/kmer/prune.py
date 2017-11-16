@@ -122,7 +122,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
     # ============================================================================================================================ #
 
     def prepare():
-        with open(os.path.join(self.get_output_directory(), 'merge_' + self.previous_job_name + '.json'), 'r') as json_file:
+        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
         self.events = json.load(json_file)
 
     def transform(self, track, track_name):
@@ -140,7 +140,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
         return track
 
     def merge(self, tracks):
-        path = os.path.join(self.get_output_directory(), 'plot_novel_kmer_overlap_count.html')
+        path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_count.html')
         x = list(map(lambda x: len(tracks[x]['novel_kmers']) - len(track[x]['overlap']), tracks))
         trace = graph_objs.Histogram(
             x = x,
@@ -156,7 +156,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
         plotly.plot(fig, filename = path)
 
     def plot(self, tracks):
-        path = os.path.join(self.get_output_directory(), 'plot_novel_kmer_overlap_percentage.html')
+        path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_percentage.html')
         x = list(map(lambda x: tracks[x]['overlap_percentage'], tracks))
         trace = graph_objs.Histogram(
             x = x,
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     # 
     config.configure(reference_genome = args.reference)
     #
-    novel = HighCoverageNovelJob(job_name = 'novel_', previous_job_name = '')
+    novel = HighCoverageNovelJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
     #
     novel.execute()
