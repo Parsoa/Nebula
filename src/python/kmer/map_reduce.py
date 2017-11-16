@@ -108,15 +108,14 @@ class Job(object):
             with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
                 batch = json.load(json_file)
                 output.update(batch)
-        self.merge(output)
-        self.plot(output)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        self.merge(output)
+        self.plot(output)
 
     def clean_up(self):
         c = config.Configuration()
         for i in range(0, self.num_threads):
-            # might fail because there weren't as many as i processes
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             os.remove(path)
 

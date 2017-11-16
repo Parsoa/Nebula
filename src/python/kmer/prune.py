@@ -21,7 +21,6 @@ from kmer import (
     break_point,
     count_server,
 )
-
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
 import khmer
@@ -111,7 +110,7 @@ class HighCoverageNovelJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce job to extracting high-coverage novel kmers
+# MapReduce job to calculate novel kmer overlap
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -139,7 +138,11 @@ class NovelKmerOverlapJob(map_reduce:Job):
         track['overlap_percentage'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
         return track
 
-    def merge(self, tracks):
+    def plot(self, tracks):
+        self.plot_novel_kmer_overlap_count(tracks)
+        self.plot_novel_kmer_overlap_percentage(tracks)
+
+    def plot_novel_kmer_overlap_count(self, tracks):
         path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_count.html')
         x = list(map(lambda x: len(tracks[x]['novel_kmers']) - len(track[x]['overlap']), tracks))
         trace = graph_objs.Histogram(
@@ -148,14 +151,13 @@ class NovelKmerOverlapJob(map_reduce:Job):
             xbins = dict(
                 start = 0.0,
                 end = 1.0,
-                size = 0.05
             )
         )
         layout = graph_objs.Layout(title = 'Non-Overlapping Novel kmer Count')
         fig = graph_objs.Figure(data = [trace], layout = layout)
         plotly.plot(fig, filename = path)
 
-    def plot(self, tracks):
+    def plot_novel_kmer_overlap_percentage(self, tracks):
         path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_percentage.html')
         x = list(map(lambda x: tracks[x]['overlap_percentage'], tracks))
         trace = graph_objs.Histogram(
@@ -171,11 +173,9 @@ class NovelKmerOverlapJob(map_reduce:Job):
         fig = graph_objs.Figure(data = [trace], layout = layout)
         plotly.plot(fig, filename = path)
 
-previous_job_name = 'novel_'
-job_name = 'overlap_'
 
 # ============================================================================================================================ #
-# Execution
+# Main
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
