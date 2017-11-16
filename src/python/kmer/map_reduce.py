@@ -33,6 +33,7 @@ class Job(object):
     def execute(self):
         c = config.Configuration()
         self.prepare()
+        self.create_output_directories()
         self.find_thread_count()
         self.load_inputs()
         self.distribute_workload()
@@ -127,4 +128,3 @@ class Job(object):
         dir = self.get_output_directory()
         if not os.path.exists(dir):
             os.makedirs(dir)
-
