@@ -131,7 +131,7 @@ class Job(object):
 
     def get_previous_job_directory(self):
         # get rid of the final _
-        return os.path.abspath(os.path.join(self.get_current_job_directory(), self.previous_job_name[:-1]))
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1]))
 
     def get_current_job_directory(self):
         # get rid of the final _

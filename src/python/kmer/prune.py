@@ -114,7 +114,7 @@ class HighCoverageNovelJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class NovelKmerOverlapJob(map_reduce:Job):
+class NovelKmerOverlapJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -122,7 +122,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
 
     def prepare():
         with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
-        self.events = json.load(json_file)
+            self.events = json.load(json_file)
 
     def transform(self, track, track_name):
         novel_kmers = track['novel_kmers']
@@ -150,7 +150,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
             histnorm = 'count',
             xbins = dict(
                 start = 0.0,
-                end = 1.0,
+                size = 5.0,
             )
         )
         layout = graph_objs.Layout(title = 'Non-Overlapping Novel kmer Count')
