@@ -181,9 +181,10 @@ class NovelKmerOverlapJob(map_reduce:Job):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference")
+    parser.add_argument("--bed")
     args = parser.parse_args()
     # 
-    config.configure(reference_genome = args.reference)
+    config.configure(reference_genome = args.reference, bed_file = args.bed)
     #
     novel = HighCoverageNovelJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
