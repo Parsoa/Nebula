@@ -98,7 +98,7 @@ class HighCoverageNovelJob(map_reduce.Job):
                 continue
             kmers = track[candidate]['kmers']
             for kmer in kmers:
-                if is_kmer_novel(kmer, index):
+                if is_kmer_novel(kmer, self.index):
                     if not kmer in novel_kmers:
                         novel_kmers[kmer] = kmers[kmer]
         # remove every candidate, this has to be lightweight

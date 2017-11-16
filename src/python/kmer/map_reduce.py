@@ -14,6 +14,8 @@ from kmer import (
     commons,
 )
 
+import colorama
+
 # ============================================================================================================================ #
 # Job class, describes a MapReducer job
 # ============================================================================================================================ #
@@ -73,7 +75,7 @@ class Job(object):
         for track in batch:
             batch[track] = self.transform(batch[track], track)
         self.output_batch(batch)
-        print(colorama.Fore.GREEN, 'process ', self.index, ' done')
+        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(track, track_name, index):
         return track
@@ -88,7 +90,7 @@ class Job(object):
         while True:
             (pid, e) = os.wait()
             self.children.pop(pid, None)
-            print(colorama.Fore.RED, 'pid ', pid, 'finished')
+            print(colorama.Fore.RED + 'pid ', pid, 'finished')
             if len(self.children) == 0:
                 break
         print('all forks done, merging output ...')
@@ -107,7 +109,7 @@ class Job(object):
                 batch = json.load(json_file)
                 output.update(batch)
         self.merge(output)
-        self.plot(ouput)
+        self.plot(output)
         with open(os.path.join(self.get_output_directory(), 'merge_' + self.job_name + '.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
