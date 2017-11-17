@@ -80,7 +80,7 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class HighCoverageNovelJob(map_reduce.Job):
+class NovelKmerJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -104,7 +104,6 @@ class HighCoverageNovelJob(map_reduce.Job):
         for candidate in remove:
             track.pop(candidate, None)
         # keep only those with high enough coverage
-        novel_kmers = list(filter(lambda kmer: novel_kmers[kmer] > 5, novel_kmers))
         track['novel_kmers'] = novel_kmers
         return track
 
@@ -121,6 +120,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     def prepare():
+        self.minimum_coverage = 5
         with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
             self.events = json.load(json_file)
 
@@ -130,10 +130,11 @@ class NovelKmerOverlapJob(map_reduce.Job):
         for event in self.events:
             if event != track_name:
                 for kmer in novel_kmers:
-                    if kmer in self.events[event]['novel_kmers']:
-                        if not kmer in overlap:
-                            overlap[kmer] = []
-                        overlap[kmer].append(event)
+                    if novel_kmers[kmer] > self.minimum_coverage:
+                        if kmer in self.events[event]['novel_kmers']:
+                            if not kmer in overlap:
+                                overlap[kmer] = []
+                            overlap[kmer].append(event)
         track['overlap'] = overlap
         track['overlap_percentage'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
         return track
@@ -173,7 +174,6 @@ class NovelKmerOverlapJob(map_reduce.Job):
         fig = graph_objs.Figure(data = [trace], layout = layout)
         plotly.plot(fig, filename = path)
 
-
 # ============================================================================================================================ #
 # Main
 # ============================================================================================================================ #
@@ -186,7 +186,7 @@ if __name__ == '__main__':
     #
     config.configure(reference_genome = args.reference, bed_file = args.bed)
     #
-    novel = HighCoverageNovelJob(job_name = 'novel_', previous_job_name = 'break_point_')
+    novel = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
     #
     novel.execute()
