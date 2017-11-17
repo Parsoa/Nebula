@@ -141,7 +141,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
 
     def merge(self, tracks):
         path = os.path.join(self.get_output_directory(), 'plot_novel_kmer_overlap_count.html')
-        x = list(map(lambda x: len(tracks[x]['novel_kmers']) - len(track[x]['overlap']), tracks))
+        x = list(map(lambda x: len(tracks[x]['novel_kmers']) - len(tracks[x]['overlap']), tracks))
         trace = graph_objs.Histogram(
             x = x,
             histnorm = 'count',
