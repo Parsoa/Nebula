@@ -86,6 +86,7 @@ class BreakPointJob(map_reduce.Job):
             print(colorama.Fore.BLUE + 'assigned ', name, ' to ', index)
             n = n + 1
         self.num_threads = len(self.batch)
+        print('running on ', self.num_threads, ' threads')
 
     def run_batch(self, batch):
         c = config.Configuration()
