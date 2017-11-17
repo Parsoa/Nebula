@@ -21,7 +21,6 @@ from kmer import (
     break_point,
     count_server,
 )
-
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
 import khmer
@@ -111,19 +110,19 @@ class HighCoverageNovelJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce job to extracting high-coverage novel kmers
+# MapReduce job to calculate novel kmer overlap
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class NovelKmerOverlapJob(map_reduce:Job):
+class NovelKmerOverlapJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
 
     def prepare():
-        with open(os.path.join(self.get_output_directory(), 'merge_' + self.previous_job_name + '.json'), 'r') as json_file:
-        self.events = json.load(json_file)
+        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
+            self.events = json.load(json_file)
 
     def transform(self, track, track_name):
         novel_kmers = track['novel_kmers']
@@ -131,7 +130,7 @@ class NovelKmerOverlapJob(map_reduce:Job):
         for event in self.events:
             if event != track_name:
                 for kmer in novel_kmers:
-                    if kmer in events[event]['novel_kmers']:
+                    if kmer in self.events[event]['novel_kmers']:
                         if not kmer in overlap:
                             overlap[kmer] = []
                         overlap[kmer].append(event)
@@ -139,24 +138,27 @@ class NovelKmerOverlapJob(map_reduce:Job):
         track['overlap_percentage'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
         return track
 
-    def merge(self, tracks):
-        path = os.path.join(self.get_output_directory(), 'plot_novel_kmer_overlap_count.html')
+    def plot(self, tracks):
+        self.plot_novel_kmer_overlap_count(tracks)
+        self.plot_novel_kmer_overlap_percentage(tracks)
+
+    def plot_novel_kmer_overlap_count(self, tracks):
+        path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_count.html')
         x = list(map(lambda x: len(tracks[x]['novel_kmers']) - len(tracks[x]['overlap']), tracks))
         trace = graph_objs.Histogram(
             x = x,
             histnorm = 'count',
             xbins = dict(
                 start = 0.0,
-                end = 1.0,
-                size = 0.05
+                size = 5.0,
             )
         )
         layout = graph_objs.Layout(title = 'Non-Overlapping Novel kmer Count')
         fig = graph_objs.Figure(data = [trace], layout = layout)
         plotly.plot(fig, filename = path)
 
-    def plot(self, tracks):
-        path = os.path.join(self.get_output_directory(), 'plot_novel_kmer_overlap_percentage.html')
+    def plot_novel_kmer_overlap_percentage(self, tracks):
+        path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_percentage.html')
         x = list(map(lambda x: tracks[x]['overlap_percentage'], tracks))
         trace = graph_objs.Histogram(
             x = x,
@@ -171,21 +173,20 @@ class NovelKmerOverlapJob(map_reduce:Job):
         fig = graph_objs.Figure(data = [trace], layout = layout)
         plotly.plot(fig, filename = path)
 
-previous_job_name = 'novel_'
-job_name = 'overlap_'
 
 # ============================================================================================================================ #
-# Execution
+# Main
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference")
+    parser.add_argument("--bed")
     args = parser.parse_args()
-    # 
-    config.configure(reference_genome = args.reference)
     #
-    novel = HighCoverageNovelJob(job_name = 'novel_', previous_job_name = '')
+    config.configure(reference_genome = args.reference, bed_file = args.bed)
+    #
+    novel = HighCoverageNovelJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
     #
     novel.execute()

@@ -53,7 +53,9 @@ class BreakPoint(object):
         self.zygosity = None
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # MapReduce job for finding StructuralVariation breakpoints
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 class BreakPointJob(map_reduce.Job):
@@ -181,7 +183,7 @@ class BreakPointJob(map_reduce.Job):
         return len(result)
 
 # ============================================================================================================================ #
-# Execution
+# Main
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
@@ -192,5 +194,5 @@ if __name__ == '__main__':
     # 
     config.configure(reference_genome = args.reference, bed_file = args.bed)
     #
-    break_point_job = BreakPointJob(job_name = 'break_point', previous_job_name = '')
+    break_point_job = BreakPointJob(job_name = 'break_point_', previous_job_name = '')
     break_point_job.execute()
