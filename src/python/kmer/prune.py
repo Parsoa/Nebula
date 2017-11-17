@@ -130,7 +130,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
         for event in self.events:
             if event != track_name:
                 for kmer in novel_kmers:
-                    if kmer in events[event]['novel_kmers']:
+                    if kmer in self.events[event]['novel_kmers']:
                         if not kmer in overlap:
                             overlap[kmer] = []
                         overlap[kmer].append(event)
