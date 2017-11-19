@@ -150,10 +150,6 @@ class NovelKmerOverlapJob(map_reduce.Job):
         trace = graph_objs.Histogram(
             x = x,
             histnorm = 'count',
-            xbins = dict(
-                start = 0.0,
-                size = 5.0,
-            )
         )
         layout = graph_objs.Layout(title = 'Non-Overlapping Novel kmer Count')
         fig = graph_objs.Figure(data = [trace], layout = layout)
