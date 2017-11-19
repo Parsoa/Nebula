@@ -101,6 +101,9 @@ class Job(object):
     def plot(self, outputs):
         pass
 
+    def sort(self, outputs):
+        pass
+
     def _reduce(self):
         c = config.Configuration()
         output = {}

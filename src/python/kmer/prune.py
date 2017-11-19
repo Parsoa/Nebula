@@ -119,7 +119,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def prepare():
+    def prepare(self):
         self.minimum_coverage = 5
         with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
             self.events = json.load(json_file)
@@ -137,6 +137,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
                             overlap[kmer].append(event)
         track['overlap'] = overlap
         track['overlap_percentage'] = -1 if len(novel_kmers) == 0 else float(len(overlap)) / float(len(novel_kmers))
+        track['overlap_count'] = len(track['novel_kmers']) - len(track['overlap'])
         return track
 
     def plot(self, tracks):
@@ -145,7 +146,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
 
     def plot_novel_kmer_overlap_count(self, tracks):
         path = os.path.join(self.get_current_job_directory(), 'plot_novel_kmer_overlap_count.html')
-        x = list(map(lambda x: len(tracks[x]['novel_kmers']) - len(tracks[x]['overlap']), tracks))
+        x = list(map(lambda x: tracks[x]['overlap_count'], tracks))
         trace = graph_objs.Histogram(
             x = x,
             histnorm = 'count',
@@ -173,6 +174,17 @@ class NovelKmerOverlapJob(map_reduce.Job):
         layout = graph_objs.Layout(title = 'Novel kmer Overlap')
         fig = graph_objs.Figure(data = [trace], layout = layout)
         plotly.plot(fig, filename = path)
+
+    def sort(self, output):
+        # can't sort complex dictionary directly, break-up to simpler thing
+        tmp = {}
+        for track in output:
+            tmp[track] = output[track]['overlap_count']
+        # sort
+        sorted_output = sorted(tmp.items(), key = operator.itemgetter(1))
+        # dump
+        with open(os.path.join(self.get_current_job_directory(), 'sort.json'), 'w') as json_file:
+            json.dump(sorted_output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
 # Main
