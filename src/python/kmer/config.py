@@ -17,6 +17,7 @@ class Configuration:
         def __init__(self,
                         ksize,\
                         bed_file,\
+                        fastq_file,\
                         genome_chm1,\
                         genome_hg19,\
                         genome_hg38,\
@@ -29,6 +30,7 @@ class Configuration:
                         reference_count_server_port):
             self.ksize = ksize
             self.bed_file = bed_file
+            self.fastq_file = fastq_file,
             self.genome_chm1 = genome_chm1
             self.genome_hg19 = genome_hg19
             self.genome_hg38 = genome_hg38
@@ -58,7 +60,7 @@ class Configuration:
 # ============================================================================================================================ #
 
 def configure(reference_genome = 'hg38', fastq_file = None,
-    bed_file = "CHM1_Lumpy.Del.100bp.DEL.bed"):
+        bed_file = "CHM1_Lumpy.Del.100bp.DEL.bed"):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -83,6 +85,7 @@ def configure(reference_genome = 'hg38', fastq_file = None,
         ksize = 31,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../data/' + bed_file)),
+        fastq_file = fastq_file,
         genome_chm1 = genome_chm1,
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
