@@ -191,6 +191,10 @@ class NovelKmerOverlapJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce to find reads containing kmers from deletion that produce too many novel kmers.
+# Why are we really doing this?
+# Only one of the break points for a deletion should happen and that can produce 2*c.ksize but we are seeing way more novel kmers
+# than that. We get the reads containing those novel kmers to see what is happenning. For the time being lets only focus on those
+# appearing 255 times. Because what the fuck how is a novel kmer appearing 255 times? 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -212,13 +216,15 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                 add = True
                 for read, name in fastq.parse_fastq(fastq_file):
                     for kmer in novel_kmers:
-                        if read.find(kmer) != -1:
-                            if not kmer in novel_kmer_reads:
-                                novel_kmer_reads[kmer] = []
-                            if add:
-                                add = False
-                                reads[str(len(reads))] = [read, name]
-                            novel_kmer_reads[kmer].append(str(len(reads) - 1))
+                        # only look at those which appear more than a threshold
+                        if novel_kmers[kmer] >= 255:
+                            if read.find(kmer) != -1:
+                                if not kmer in novel_kmer_reads:
+                                    novel_kmer_reads[kmer] = []
+                                if add:
+                                    add = False
+                                    reads[str(len(reads))] = [read, name]
+                                novel_kmer_reads[kmer].append(str(len(reads) - 1))
             return {'novel_kmers': novel_kmers, 'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
         else:
             return {}
