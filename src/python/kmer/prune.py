@@ -14,6 +14,7 @@ from multiprocessing import Process
 from kmer import (
     bed,
     sets,
+    fastq,
     config,
     commons,
     counttable,
@@ -150,6 +151,11 @@ class NovelKmerOverlapJob(map_reduce.Job):
         trace = graph_objs.Histogram(
             x = x,
             histnorm = 'count',
+            xbins = dict(
+                start = 0.0,
+                end = 3000.0,
+                size = 1.0,
+            )
         )
         layout = graph_objs.Layout(title = 'Non-Overlapping Novel kmer Count')
         fig = graph_objs.Figure(data = [trace], layout = layout)
@@ -183,18 +189,56 @@ class NovelKmerOverlapJob(map_reduce.Job):
             json.dump(sorted_output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
+# MapReduce to find reads containing kmers from deletion that produce too many novel kmers.
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class HighNovelKmerReadsJobs(map_reduce.Job):
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        novel_kmers = track['novel_kmers']
+        # more novel kmers than expected
+        novel_kmer_reads = {}
+        reads = {}
+        if len(novel_kmers) > 2 * c.ksize
+            with open(c.fastq_file) as fastq_file:
+                # avoid adding the read if no kmer appears inside it
+                add = True
+                for read, name in fastq.parse_fastq(fastq_file):
+                    for kmer in novel_kmers:
+                        if read.find(kmer) != -1:
+                            if not kmer in novel_kmer_reads:
+                                novel_kmer_reads[kmer] = []
+                            if add:
+                                add = False
+                                reads[str(len(reads))] = [read, name]
+                            novel_kmer_reads[kmer].append(str(len(reads) - 1))
+            return {'novel_kmers': novel_kmers, 'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
+        else:
+            return {}
+
+# ============================================================================================================================ #
 # Main
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--reference")
     parser.add_argument("--bed")
+    parser.add_argument("--fastq")
+    parser.add_argument("--reference")
     args = parser.parse_args()
     #
-    config.configure(reference_genome = args.reference, bed_file = args.bed)
+    config.configure(reference_genome = args.reference, fastq_file = args.fastq, bed_file = args.bed)
     #
     novel = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
+    reads = HighNovelKmerReadsJobs(job_name = 'reads_', previous_job_name = 'novel_')
     #
-    novel.execute()
+    # novel.execute()
+    reads.execute()
