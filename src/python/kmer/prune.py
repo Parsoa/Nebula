@@ -216,19 +216,22 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                     break
                 state = SEQUENCE_LINE
                 name = line[:-1] 
+                line = self.fastq_file.readline()
                 continue
             if state == SEQUENCE_LINE:
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
                 yield seq, name
+                line = self.fastq_file.readline()
                 continue
             if state == THIRD_LINE:
                 state = QUALITY_LINE
+                line = self.fastq_file.readline()
                 continue
             if state == QUALITY_LINE:
                 state = HEADER_LINE
+                line = self.fastq_file.readline()
                 continue
-            line = self.fastq_file.readline()
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -240,8 +243,6 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.fastq_file = open(c.fastq_file, 'r')
-        self.fastq_file_chunk_size = math.ceil(os.path.getsize(f.name) / float(self.num_threads))
         # 
         for index in range(0, self.num_threads):
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
@@ -251,12 +252,15 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                     if self.event_name in track:
                         self.track = self.batch[index][track]
                         print('found', track)
-                    else:
-                        print('ignoring', track)
 
     def run_batch(self, batch):
         c = config.Configuration()
+        self.fastq_file = open(c.fastq_file, 'r')
+        self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
+        self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
+        # 
         self.output_batch(self.transform())
+        # 
         print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self):
@@ -286,7 +290,8 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         novel_kmer_reads = {}
         reads = {}
         for i in range(0, self.num_threads):
-            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as batch:
+            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
+                batch = json.load(json_file)
                 l = len(reads)
                 # update read indices
                 for i in range(0, len(batch['reads'])):
@@ -297,6 +302,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                     for read in batch['novel_kmer_reads'][novel_kmer]:
                         novel_kmer_reads[novel_kmer].append(str(int(read) + l))
         # 
+        output = {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
