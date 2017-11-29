@@ -200,6 +200,33 @@ class NovelKmerOverlapJob(map_reduce.Job):
 
 class HighNovelKmerReadsJobs(map_reduce.Job):
 
+    def parse_fastq(self):
+        name = None
+        HEADER_LINE = 0
+        SEQUENCE_LINE = 1
+        THIRD_LINE = 2
+        QUALITY_LINE = 3
+        state = HEADER_LINE
+        # need to skip invalid lines
+        for line in self.fastq_file:
+            if state == HEADER_LINE and line[0] == '@':
+                if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                    break
+                state = SEQUENCE_LINE
+                name = line[:-1] 
+                continue
+            if state == SEQUENCE_LINE:
+                state = THIRD_LINE
+                seq = line[:-1] # ignore the EOL character
+                yield seq, name
+                continue
+            if state == THIRD_LINE:
+                state = QUALITY_LINE
+                continue
+            if state == QUALITY_LINE:
+                state = HEADER_LINE
+                continue
+
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
@@ -207,34 +234,27 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
     def prepare(self):
         self.event_name = "chr5_78277739_78278045"
         self.minimum_coverage = 5
+        self.fastq_file = open(c.fastq_file, 'r')
+        self.fastq_file_chunk_size = math.ceiling(os.path.getsize(f.name) / float(self.num_threads))
 
     def load_inputs(self):
-        c = config.Configuration()
-        fastq_file = open(c.fastq_file, 'r')
-        fastq_file_chunk_size = math.ceiling(os.path.getsize(f.name) / float(self.num_threads))
         for index in range(0, self.num_threads):
-            f = open(c.fastq_file, 'r')
-            offset = index * fastq_file_chunk_size
-            f.seek(offset, 0)
-            self.batch[index] = f
-            # 
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             with open(path, 'r') as json_file:
-                batch = json.load(json_file)
-                for track in batch:
+                self.batch[index] = json.load(json_file)
+                for track in self.batch[index]:
                     if self.event_name in track:
-                        self.track = batch[track]
-                        print('found')
+                        self.track = self.batch[index][track]
+                        print('found'، track)
                     else:
                         print('ignoring', track)
 
     def run_batch(self, batch):
         c = config.Configuration()
-        batch = self.transform(batch, None)
-        self.output_batch(batch)
+        self.output_batch(self.transform())
         print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
-    def transform(self, fastq_file, track_name):
+    def transform(self):
         c = config.Configuration()
         novel_kmers = self.track['novel_kmers']
         # more novel kmers than expected
@@ -242,7 +262,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         reads = {}
         # avoid adding the read if no kmer appears inside it
         add = True
-        for read, name in fastq.parse_fastq(fastq_file):
+        for read, name in self.parse_fastq():
             for kmer in novel_kmers:
                 # only look at those which appear more than a threshold
                 if novel_kmers[kmer] >= self.minimum_coverage:
