@@ -5,6 +5,7 @@ import pwd
 import sys
 import copy
 import json
+import math
 import time
 import argparse
 import traceback
@@ -208,7 +209,8 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         QUALITY_LINE = 3
         state = HEADER_LINE
         # need to skip invalid lines
-        for line in self.fastq_file:
+        line = self.fastq_file.readline()
+        while line:
             if state == HEADER_LINE and line[0] == '@':
                 if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
                     break
@@ -226,6 +228,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
             if state == QUALITY_LINE:
                 state = HEADER_LINE
                 continue
+            line = self.fastq_file.readline()
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -234,10 +237,12 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
     def prepare(self):
         self.event_name = "chr5_78277739_78278045"
         self.minimum_coverage = 5
-        self.fastq_file = open(c.fastq_file, 'r')
-        self.fastq_file_chunk_size = math.ceiling(os.path.getsize(f.name) / float(self.num_threads))
 
     def load_inputs(self):
+        c = config.Configuration()
+        self.fastq_file = open(c.fastq_file, 'r')
+        self.fastq_file_chunk_size = math.ceil(os.path.getsize(f.name) / float(self.num_threads))
+        # 
         for index in range(0, self.num_threads):
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             with open(path, 'r') as json_file:
@@ -245,7 +250,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                 for track in self.batch[index]:
                     if self.event_name in track:
                         self.track = self.batch[index][track]
-                        print('found'، track)
+                        print('found', track)
                     else:
                         print('ignoring', track)
 
@@ -289,7 +294,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                 for novel_kmer in batch['novel_kmer_reads']:
                     if not novel_kmer in novel_kmer_reads:
                         novel_kmer_reads[novel_kmer] = []
-                    for read in batch['novel_kmer_reads'][novel_kmer]
+                    for read in batch['novel_kmer_reads'][novel_kmer]:
                         novel_kmer_reads[novel_kmer].append(str(int(read) + l))
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
