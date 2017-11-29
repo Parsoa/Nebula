@@ -40,7 +40,7 @@ class Job(object):
         self.load_inputs()
         self.distribute_workload()
         self.wait_for_children()
-        self._reduce()
+        self.reduce()
         # self.clean_up()
 
     def find_thread_count(self):
@@ -104,7 +104,7 @@ class Job(object):
     def sort(self, outputs):
         pass
 
-    def _reduce(self):
+    def reduce(self):
         c = config.Configuration()
         output = {}
         for i in range(0, self.num_threads):

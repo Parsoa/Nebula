@@ -204,30 +204,80 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def transform(self, track, track_name):
+    def prepare(self):
+        self.event_name = "chr5_78277739_78278045"
+        self.minimum_coverage = 5
+
+    def load_inputs(self):
         c = config.Configuration()
-        novel_kmers = track['novel_kmers']
+        fastq_file = open(c.fastq_file, 'r')
+        fastq_file_chunk_size = math.ceiling(os.path.getsize(f.name) / float(self.num_threads))
+        for index in range(0, self.num_threads):
+            f = open(c.fastq_file, 'r')
+            offset = index * fastq_file_chunk_size
+            f.seek(offset, 0)
+            self.batch[index] = f
+            # 
+            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
+            with open(path, 'r') as json_file:
+                batch = json.load(json_file)
+                for track in batch:
+                    if self.event_name in track:
+                        self.track = batch[track]
+                        print('found')
+                    else:
+                        print('ignoring', track)
+
+    def run_batch(self, batch):
+        c = config.Configuration()
+        batch = self.transform(batch, None)
+        self.output_batch(batch)
+        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
+
+    def transform(self, fastq_file, track_name):
+        c = config.Configuration()
+        novel_kmers = self.track['novel_kmers']
         # more novel kmers than expected
         novel_kmer_reads = {}
         reads = {}
-        if len(novel_kmers) > 2 * c.ksize
-            with open(c.fastq_file) as fastq_file:
-                # avoid adding the read if no kmer appears inside it
-                add = True
-                for read, name in fastq.parse_fastq(fastq_file):
-                    for kmer in novel_kmers:
-                        # only look at those which appear more than a threshold
-                        if novel_kmers[kmer] >= 255:
-                            if read.find(kmer) != -1:
-                                if not kmer in novel_kmer_reads:
-                                    novel_kmer_reads[kmer] = []
-                                if add:
-                                    add = False
-                                    reads[str(len(reads))] = [read, name]
-                                novel_kmer_reads[kmer].append(str(len(reads) - 1))
-            return {'novel_kmers': novel_kmers, 'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
-        else:
-            return {}
+        # avoid adding the read if no kmer appears inside it
+        add = True
+        for read, name in fastq.parse_fastq(fastq_file):
+            for kmer in novel_kmers:
+                # only look at those which appear more than a threshold
+                if novel_kmers[kmer] >= self.minimum_coverage:
+                    if read.find(kmer) != -1:
+                        if not kmer in novel_kmer_reads:
+                            novel_kmer_reads[kmer] = []
+                        if add:
+                            add = False
+                            reads[str(len(reads))] = [read, name]
+                        novel_kmer_reads[kmer].append(str(len(reads) - 1))
+            return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
+
+    def reduce(self):
+        c = config.Configuration()
+        # 
+        novel_kmer_reads = {}
+        reads = {}
+        for i in range(0, self.num_threads):
+            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as batch:
+                l = len(reads)
+                # update read indices
+                for i in range(0, len(batch['reads'])):
+                    reads[str(l + i)] = batch['reads'][str(i)]
+                for novel_kmer in batch['novel_kmer_reads']:
+                    if not novel_kmer in novel_kmer_reads:
+                        novel_kmer_reads[novel_kmer] = []
+                    for read in batch['novel_kmer_reads'][novel_kmer]
+                        novel_kmer_reads[novel_kmer].append(str(int(read) + l))
+        # 
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+
+    def get_current_job_directory(self):
+        # get rid of the final _
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], self.event_name))
 
 # ============================================================================================================================ #
 # Main
