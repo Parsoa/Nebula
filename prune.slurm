@@ -1,8 +1,13 @@
 #!/bin/bash
 
+#SBATCH --partition=gc
+#SBATCH --nodes=1
+#SBATCH --mem=4G
 #SBATCH --job-name="prune"
 #SBATCH --ntasks=48
+#SBATCH --time=0-01:30:00
 #SBATCH --mail-user=pkhorsand@ucdavis.edu
+#SBATCH --mail-type=ALL
 
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv/bin/activate
