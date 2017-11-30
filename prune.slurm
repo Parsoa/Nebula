@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #SBATCH --job-name="prune"
 #SBATCH --ntasks=48
 #SBATCH --mail-user=pkhorsand@ucdavis.edu
