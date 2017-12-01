@@ -210,12 +210,13 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         state = HEADER_LINE
         # need to skip invalid lines
         line = self.fastq_file.readline()
+        num_reads = 0
         while line:
             if state == HEADER_LINE and line[0] == '@':
                 if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
                     break
                 state = SEQUENCE_LINE
-                name = line[:-1] 
+                name = line[:-1] # ignore the EOL character
                 line = self.fastq_file.readline()
                 continue
             if state == SEQUENCE_LINE:
@@ -230,6 +231,9 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                 continue
             if state == QUALITY_LINE:
                 state = HEADER_LINE
+                num_reads += 1
+                if num_reads == 1000:
+                    break
                 line = self.fastq_file.readline()
                 continue
 
@@ -252,6 +256,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                     if self.event_name in track:
                         self.track = self.batch[index][track]
                         print('found', track)
+        self.num_threads = 6
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -272,16 +277,16 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         # avoid adding the read if no kmer appears inside it
         add = True
         for read, name in self.parse_fastq():
-            for kmer in novel_kmers:
+            for novel_kmer in novel_kmers:
                 # only look at those which appear more than a threshold
-                if novel_kmers[kmer] >= self.minimum_coverage:
-                    if read.find(kmer) != -1:
-                        if not kmer in novel_kmer_reads:
-                            novel_kmer_reads[kmer] = []
+                if novel_kmers[novel_kmer] >= self.minimum_coverage:
+                    if read.find(novel_kmer) != -1:
+                        if not novel_kmer in novel_kmer_reads:
+                            novel_kmer_reads[novel_kmer] = []
                         if add:
                             add = False
                             reads[str(len(reads))] = [read, name]
-                        novel_kmer_reads[kmer].append(str(len(reads) - 1))
+                        novel_kmer_reads[novel_kmer].append(str(len(reads) - 1))
             return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
 
     def reduce(self):
