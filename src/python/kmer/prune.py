@@ -212,11 +212,12 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         line = self.fastq_file.readline()
         num_reads = 0
         while line:
-            if state == HEADER_LINE and line[0] == '@':
-                if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
-                    break
-                state = SEQUENCE_LINE
-                name = line[:-1] # ignore the EOL character
+            if state == HEADER_LINE:
+                if line[0] == '@':
+                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                        break
+                    state = SEQUENCE_LINE
+                    name = line[:-1] # ignore the EOL character
                 line = self.fastq_file.readline()
                 continue
             if state == SEQUENCE_LINE:
@@ -276,7 +277,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         reads = {}
         # avoid adding the read if no kmer appears inside it
         add = True
-        for read, name in self.parse_fastq():
+        for (read, name) in self.parse_fastq():
             for novel_kmer in novel_kmers:
                 # only look at those which appear more than a threshold
                 if novel_kmers[novel_kmer] >= self.minimum_coverage:
@@ -287,7 +288,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                             add = False
                             reads[str(len(reads))] = [read, name]
                         novel_kmer_reads[novel_kmer].append(str(len(reads) - 1))
-            return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
+        return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
 
     def reduce(self):
         c = config.Configuration()
@@ -334,3 +335,4 @@ if __name__ == '__main__':
     #
     # novel.execute()
     reads.execute()
+
