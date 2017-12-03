@@ -333,4 +333,4 @@ if __name__ == '__main__':
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
     reads = HighNovelKmerReadsJobs(job_name = 'reads_', previous_job_name = 'novel_')
     #
-    reads.execute(batches_to_run = [33])
+    reads.execute()

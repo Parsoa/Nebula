@@ -2,7 +2,7 @@
 
 #SBATCH --partition=gc
 #SBATCH --nodes=1
-#SBATCH --mem=4G
+#SBATCH --mem=60G
 #SBATCH --job-name="prune"
 #SBATCH --ntasks=48
 #SBATCH --time=1-12:00:00
