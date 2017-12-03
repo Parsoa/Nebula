@@ -272,16 +272,16 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         # avoid adding the read if no kmer appears inside it
         add = True
         for read, name in self.parse_fastq():
-            for kmer in novel_kmers:
-                # only look at those which appear more than a threshold
-                if novel_kmers[kmer] >= self.minimum_coverage:
-                    if read.find(kmer) != -1:
-                        if not kmer in novel_kmer_reads:
-                            novel_kmer_reads[kmer] = []
+            print(name, ':', read)
+            for novel_kmer in novel_kmers:
+                if novel_kmers[novel_kmer] >= self.minimum_coverage: # only look at those which appear more than a threshold
+                    if read.find(novel_kmer) != -1:
+                        if not novel_kmer in novel_kmer_reads:
+                            novel_kmer_reads[novel_kmer] = []
                         if add:
                             add = False
                             reads[str(len(reads))] = [read, name]
-                        novel_kmer_reads[kmer].append(str(len(reads) - 1))
+                        novel_kmer_reads[novel_kmer].append(str(len(reads) - 1))
             return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
 
     def reduce(self):
@@ -327,5 +327,4 @@ if __name__ == '__main__':
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
     reads = HighNovelKmerReadsJobs(job_name = 'reads_', previous_job_name = 'novel_')
     #
-    # novel.execute()
-    reads.execute()
+    reads.execute(batches_to_run = [33])

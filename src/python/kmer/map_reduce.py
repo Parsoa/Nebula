@@ -28,6 +28,11 @@ class Job(object):
         self.index = -1
         self.batch = {}
         self.children = {}
+        # 
+        self.run_for_certain_batches_only = False
+        if 'batches_to_run' in kwargs:
+            self.run_for_certain_batches_only = True
+            self.batches_to_run = batches_to_run
 
     def prepare(self):
         pass
@@ -60,6 +65,9 @@ class Job(object):
 
     def distribute_workload(self):
         for index in range(0, self.num_threads):
+            if self.run_for_certain_batches_only:
+                if not index in self.batches_to_run:
+                    continue
             pid = os.fork()
             if pid == 0:
                 # forked process
@@ -108,9 +116,11 @@ class Job(object):
         c = config.Configuration()
         output = {}
         for i in range(0, self.num_threads):
-            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
-                batch = json.load(json_file)
-                output.update(batch)
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as json_file:
+                    batch = json.load(json_file)
+                    output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
         self.merge(output)
