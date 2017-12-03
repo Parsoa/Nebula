@@ -210,7 +210,6 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         state = HEADER_LINE
         # need to skip invalid lines
         line = self.fastq_file.readline()
-        num_reads = 0
         while line:
             if state == HEADER_LINE:
                 if line[0] == '@':
@@ -232,9 +231,6 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                 continue
             if state == QUALITY_LINE:
                 state = HEADER_LINE
-                num_reads += 1
-                if num_reads == 1000:
-                    break
                 line = self.fastq_file.readline()
                 continue
 
@@ -273,11 +269,11 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         c = config.Configuration()
         novel_kmers = self.track['novel_kmers']
         # consider reverse complement as well
-        reverse_complement_novel_kmers = {}
-        for novel_kmer in novel_kmers:
-            reverse_complement = bed.reverse_complement_sequence(novel_kmer)
-            if not reverse_complement in novel_kmers:
-                novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
+        # reverse_complement_novel_kmers = {}
+        # for novel_kmer in novel_kmers:
+        #     reverse_complement = bed.reverse_complement_sequence(novel_kmer)
+        #     if not reverse_complement in novel_kmers:
+        #         novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
         # more novel kmers than expected
         novel_kmer_reads = {}
         reads = {}

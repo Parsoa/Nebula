@@ -28,17 +28,16 @@ class Job(object):
         self.index = -1
         self.batch = {}
         self.children = {}
-        # 
         self.run_for_certain_batches_only = False
-        if 'batches_to_run' in kwargs:
-            self.run_for_certain_batches_only = True
-            self.batches_to_run = batches_to_run
 
     def prepare(self):
         pass
 
-    def execute(self):
+    def execute(self, **kwargs):
         c = config.Configuration()
+        if 'batches_to_run' in kwargs:
+            self.run_for_certain_batches_only = True
+            self.batches_to_run = batches_to_run
         self.prepare()
         self.create_output_directories()
         self.find_thread_count()
