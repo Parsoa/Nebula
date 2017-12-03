@@ -37,7 +37,7 @@ class Job(object):
         c = config.Configuration()
         if 'batches_to_run' in kwargs:
             self.run_for_certain_batches_only = True
-            self.batches_to_run = batches_to_run
+            self.batches_to_run = kwargs['batches_to_run']
         self.prepare()
         self.create_output_directories()
         self.find_thread_count()

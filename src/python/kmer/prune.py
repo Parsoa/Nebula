@@ -253,7 +253,6 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                     if self.event_name in track:
                         self.track = self.batch[index][track]
                         print('found', track)
-        self.num_threads = 6
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -268,22 +267,20 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
     def transform(self):
         c = config.Configuration()
         novel_kmers = self.track['novel_kmers']
-        # consider reverse complement as well
-        # reverse_complement_novel_kmers = {}
-        # for novel_kmer in novel_kmers:
-        #     reverse_complement = bed.reverse_complement_sequence(novel_kmer)
-        #     if not reverse_complement in novel_kmers:
-        #         novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
-        # more novel kmers than expected
         novel_kmer_reads = {}
         reads = {}
+        # consider reverse complement as well
+        reverse_complement_novel_kmers = {}
+        for novel_kmer in novel_kmers:
+            reverse_complement = bed.reverse_complement_sequence(novel_kmer)
+            if not reverse_complement in novel_kmers:
+                novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
         # avoid adding the read if no kmer appears inside it
-        add = True
         for read, name in self.parse_fastq():
-            print(name, ':', read)
+            add = True
             for novel_kmer in novel_kmers:
                 if novel_kmers[novel_kmer] >= self.minimum_coverage: # only look at those which appear more than a threshold
-                    if read.find(novel_kmer) != -1:
+                    if read.find(novel_kmer) != -1: # read supports this novel kmer
                         if not novel_kmer in novel_kmer_reads:
                             novel_kmer_reads[novel_kmer] = []
                         if add:
