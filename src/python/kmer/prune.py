@@ -270,17 +270,18 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         novel_kmer_reads = {}
         reads = {}
         # consider reverse complement as well
-        reverse_complement_novel_kmers = {}
-        for novel_kmer in novel_kmers:
-            reverse_complement = bed.reverse_complement_sequence(novel_kmer)
-            if not reverse_complement in novel_kmers:
-                novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
+        # reverse_complement_novel_kmers = {}
+        # for novel_kmer in novel_kmers:
+        #     reverse_complement = bed.reverse_complement_sequence(novel_kmer)
+        #     if not reverse_complement in novel_kmers:
+        #         novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
         # avoid adding the read if no kmer appears inside it
         for read, name in self.parse_fastq():
             add = True
             for novel_kmer in novel_kmers:
+                reverse_complement = bed.reverse_complement_sequence(novel_kmer)
                 if novel_kmers[novel_kmer] >= self.minimum_coverage: # only look at those which appear more than a threshold
-                    if read.find(novel_kmer) != -1: # read supports this novel kmer
+                    if read.find(novel_kmer) != -1 or read.find(reverse_complement) != -1: # read supports this novel kmer
                         if not novel_kmer in novel_kmer_reads:
                             novel_kmer_reads[novel_kmer] = []
                         if add:
