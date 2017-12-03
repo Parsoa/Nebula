@@ -210,12 +210,14 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         state = HEADER_LINE
         # need to skip invalid lines
         line = self.fastq_file.readline()
+        num_reads = 0
         while line:
-            if state == HEADER_LINE and line[0] == '@':
-                if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
-                    break
-                state = SEQUENCE_LINE
-                name = line[:-1] 
+            if state == HEADER_LINE:
+                if line[0] == '@':
+                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                        break
+                    state = SEQUENCE_LINE
+                    name = line[:-1] # ignore the EOL character
                 line = self.fastq_file.readline()
                 continue
             if state == SEQUENCE_LINE:
@@ -230,6 +232,9 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                 continue
             if state == QUALITY_LINE:
                 state = HEADER_LINE
+                num_reads += 1
+                if num_reads == 1000:
+                    break
                 line = self.fastq_file.readline()
                 continue
 
@@ -252,6 +257,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                     if self.event_name in track:
                         self.track = self.batch[index][track]
                         print('found', track)
+        self.num_threads = 6
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -288,7 +294,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
                             add = False
                             reads[str(len(reads))] = [read, name]
                         novel_kmer_reads[novel_kmer].append(str(len(reads) - 1))
-            return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
+        return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
 
     def reduce(self):
         c = config.Configuration()
