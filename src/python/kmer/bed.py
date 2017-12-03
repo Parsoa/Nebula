@@ -71,6 +71,9 @@ def extract_sequence(track):
             line = line.strip().upper()
             return line
 
+def reverse_complement_sequence(seq):
+    return complement_sequence(seq[::-1])
+
 def complement_sequence(seq):
     # A-> C and C->A
     seq = seq.replace('A', 'Z')

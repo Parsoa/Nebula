@@ -266,6 +266,12 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
     def transform(self):
         c = config.Configuration()
         novel_kmers = self.track['novel_kmers']
+        # consider reverse complement as well
+        reverse_complement_novel_kmers = {}
+        for novel_kmer in novel_kmers:
+            reverse_complement = bed.reverse_complement_sequence(novel_kmer)
+            if not reverse_complement in novel_kmers:
+                novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
         # more novel kmers than expected
         novel_kmer_reads = {}
         reads = {}
