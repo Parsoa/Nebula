@@ -312,6 +312,29 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
+    def post_process(self):
+        self.event_name = "chr5_78277739_78278045"
+        self.minimum_coverage = 5
+        # load ouput from previous task
+        previous_output = {}
+        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
+            previous_output = json.load(json_file)
+        previous_output = previous_output[self.event_name]
+        # load merged output
+        output = {}
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
+            output = json.load(json_file)
+        # add kmer coverage data
+        for novel_kmer in output['novel_kmer_reads']:
+            output['novel_kmer_reads'][novel_kmer] = {
+                'reads': output['novel_kmer_reads'][novel_kmer],
+                'actual_coverage': len(output['novel_kmers'][novel_kmer]),
+                'khmer_coverage': previous_output['novel_kmers']
+            }
+        # ouput newly formated output
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+
     def get_current_job_directory(self):
         # get rid of the final _
         return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], self.event_name))

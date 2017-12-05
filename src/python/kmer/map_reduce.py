@@ -47,6 +47,10 @@ class Job(object):
         self.reduce()
         # self.clean_up()
 
+    # this for when you need to make small adjustments to the output after the job has finished but don't want to run it all over again
+    def post_process(self):
+        pass
+
     def find_thread_count(self):
         c = config.Configuration()
         max_index = 0
