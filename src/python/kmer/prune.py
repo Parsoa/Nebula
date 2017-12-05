@@ -328,8 +328,8 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         for novel_kmer in output['novel_kmer_reads']:
             output['novel_kmer_reads'][novel_kmer] = {
                 'reads': output['novel_kmer_reads'][novel_kmer],
-                'actual_coverage': len(output['novel_kmers'][novel_kmer]),
-                'khmer_coverage': previous_output['novel_kmers']
+                'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
+                'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
             }
         # ouput newly formated output
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
