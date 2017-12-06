@@ -317,7 +317,32 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         self.minimum_coverage = 5
         # load ouput from previous task
         previous_output = {}
-        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
+        with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
+            previous_output = json.load(json_file)
+        previous_output = previous_output[self.event_name]
+        # load merged output
+        output = {}
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
+            output = json.load(json_file)
+        for novel_kmer in output['novel_kmer_reads']:
+            break_points = []
+            for break_point in output:
+                if novel_kmer in break_point['kmers']:
+                    break_points.append(break_point)
+            output['novel_kmer_reads'][novel_kmer] = {
+                'reads': output['novel_kmer_reads'][novel_kmer],
+                'break_points': break_points,
+                'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
+                'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
+            }
+
+    '''
+    def post_process(self):
+        self.event_name = "chr5_78277739_78278045"
+        self.minimum_coverage = 5
+        # load ouput from previous task
+        previous_output = {}
+        with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
             previous_output = json.load(json_file)
         previous_output = previous_output[self.event_name]
         # load merged output
@@ -334,6 +359,7 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         # ouput newly formated output
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+    '''
 
     def get_current_job_directory(self):
         # get rid of the final _
