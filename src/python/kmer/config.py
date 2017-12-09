@@ -59,7 +59,7 @@ class Configuration:
 # Configuration
 # ============================================================================================================================ #
 
-def configure(reference_genome = 'hg38', fastq_file = None,
+def configure(reference_genome = 'hg38', fastq_file = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref',
         bed_file = "CHM1_Lumpy.Del.100bp.DEL.bed"):
     if sys.platform == "darwin":
         print('Running on Mac OS X')

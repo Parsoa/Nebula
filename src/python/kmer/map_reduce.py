@@ -18,6 +18,11 @@ import colorama
 
 # ============================================================================================================================ #
 # Job class, describes a MapReducer job
+# Will apply a transformation to a library of structural variation:
+# 1. Divides the library into a number of `batches`
+# 2. Each batch includes one or more `tracks` (each track is a structural variation)
+# 3. Applies the function `transfer` to each track and outputs the result
+# 4. Merges the transformed tracks into a whole
 # ============================================================================================================================ #
 
 class Job(object):

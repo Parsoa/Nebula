@@ -115,6 +115,9 @@ class NovelKmerJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job to calculate novel kmer overlap
+# For the entire set of novel kmers resulting given to as input, finds the structural variations that share each kmer.
+# Also outputs for each track some statistics on the level of overlap between it and others
+# Plots the overlap statistics and also outputs list of tracks sorted on based on the number of overlapping kmers
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -242,20 +245,22 @@ class CountKmersExactJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     def prepare(self):
-        self.event_name = "chr5_78277739_78278045"
+        self.event_names = ["chr5_78277739_78278045"]
         self.minimum_coverage = 5
+        self.tracks = {}
 
     def load_inputs(self):
-        c = config.Configuration()
+        c = config.Configuration():
         # 
         for index in range(0, self.num_threads):
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             with open(path, 'r') as json_file:
                 self.batch[index] = json.load(json_file)
                 for track in self.batch[index]:
-                    if self.event_name in track:
-                        self.track = self.batch[index][track]
-                        print('found', track)
+                    for event_name in self.event_names:
+                        if self.event_name in track:
+                            self.tracks[event_name] = self.batch[index][track]
+                            print('found', track)
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -272,16 +277,11 @@ class CountKmersExactJob(map_reduce.Job):
         novel_kmers = self.track['novel_kmers']
         novel_kmer_reads = {}
         reads = {}
-        # consider reverse complement as well
-        # reverse_complement_novel_kmers = {}
-        # for novel_kmer in novel_kmers:
-        #     reverse_complement = bed.reverse_complement_sequence(novel_kmer)
-        #     if not reverse_complement in novel_kmers:
-        #         novel_kmers[reverse_complement] = novel_kmers[novel_kmer]
         # avoid adding the read if no kmer appears inside it
         for read, name in self.parse_fastq():
             add = True
             for novel_kmer in novel_kmers:
+                # consider reverse complement as well
                 reverse_complement = bed.reverse_complement_sequence(novel_kmer)
                 if novel_kmers[novel_kmer] >= self.minimum_coverage: # only look at those which appear more than a threshold
                     if read.find(novel_kmer) != -1 or read.find(reverse_complement) != -1: # read supports this novel kmer
@@ -291,7 +291,7 @@ class CountKmersExactJob(map_reduce.Job):
                             add = False
                             reads[str(len(reads))] = [read, name]
                         novel_kmer_reads[novel_kmer].append(str(len(reads) - 1))
-        return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
+        # return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
 
     def reduce(self):
         c = config.Configuration()
