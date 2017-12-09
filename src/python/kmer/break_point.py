@@ -48,7 +48,6 @@ class BreakPoint(object):
         self.end = end
         self.kmers = kmers
         self.reference_kmers = reference_kmers
-        self.kmer_list = list(self.kmers.keys())
         self.score = 0
         self.zygosity = None
 
@@ -147,12 +146,14 @@ class BreakPointJob(map_reduce.Job):
                 frontier[break_point] = True
         return frontier
 
+    '''
+    # TODO: this is unnecessarilly complex and should be replaced with the commented version below
+    # prunes a break points if not all its kmers appear in the kmer count table
     def prune_boundary_candidates(self, frontier, sv):
         c = config.Configuration()
+        # instead of checking all of a breakpoint's kmers at once, check them iteratively, hopefully faster
         # there will be c.ksize kmers at max
         for i in range(0, c.ksize) :
-            # print('i = ', i)
-            # print(len(frontier))
             remove = {}
             for break_point in frontier :
                 kmers = []
@@ -162,7 +163,7 @@ class BreakPointJob(map_reduce.Job):
                     kmers.append(break_point.kmer_list[2 * i])
                     n = 1
                     if (2 * i) + 1 < len(break_point.kmer_list):
-                        kmers.append(break_point.kmer_list[2 * i + 1])
+                        kmers.append(break_point.kmer_list[(2 * i) + 1])
                         n = 2
                 else :
                     continue
@@ -182,6 +183,21 @@ class BreakPointJob(map_reduce.Job):
             if count:
                 result[kmer] = count
         return len(result)
+    '''
+
+    # prunes a break points if not all its kmers appear in the kmer count table
+    def prune_boundary_candidates(self, frontier, sv):
+        c = config.Configuration()
+        remove = {}
+        for break_point in frontier:
+            for kmer in break_point.kmers:
+                count = count_server.get_kmer_count(kmer, self.index, False)
+                if count == 0:
+                    remove[break_point] = True
+                    break
+        for break_point in remove:
+            frontier.pop(break_point, None)
+        return frontier
 
 # ============================================================================================================================ #
 # Main

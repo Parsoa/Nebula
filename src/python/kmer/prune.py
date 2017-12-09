@@ -101,7 +101,10 @@ class NovelKmerJob(map_reduce.Job):
             for kmer in kmers:
                 if is_kmer_novel(kmer, self.index):
                     if not kmer in novel_kmers:
-                        novel_kmers[kmer] = kmers[kmer]
+                        novel_kmers[kmer] = {
+                            'count': kmers[kmer],
+                            'break_point': candidate
+                        }
         # remove every candidate, this has to be lightweight
         for candidate in remove:
             track.pop(candidate, None)
@@ -199,7 +202,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class HighNovelKmerReadsJobs(map_reduce.Job):
+class CountKmersExactJob(map_reduce.Job):
 
     def parse_fastq(self):
         name = None
@@ -312,29 +315,74 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
+    #TODO: come up with a cleaner way of oding all this
+    '''
     def post_process(self):
         self.event_name = "chr5_78277739_78278045"
         self.minimum_coverage = 5
+        self.previous_job_name = 'break_point_
         # load ouput from previous task
         previous_output = {}
         with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
             previous_output = json.load(json_file)
         previous_output = previous_output[self.event_name]
         # load merged output
+        b = {}
+        for break_point in previous_output:
+            b[break_point] = {}
         output = {}
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
             output = json.load(json_file)
         for novel_kmer in output['novel_kmer_reads']:
             break_points = []
-            for break_point in output:
-                if novel_kmer in break_point['kmers']:
+            for break_point in previous_output:
+                if not break_point.startswith('('):
+                    continue
+                if novel_kmer in previous_output[break_point]['kmers']:
                     break_points.append(break_point)
+                    b[novel_kmer] = True
             output['novel_kmer_reads'][novel_kmer] = {
                 'reads': output['novel_kmer_reads'][novel_kmer],
                 'break_points': break_points,
                 'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
                 'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
             }
+        output
+    '''
+
+    '''
+    def post_process(self):
+        self.event_name = "chr5_78277739_78278045"
+        self.minimum_coverage = 5
+        self.previous_job_name = 'break_point_
+        # load ouput from previous task
+        previous_output = {}
+        with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
+            previous_output = json.load(json_file)
+        previous_output = previous_output[self.event_name]
+        # load merged output
+        b = {}
+        for break_point in previous_output:
+            b[break_point] = {}
+        output = {}
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
+            output = json.load(json_file)
+        for novel_kmer in output['novel_kmer_reads']:
+            break_points = []
+            for break_point in previous_output:
+                if not break_point.startswith('('):
+                    continue
+                if novel_kmer in previous_output[break_point]['kmers']:
+                    break_points.append(break_point)
+                    b[novel_kmer] = True
+            output['novel_kmer_reads'][novel_kmer] = {
+                'reads': output['novel_kmer_reads'][novel_kmer],
+                'break_points': break_points,
+                'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
+                'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
+            }
+        output
+    '''
 
     '''
     def post_process(self):
@@ -364,6 +412,48 @@ class HighNovelKmerReadsJobs(map_reduce.Job):
     def get_current_job_directory(self):
         # get rid of the final _
         return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], self.event_name))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# MapReduce job to produce a kmer signature for each break point of a deletion
+# Step 1: get the break points all of which's kmers are found in CHM1, these are the possible candidates for the structural
+# variation's boundaries -> BreakPointJob
+# Step 2: Find a set of novel kmers for each break point that can be used to indentify it. khmer never underestimates counts so
+# if a kmer comes with a count of zero in reference genome, we can be sure that it is really novel -> NovelKmerJob
+# Step 3: khmer may report oversetimated counts for these break points so we need to count them exactly again. This is necessary
+# for a reliable likelihood model -> CountKmersExactJob
+# Step 4: With exact kmer counts available, we can find the most likely break points for each event in our library -> MostLikelyBreakPointsJob
+# Step 5: Given a sample genome, try to genotype the structural variations using the likelihood model and signatures gathered
+# above.
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class MostLikelyBreakPointsJob(map_reduce.Job):
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def transform(self, track, track_name):
+        remove = {}
+        novel_kmers = {}
+        for candidate in track:
+            # remove all candidates eventually
+            remove[candidate] = True
+            # skip the json key holding the number of candidates
+            if candidate.find('candidates') != -1:
+                continue
+            kmers = track[candidate]['kmers']
+            for kmer in kmers:
+                if is_kmer_novel(kmer, self.index):
+                    if not kmer in novel_kmers:
+                        novel_kmers[kmer] = kmers[kmer]
+        # remove every candidate, this has to be lightweight
+        for candidate in remove:
+            track.pop(candidate, None)
+        # keep only those with high enough coverage
+        track['novel_kmers'] = novel_kmers
+        return track
 
 # ============================================================================================================================ #
 # Main
