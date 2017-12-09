@@ -253,10 +253,12 @@ class CountKmersExactJob(map_reduce.Job):
         c = config.Configuration():
         # 
         for index in range(0, self.num_threads):
+            self.batch[index] = {} # avoid overrding extra methods from MapReduce
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             with open(path, 'r') as json_file:
-                self.batch[index] = json.load(json_file)
-                for track in self.batch[index]:
+                batch = json.load(json_file)
+                # find the tracks we are interested
+                for track in batch:
                     for event_name in self.event_names:
                         if self.event_name in track:
                             self.tracks[event_name] = self.batch[index][track]
@@ -274,44 +276,57 @@ class CountKmersExactJob(map_reduce.Job):
 
     def transform(self):
         c = config.Configuration()
-        novel_kmers = self.track['novel_kmers']
-        novel_kmer_reads = {}
-        reads = {}
-        # avoid adding the read if no kmer appears inside it
+        # this one is more complicated because most results are to be commited to a global data store
+        # create a copy of data for this instance
+        output = {}
+        for track in self.tracks:
+            output[track] = {
+                'novel_kmers': {}
+            }
+        # 
         for read, name in self.parse_fastq():
-            add = True
-            for novel_kmer in novel_kmers:
-                # consider reverse complement as well
-                reverse_complement = bed.reverse_complement_sequence(novel_kmer)
-                if novel_kmers[novel_kmer] >= self.minimum_coverage: # only look at those which appear more than a threshold
-                    if read.find(novel_kmer) != -1 or read.find(reverse_complement) != -1: # read supports this novel kmer
-                        if not novel_kmer in novel_kmer_reads:
-                            novel_kmer_reads[novel_kmer] = []
-                        if add:
-                            add = False
-                            reads[str(len(reads))] = [read, name]
-                        novel_kmer_reads[novel_kmer].append(str(len(reads) - 1))
-        # return {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
+            for track in self.tracks:
+                novel_kmers = self.tracks[track]['novel_kmers']
+                for novel_kmer in novel_kmers:
+                    # consider reverse complement as well
+                    reverse_complement = bed.reverse_complement_sequence(novel_kmer)
+                    # only look at those which appear more than a threshold
+                    if novel_kmers[novel_kmer]['count'] >= self.minimum_coverage:
+                        # read supports this novel kmer
+                        if read.find(novel_kmer) != -1 or read.find(reverse_complement) != -1:
+                            # add the kmer to output only now, should reduce memory footprint
+                            if not novel_kmer in output[track]['novel_kmers']:
+                                output[track]['novel_kmers'][novel_kmer] = {
+                                    'count': novel_kmers[novel_kmer]['count'],
+                                    'break_point': novel_kmers[novel_kmer]['break_point'],
+                                    'actual_count': 0,
+                                }
+                            output[track]['novel_kmers'][novel_kmer]['actual_count'] += 1
+        return output
 
     def reduce(self):
         c = config.Configuration()
         # 
-        novel_kmer_reads = {}
-        reads = {}
+        output = {}
+        for track in self.tracks:
+            output[track] = {
+                'novel_kmers': {}
+            }
+        # 
         for i in range(0, self.num_threads):
             with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
                 batch = json.load(json_file)
-                l = len(reads)
-                # update read indices
-                for i in range(0, len(batch['reads'])):
-                    reads[str(l + i)] = batch['reads'][str(i)]
-                for novel_kmer in batch['novel_kmer_reads']:
-                    if not novel_kmer in novel_kmer_reads:
-                        novel_kmer_reads[novel_kmer] = []
-                    for read in batch['novel_kmer_reads'][novel_kmer]:
-                        novel_kmer_reads[novel_kmer].append(str(int(read) + l))
+                for track in batch:
+                    novel_kmers = batch[track]['novel_kmers']
+                    for novel_kmer in novel_kmers:
+                        if not novel_kmer in output[track]['novel_kmers']:
+                            output[track]['novel_kmers'][novel_kmer] = {
+                                'actual_count': 0
+                            }
+                        output[track]['novel_kmers'][novel_kmer]['actual_count'] += novel_kmers[novel_kmer]['actual_count']
+                        output[track]['novel_kmers'][novel_kmer]['break_point'] = novel_kmers[novel_kmer]['break_point']
+                        output[track]['novel_kmers'][novel_kmer]['count'] = novel_kmers[novel_kmer]['count']
         # 
-        output = {'novel_kmer_reads': novel_kmer_reads, 'reads': reads}
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
@@ -408,10 +423,11 @@ class CountKmersExactJob(map_reduce.Job):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
     '''
-
+    '''
     def get_current_job_directory(self):
         # get rid of the final _
         return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], self.event_name))
+    '''
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
