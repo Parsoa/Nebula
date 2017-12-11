@@ -251,7 +251,8 @@ class CountKmersExactJob(map_reduce.Job):
         pass
 
     def prepare(self):
-        self.event_names = ["chr5_78277739_78278045"]
+        self.event_names = ["chr5_78277739_78278045", "chr6_51256300_51256602",\
+            "chr18_75997296_75997615", "chr11_102471858_102472162", "chr2_57342743_57343056"]
         self.minimum_coverage = 5
         self.tracks = {}
 
