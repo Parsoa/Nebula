@@ -102,10 +102,12 @@ class NovelKmerJob(map_reduce.Job):
                 if is_kmer_novel(kmer, self.index):
                     if not kmer in novel_kmers:
                         novel_kmers[kmer] = {
-                            'count': kmers[kmer],
-                            'break_point': candidate
+                            'counts': []
+                            'break_points': []
                         }
-        # remove every candidate, this has to be lightweight
+                    novel_kmers[kmer]['counts'].append(kmers[kmer])
+                    novel_kmers[kmer]['break_points'].append(candidate)
+        # remove every candidate, make oupput more concise
         for candidate in remove:
             track.pop(candidate, None)
         # keep only those with high enough coverage
@@ -244,13 +246,17 @@ class CountKmersExactJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def check_cli_arguments(self, args):
+        # requires only --fastq option to specify the file to read from
+        pass
+
     def prepare(self):
         self.event_names = ["chr5_78277739_78278045"]
         self.minimum_coverage = 5
         self.tracks = {}
 
     def load_inputs(self):
-        c = config.Configuration():
+        c = config.Configuration()
         # 
         for index in range(0, self.num_threads):
             self.batch[index] = {} # avoid overrding extra methods from MapReduce
@@ -330,105 +336,6 @@ class CountKmersExactJob(map_reduce.Job):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
-    #TODO: come up with a cleaner way of oding all this
-    '''
-    def post_process(self):
-        self.event_name = "chr5_78277739_78278045"
-        self.minimum_coverage = 5
-        self.previous_job_name = 'break_point_
-        # load ouput from previous task
-        previous_output = {}
-        with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
-            previous_output = json.load(json_file)
-        previous_output = previous_output[self.event_name]
-        # load merged output
-        b = {}
-        for break_point in previous_output:
-            b[break_point] = {}
-        output = {}
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
-            output = json.load(json_file)
-        for novel_kmer in output['novel_kmer_reads']:
-            break_points = []
-            for break_point in previous_output:
-                if not break_point.startswith('('):
-                    continue
-                if novel_kmer in previous_output[break_point]['kmers']:
-                    break_points.append(break_point)
-                    b[novel_kmer] = True
-            output['novel_kmer_reads'][novel_kmer] = {
-                'reads': output['novel_kmer_reads'][novel_kmer],
-                'break_points': break_points,
-                'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
-                'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
-            }
-        output
-    '''
-
-    '''
-    def post_process(self):
-        self.event_name = "chr5_78277739_78278045"
-        self.minimum_coverage = 5
-        self.previous_job_name = 'break_point_
-        # load ouput from previous task
-        previous_output = {}
-        with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
-            previous_output = json.load(json_file)
-        previous_output = previous_output[self.event_name]
-        # load merged output
-        b = {}
-        for break_point in previous_output:
-            b[break_point] = {}
-        output = {}
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
-            output = json.load(json_file)
-        for novel_kmer in output['novel_kmer_reads']:
-            break_points = []
-            for break_point in previous_output:
-                if not break_point.startswith('('):
-                    continue
-                if novel_kmer in previous_output[break_point]['kmers']:
-                    break_points.append(break_point)
-                    b[novel_kmer] = True
-            output['novel_kmer_reads'][novel_kmer] = {
-                'reads': output['novel_kmer_reads'][novel_kmer],
-                'break_points': break_points,
-                'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
-                'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
-            }
-        output
-    '''
-
-    '''
-    def post_process(self):
-        self.event_name = "chr5_78277739_78278045"
-        self.minimum_coverage = 5
-        # load ouput from previous task
-        previous_output = {}
-        with open(os.path.join(self.get_previous_job_directory(), 'batch_29.json'), 'r') as json_file:
-            previous_output = json.load(json_file)
-        previous_output = previous_output[self.event_name]
-        # load merged output
-        output = {}
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'r') as json_file:
-            output = json.load(json_file)
-        # add kmer coverage data
-        for novel_kmer in output['novel_kmer_reads']:
-            output['novel_kmer_reads'][novel_kmer] = {
-                'reads': output['novel_kmer_reads'][novel_kmer],
-                'actual_coverage': len(output['novel_kmer_reads'][novel_kmer]),
-                'khmer_coverage': previous_output['novel_kmers'][novel_kmer]
-            }
-        # ouput newly formated output
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
-    '''
-    '''
-    def get_current_job_directory(self):
-        # get rid of the final _
-        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], self.event_name))
-    '''
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job to produce a kmer signature for each break point of a deletion
@@ -486,6 +393,6 @@ if __name__ == '__main__':
     #
     novel = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
-    reads = HighNovelKmerReadsJobs(job_name = 'reads_', previous_job_name = 'novel_')
+    exact = CountKmersExactJob(job_name = 'reads_', previous_job_name = 'novel_')
     #
-    reads.execute()
+    exact.execute()
