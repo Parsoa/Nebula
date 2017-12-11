@@ -123,7 +123,10 @@ class CountTableServer(socketserver.TCPServer):
 
     def serve_forever(self):
         while True:
-            self.handle_request()
+            try:
+                self.handle_request()
+            except Exception as e:
+                print(e)
         return
 
     def handle_request(self):

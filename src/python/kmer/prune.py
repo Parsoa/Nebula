@@ -102,7 +102,7 @@ class NovelKmerJob(map_reduce.Job):
                 if is_kmer_novel(kmer, self.index):
                     if not kmer in novel_kmers:
                         novel_kmers[kmer] = {
-                            'counts': []
+                            'counts': [],
                             'break_points': []
                         }
                     novel_kmers[kmer]['counts'].append(kmers[kmer])

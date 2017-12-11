@@ -38,6 +38,9 @@ class Job(object):
     def prepare(self):
         pass
 
+    def check_cli_arguments(self, args):
+        pass
+
     def execute(self, **kwargs):
         c = config.Configuration()
         if 'batches_to_run' in kwargs:
