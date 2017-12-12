@@ -54,6 +54,12 @@ class BreakPoint(object):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job for finding StructuralVariation breakpoints
+# Algorithm: starts with a set of structural variation events and their approximate breakpoints and tries to refine them
+# considers a radius of [-50, 50] around each end of the breakpoint, and for each pair of endpoints within that radius considers
+# the area as the structural variations and applies it to the reference genome to generate a set of kmers. Discards those endpoints
+# whose kmers do not all appear in the base genome the event was detected in. 
+# Output: Reports the remaining boundary candidates with their list of associated kmers and the count of those kmers in the
+# base genome.
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -146,46 +152,7 @@ class BreakPointJob(map_reduce.Job):
                 frontier[break_point] = True
         return frontier
 
-    '''
-    # TODO: this is unnecessarilly complex and should be replaced with the commented version below
-    # prunes a break points if not all its kmers appear in the kmer count table
-    def prune_boundary_candidates(self, frontier, sv):
-        c = config.Configuration()
-        # instead of checking all of a breakpoint's kmers at once, check them iteratively, hopefully faster
-        # there will be c.ksize kmers at max
-        for i in range(0, c.ksize) :
-            remove = {}
-            for break_point in frontier :
-                kmers = []
-                # due to repeats, it is possible that less than 2*ksize unique kmers appear
-                n = 0
-                if 2 * i < len(break_point.kmer_list):
-                    kmers.append(break_point.kmer_list[2 * i])
-                    n = 1
-                    if (2 * i) + 1 < len(break_point.kmer_list):
-                        kmers.append(break_point.kmer_list[(2 * i) + 1])
-                        n = 2
-                else :
-                    continue
-                score = self.calc_similarity_score(kmers)
-                break_point.score += score
-                if score != n :
-                    remove[break_point] = True
-            for break_point in remove:
-                # print('removed: ', break_point.name)
-                frontier.pop(break_point, None)
-        return frontier
-
-    def calc_similarity_score(self, kmers):
-        result = {}
-        for kmer in kmers:
-            count = count_server.get_kmer_count(kmer, self.index, False)
-            if count:
-                result[kmer] = count
-        return len(result)
-    '''
-
-    # prunes a break points if not all its kmers appear in the kmer count table
+    # prunes a break points if not all its kmers appear in the counttable
     def prune_boundary_candidates(self, frontier, sv):
         c = config.Configuration()
         remove = {}

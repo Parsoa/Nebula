@@ -102,10 +102,10 @@ class NovelKmerJob(map_reduce.Job):
                 if is_kmer_novel(kmer, self.index):
                     if not kmer in novel_kmers:
                         novel_kmers[kmer] = {
-                            'counts': [],
+                            'count': [],
                             'break_points': []
                         }
-                    novel_kmers[kmer]['counts'].append(kmers[kmer])
+                    novel_kmers[kmer]['count'] = kmers[kmer]
                     novel_kmers[kmer]['break_points'].append(candidate)
         # remove every candidate, make oupput more concise
         for candidate in remove:
@@ -267,8 +267,8 @@ class CountKmersExactJob(map_reduce.Job):
                 # find the tracks we are interested
                 for track in batch:
                     for event_name in self.event_names:
-                        if self.event_name in track:
-                            self.tracks[event_name] = self.batch[index][track]
+                        if event_name in track:
+                            self.tracks[event_name] = batch[index][track]
                             print('found', track)
 
     def run_batch(self, batch):
