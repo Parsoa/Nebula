@@ -59,6 +59,7 @@ class Job(object):
     def post_process(self):
         pass
 
+    # this is upperbounded by --threads cli argument
     def find_thread_count(self):
         c = config.Configuration()
         max_index = 0

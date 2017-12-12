@@ -268,7 +268,7 @@ class CountKmersExactJob(map_reduce.Job):
                 for track in batch:
                     for event_name in self.event_names:
                         if event_name in track:
-                            self.tracks[event_name] = batch[index][track]
+                            self.tracks[event_name] = batch[track]
                             print('found', track)
 
     def run_batch(self, batch):
@@ -305,9 +305,10 @@ class CountKmersExactJob(map_reduce.Job):
                             if not novel_kmer in output[track]['novel_kmers']:
                                 output[track]['novel_kmers'][novel_kmer] = {
                                     'count': novel_kmers[novel_kmer]['count'],
-                                    'break_point': novel_kmers[novel_kmer]['break_point'],
+                                    'break_points': novel_kmers[novel_kmer]['break_points'],
                                     'actual_count': 0,
                                 }
+                            # update the exact count of the kmer
                             output[track]['novel_kmers'][novel_kmer]['actual_count'] += 1
         return output
 
@@ -331,7 +332,7 @@ class CountKmersExactJob(map_reduce.Job):
                                 'actual_count': 0
                             }
                         output[track]['novel_kmers'][novel_kmer]['actual_count'] += novel_kmers[novel_kmer]['actual_count']
-                        output[track]['novel_kmers'][novel_kmer]['break_point'] = novel_kmers[novel_kmer]['break_point']
+                        output[track]['novel_kmers'][novel_kmer]['break_points'] = novel_kmers[novel_kmer]['break_points']
                         output[track]['novel_kmers'][novel_kmer]['count'] = novel_kmers[novel_kmer]['count']
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
@@ -385,15 +386,16 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bed")
-    parser.add_argument("--fastq")
-    parser.add_argument("--reference")
+    parser.add_argument("--bed", default = 'CHM1_Lumpy.Del.100bp.DEL.bed')
+    parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
+    parser.add_argument("--threads", type = int, default = 48)
+    parser.add_argument("--reference", default = 'hg38')
     args = parser.parse_args()
     #
-    config.configure(reference_genome = args.reference, fastq_file = args.fastq, bed_file = args.bed)
+    config.configure(reference_genome = args.reference, fastq_file = args.fastq, bed_file = args.bed, num_threads = int(args.threads))
     #
     novel = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
     overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
-    exact = CountKmersExactJob(job_name = 'reads_', previous_job_name = 'novel_')
+    exact = CountKmersExactJob(job_name = 'exact_', previous_job_name = 'novel_')
     #
     exact.execute()

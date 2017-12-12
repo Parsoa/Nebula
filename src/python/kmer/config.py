@@ -60,7 +60,7 @@ class Configuration:
 # ============================================================================================================================ #
 
 def configure(reference_genome = 'hg38', fastq_file = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref',
-        bed_file = "CHM1_Lumpy.Del.100bp.DEL.bed"):
+        bed_file = 'CHM1_Lumpy.Del.100bp.DEL.bed', num_threads = 48):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -77,7 +77,7 @@ def configure(reference_genome = 'hg38', fastq_file = '/share/hormozdiarilab/Dat
         genome_chm1 = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
         genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
-        max_threads = 48
+        max_threads = num_threads
         khmer_num_tables = 4
         khmer_table_size = 16e9
     #
