@@ -85,6 +85,15 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
 class NovelKmerJob(map_reduce.Job):
 
     # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch():
+        job = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
+        job.execute()
+
+    # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
 
@@ -124,6 +133,15 @@ class NovelKmerJob(map_reduce.Job):
 # ============================================================================================================================ #
 
 class NovelKmerOverlapJob(map_reduce.Job):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch():
+        job = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
+        job.execute()
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -208,6 +226,19 @@ class NovelKmerOverlapJob(map_reduce.Job):
 # ============================================================================================================================ #
 
 class CountKmersExactJob(map_reduce.Job):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch():
+        job = CountKmersExactJob(job_name = 'exact_', previous_job_name = 'novel_')
+        job.execute()
+
+    # ============================================================================================================================ #
+    # job-specific stuff
+    # ============================================================================================================================ #
 
     def parse_fastq(self):
         name = None
@@ -339,63 +370,10 @@ class CountKmersExactJob(map_reduce.Job):
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
-# ============================================================================================================================ #
-# MapReduce job to produce a kmer signature for each break point of a deletion
-# Step 1: get the break points all of which's kmers are found in CHM1, these are the possible candidates for the structural
-# variation's boundaries -> BreakPointJob
-# Step 2: Find a set of novel kmers for each break point that can be used to indentify it. khmer never underestimates counts so
-# if a kmer comes with a count of zero in reference genome, we can be sure that it is really novel -> NovelKmerJob
-# Step 3: khmer may report oversetimated counts for these break points so we need to count them exactly again. This is necessary
-# for a reliable likelihood model -> CountKmersExactJob
-# Step 4: With exact kmer counts available, we can find the most likely break points for each event in our library -> MostLikelyBreakPointsJob
-# Step 5: Given a sample genome, try to genotype the structural variations using the likelihood model and signatures gathered
-# above.
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class MostLikelyBreakPointsJob(map_reduce.Job):
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def transform(self, track, track_name):
-        remove = {}
-        novel_kmers = {}
-        for candidate in track:
-            # remove all candidates eventually
-            remove[candidate] = True
-            # skip the json key holding the number of candidates
-            if candidate.find('candidates') != -1:
-                continue
-            kmers = track[candidate]['kmers']
-            for kmer in kmers:
-                if is_kmer_novel(kmer, self.index):
-                    if not kmer in novel_kmers:
-                        novel_kmers[kmer] = kmers[kmer]
-        # remove every candidate, this has to be lightweight
-        for candidate in remove:
-            track.pop(candidate, None)
-        # keep only those with high enough coverage
-        track['novel_kmers'] = novel_kmers
-        return track
-
-# ============================================================================================================================ #
 # Main
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--bed", default = 'CHM1_Lumpy.Del.100bp.DEL.bed')
-    parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
-    parser.add_argument("--threads", type = int, default = 48)
-    parser.add_argument("--reference", default = 'hg38')
-    args = parser.parse_args()
-    #
-    config.configure(reference_genome = args.reference, fastq_file = args.fastq, bed_file = args.bed, num_threads = int(args.threads))
-    #
-    novel = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
-    overlap = NovelKmerOverlapJob(job_name = 'overlap_', previous_job_name = 'novel_')
-    exact = CountKmersExactJob(job_name = 'exact_', previous_job_name = 'novel_')
-    #
-    exact.execute()
+    config.parse_args()
+    # 
+    CountKmersExactJob.launch()

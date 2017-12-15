@@ -17,6 +17,7 @@ class Configuration:
         def __init__(self,
                         ksize,\
                         bed_file,\
+                        coverage,\
                         fastq_file,\
                         genome_chm1,\
                         genome_hg19,\
@@ -30,6 +31,7 @@ class Configuration:
                         reference_count_server_port):
             self.ksize = ksize
             self.bed_file = bed_file
+            self.coverage = coverage
             self.fastq_file = fastq_file
             self.genome_chm1 = genome_chm1
             self.genome_hg19 = genome_hg19
@@ -59,8 +61,21 @@ class Configuration:
 # Configuration
 # ============================================================================================================================ #
 
-def configure(reference_genome = 'hg38', fastq_file = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref',
-        bed_file = 'CHM1_Lumpy.Del.100bp.DEL.bed', num_threads = 48):
+def init():
+    configure(parse_args())
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bed", default = 'CHM1_Lumpy.Del.100bp.DEL.bed')
+    parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
+    parser.add_argument("--threads", type = int, default = 48)
+    parser.add_argument("--coverage", type = int, default = 30)
+    parser.add_argument("--reference", default = 'hg38')
+    args = parser.parse_args()
+    #
+    return args
+1
+def configure(args):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
         genome_chm1 = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -77,20 +92,21 @@ def configure(reference_genome = 'hg38', fastq_file = '/share/hormozdiarilab/Dat
         genome_chm1 = '/share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq'
         genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
         genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
-        max_threads = num_threads
+        max_threads = args.threads
         khmer_num_tables = 4
         khmer_table_size = 16e9
     #
     Configuration(
         ksize = 31,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/' + bed_file)),
-        fastq_file = os.path.abspath(fastq_file),
+            '../../../data/' + args.bed)),
+        coverage = args.coverage,
+        fastq_file = os.path.abspath(os.path.abspath(args.fastq)),
         genome_chm1 = genome_chm1,
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         max_threads = max_threads,
-        reference_genome = genome_hg19 if reference_genome == 'hg19' else genome_hg38,
+        reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
