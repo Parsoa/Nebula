@@ -199,7 +199,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = NovelKmerJob(job_name = 'MostLikelyBreakPoints_', previous_job_name = 'novel_')
+        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPoints_', previous_job_name = 'novel_')
         job.execute()
 
     # ============================================================================================================================ #
