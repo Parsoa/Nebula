@@ -65,7 +65,8 @@ def kill():
 def get_kmer_count(kmer, index, ref):
     c = config.Configuration()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    port = c.reference_count_server_port if ref else c.sample_count_server_port
+    port = c.count_server_port
+    # port = c.reference_count_server_port if ref else c.sample_count_server_port
     s.connect(('localhost', port + index))
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size
@@ -119,6 +120,7 @@ class CountTableServer(socketserver.TCPServer):
         # load k-mer counts
         # this is shared between all children
         children = {}
+        port = c.count_server_port
         print('spawning chlidren ...')
         for i in range(0, c.max_threads) :
             pid = os.fork()
