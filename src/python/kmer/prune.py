@@ -335,10 +335,10 @@ class CountKmersExactJob(map_reduce.Job):
             for track in self.tracks:
                 novel_kmers = self.tracks[track]['novel_kmers']
                 for novel_kmer in novel_kmers:
-                    # consider reverse complement as well
-                    reverse_complement = bed.reverse_complement_sequence(novel_kmer)
                     # only look at those which appear more than a threshold
                     if novel_kmers[novel_kmer]['count'] >= self.minimum_coverage:
+                        # consider reverse complement as well
+                        reverse_complement = bed.reverse_complement_sequence(novel_kmer)
                         # read supports this novel kmer
                         if read.find(novel_kmer) != -1 or read.find(reverse_complement) != -1:
                             # add the kmer to output only now, should reduce memory footprint
