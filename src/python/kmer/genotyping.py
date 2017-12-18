@@ -50,7 +50,7 @@ class GenotypingJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPoints_')
+        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'novel_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -66,21 +66,16 @@ class GenotypingJob(map_reduce.Job):
             (1, 0): statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
             (0, 0): statistics.ErrorDistribution(p = 1.0 / 1000),
         }
-        zygosity = [(1, 1), (1, 0), (0, 0)]
-        break_points = []
+        likelihood = {
+            (1, 1): 0,
+            (1, 0): 0,
+            (0, 0): 0,
+        }
+        # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
         for kmer in track:
-            for break_point in track[kmer]['break_points']:
-                if not break_point in likelihood:
-                    likelihood[break_point] = {
-                        (1, 1): 1,
-                        (1, 0): 1,
-                    }
-                    break_points.append(break_point)
-                for zyg in zygosity:
-                    likelihood[break_point][zyg] *= distribution[zyg](track[kmer]['actual_count'])
-        # TODO: each term should be multiplied by P(zyg | pb) , how to calculate
-        output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
-        return output
+            for zyg in likelihood:
+                likelihood[zyg] += math.log(distribution[zyg](count_server.get_kmer_count(kmer, self.index, False)))
+        return likelihood
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

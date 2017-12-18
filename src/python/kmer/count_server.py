@@ -118,8 +118,8 @@ class CountTableServer(socketserver.TCPServer):
     def run_server():
         c = config.Configuration()
         # 
-        counttable.export_counttable(genome)
-        CountTableServerHandler.khmer_counttable = counttable.import_counttable(genome)
+        counttable.export_counttable(c.reference_genome)
+        CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.reference_genome)
         # load k-mer counts
         # this is shared between all children
         children = {}
