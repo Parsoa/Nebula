@@ -117,6 +117,9 @@ class CountTableServer(socketserver.TCPServer):
     @staticmethod
     def run_server():
         c = config.Configuration()
+        # 
+        counttable.export_counttable(genome)
+        CountTableServerHandler.khmer_counttable = counttable.import_counttable(genome)
         # load k-mer counts
         # this is shared between all children
         children = {}
