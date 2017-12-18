@@ -96,6 +96,12 @@ def configure(args):
         khmer_num_tables = 4
         khmer_table_size = 16e9
     #
+    reference_genome = genome_hg19 if args.reference == 'hg19' else\
+        genome_hg38 if args.reference == 'hg38' else\
+        genome_chm1 if args.reference == 'hg19' else os.path,abspath(args.reference),
+    if not os.path.isfile(reference_genome):
+        print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
+        exit()
     Configuration(
         ksize = 31,
         bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
@@ -106,7 +112,7 @@ def configure(args):
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         max_threads = max_threads,
-        reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38,
+        reference_genome = reference_genome,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\

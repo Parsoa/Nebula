@@ -22,6 +22,11 @@ from kmer import (
     count_server,
 )
 
+# /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00732.fq
+# /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00731.fq
+# /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00513.fq
+# /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00512.fq
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job to produce a kmer signature for each break point of a deletion
@@ -59,9 +64,9 @@ class GenotypingJob(map_reduce.Job):
         distribution = {
             (1, 1): statistics.NormalDistribution(mean = c.coverage, std = 5),
             (1, 0): statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
-            (0, 0): statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
+            (0, 0): statistics.ErrorDistribution(p = 1.0 / 1000),
         }
-        zygosity = [(1, 1), (1, 0)]
+        zygosity = [(1, 1), (1, 0), (0, 0)]
         break_points = []
         for kmer in track:
             for break_point in track[kmer]['break_points']:

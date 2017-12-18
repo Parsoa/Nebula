@@ -206,6 +206,30 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    # def transform(self, track, track_name):
+    #     c = config.Configuration()
+    #     likelihood = {}
+    #     # TODO: proper value for std?
+    #     distribution = {
+    #         (1, 1): statistics.NormalDistribution(mean = c.coverage, std = 5),
+    #         (1, 0): statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
+    #     }
+    #     zygosity = [(1, 1), (1, 0)]
+    #     break_points = []
+    #     for kmer in track:
+    #         for break_point in track[kmer]['break_points']:
+    #             if not break_point in likelihood:
+    #                 likelihood[break_point] = {
+    #                     (1, 1): 1,
+    #                     (1, 0): 1,
+    #                 }
+    #                 break_points.append(break_point)
+    #             for zyg in zygosity:
+    #                 likelihood[break_point][zyg] *= distribution[zyg](track[kmer]['actual_count'])
+    #     # TODO: each term should be multiplied by P(zyg | pb) , how to calculate
+    #     output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
+    #     return output
+
     def transform(self, track, track_name):
         c = config.Configuration()
         likelihood = {}
