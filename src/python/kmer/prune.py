@@ -282,6 +282,13 @@ class CountKmersExactJob(map_reduce.Job):
                 line = self.fastq_file.readline()
                 continue
 
+    def get_all_kmers(read, k):
+        kmers = {}
+        for i in range(0, len(read) - k + 1):
+            kmer = str[i : i + k]
+            kmers.append(kmer)
+        return kmers
+
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
@@ -332,24 +339,32 @@ class CountKmersExactJob(map_reduce.Job):
             }
         # 
         for read, name in self.parse_fastq():
-            for track in self.tracks:
-                novel_kmers = self.tracks[track]['novel_kmers']
-                for novel_kmer in novel_kmers:
-                    # only look at those which appear more than a threshold
-                    if novel_kmers[novel_kmer]['count'] >= self.minimum_coverage:
-                        # consider reverse complement as well
-                        reverse_complement = bed.reverse_complement_sequence(novel_kmer)
-                        # read supports this novel kmer
-                        if read.find(novel_kmer) != -1 or read.find(reverse_complement) != -1:
-                            # add the kmer to output only now, should reduce memory footprint
-                            if not novel_kmer in output[track]['novel_kmers']:
-                                output[track]['novel_kmers'][novel_kmer] = {
-                                    'count': novel_kmers[novel_kmer]['count'],
-                                    'break_points': novel_kmers[novel_kmer]['break_points'],
-                                    'actual_count': 0,
-                                }
-                            # update the exact count of the kmer
-                            output[track]['novel_kmers'][novel_kmer]['actual_count'] += 1
+            kmers = get_all_kmers(read, c.ksize)
+            for kmer in kmers:
+                # consider reverse complement as well
+                reverse_complement = bed.reverse_complement_sequence(kmer)
+                for track in self.tracks:
+                    novel_kmers = self.tracks[track]['novel_kmers']
+                    if kmer in novel_kmers or reverse_complement in novel_kmers:
+                        normal = False
+                        reverse = False
+                        if kmer in novel_kmers:
+                            novel_kmer = kmer
+                            normal = True
+                        if reverse_complement in novel_kmers:
+                            novel_kmer = reverse_complement
+                            reverse = True
+                        if normal and reverse:
+                            print('BOTH APPEAR')
+                        # add the kmer to output only now, should reduce memory footprint
+                        if not novel_kmer in output[track]['novel_kmers']:
+                            output[track]['novel_kmers'][novel_kmer] = {
+                                'count': novel_kmers[novel_kmer]['count'],
+                                'break_points': novel_kmers[novel_kmer]['break_points'],
+                                'actual_count': 0,
+                            }
+                        # update the exact count of the kmer
+                        output[track]['novel_kmers'][novel_kmer]['actual_count'] += 1
         return output
 
     def reduce(self):
