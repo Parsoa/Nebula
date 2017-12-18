@@ -15,7 +15,6 @@ from multiprocessing import Process
 from kmer import (
     bed,
     sets,
-    fastq,
     config,
     commons,
     counttable,
@@ -249,6 +248,8 @@ class CountKmersExactJob(map_reduce.Job):
         state = HEADER_LINE
         # need to skip invalid lines
         line = self.fastq_file.readline()
+        n = 0
+        t = time.time()
         while line:
             if state == HEADER_LINE:
                 if line[0] == '@':
@@ -261,6 +262,14 @@ class CountKmersExactJob(map_reduce.Job):
             if state == SEQUENCE_LINE:
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
+                n += 1
+                if n == 5000:
+                    n = 0
+                    c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
+                    s = time.time()
+                    p = c / float(self.fastq_file_chunk_size)
+                    e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                    print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
                 yield seq, name
                 line = self.fastq_file.readline()
                 continue
