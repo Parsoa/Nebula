@@ -282,10 +282,10 @@ class CountKmersExactJob(map_reduce.Job):
                 line = self.fastq_file.readline()
                 continue
 
-    def get_all_kmers(read, k):
-        kmers = {}
+    def get_all_kmers(self, read, k):
+        kmers = []
         for i in range(0, len(read) - k + 1):
-            kmer = str[i : i + k]
+            kmer = read[i : i + k]
             kmers.append(kmer)
         return kmers
 
@@ -339,7 +339,7 @@ class CountKmersExactJob(map_reduce.Job):
             }
         # 
         for read, name in self.parse_fastq():
-            kmers = get_all_kmers(read, c.ksize)
+            kmers = self.get_all_kmers(read, c.ksize)
             for kmer in kmers:
                 # consider reverse complement as well
                 reverse_complement = bed.reverse_complement_sequence(kmer)

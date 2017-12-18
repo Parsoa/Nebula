@@ -13,4 +13,4 @@ cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv/bin/activate
 cd src/python
 
-python -m kmer.prune --reference hg19 --fastq /share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq --threads 24
+python -m kmer.prune --fastq /share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq --threads 48
