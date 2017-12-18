@@ -374,6 +374,6 @@ class CountKmersExactJob(map_reduce.Job):
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
-    config.parse_args()
+    config.init()
     # 
     CountKmersExactJob.launch()

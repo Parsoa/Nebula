@@ -74,7 +74,7 @@ def parse_args():
     args = parser.parse_args()
     #
     return args
-1
+
 def configure(args):
     if sys.platform == "darwin":
         print('Running on Mac OS X')
@@ -98,7 +98,7 @@ def configure(args):
     #
     reference_genome = genome_hg19 if args.reference == 'hg19' else\
         genome_hg38 if args.reference == 'hg38' else\
-        genome_chm1 if args.reference == 'hg19' else os.path,abspath(args.reference),
+        genome_chm1 if args.reference == 'chm1' else os.path,abspath(args.reference)
     if not os.path.isfile(reference_genome):
         print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
         exit()

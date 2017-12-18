@@ -183,6 +183,6 @@ class CountTableServer(socketserver.TCPServer):
 # ================================================================================================= #
 
 if __name__ == '__main__':
-    config.parse_args()
+    config.init()
     # 
     CountTableServer.run_server()
