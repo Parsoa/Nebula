@@ -238,7 +238,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for zyg in zygosity:
                     overflow = False
                     try:
-                        r = math.log(distribution[zyg](track[kmer]['actual_count']))
+                        r = distribution[zyg].log_pmf(track[kmer]['actual_count'])
                     except Exception as e:
                         overflow = True
                     if not overflow:
