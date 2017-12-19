@@ -28,6 +28,9 @@ import khmer
 import colorama
 import pybedtools
 
+import plotly.offline as plotly
+import plotly.graph_objs as graph_objs
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -261,9 +264,9 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                         # TODO: fix this
                         x[begin + self.radius].append(-1000)
             path = os.path.join(self.get_current_job_directory(), track + '.html')
-            trace = go.Heatmap(z = x)
+            trace = graph_objs.Heatmap(z = x)
             data = [trace]
-            plotly.plot(fig, filename = path)
+            plotly.plot(data, filename = path)
 
 # ============================================================================================================================ #
 # Main
