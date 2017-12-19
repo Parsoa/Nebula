@@ -195,29 +195,65 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    # this is upperbounded by --threads cli argument
+    def find_thread_count(self):
+        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
+            tracks = json.load(json_file)
+            self.tracks = tracks
+            self.num_threads = len(tracks)
+            print('num thread: ', self.num_threads)
+
+    # As the CountKmersExactJob job doesn't work quite exactly as MapReduce expects, we need to fiddle with the input data
+    # here to make it adhere to that format
+    def load_inputs(self):
+        index = 0
+        for track in self.tracks:
+            self.batch[index] = {
+                track: self.tracks[track]
+            }
+            index += 1
+
     def transform(self, track, track_name):
         c = config.Configuration()
         likelihood = {}
         # TODO: proper value for std?
         distribution = {
-            (1, 1): statistics.NormalDistribution(mean = c.coverage, std = 5),
-            (1, 0): statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
+            '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = 5),
+            '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
         }
-        zygosity = [(1, 1), (1, 0)]
+        zygosity = ['(1, 1)', '(1, 0)']
         break_points = []
         for kmer in track:
             for break_point in track[kmer]['break_points']:
                 if not break_point in likelihood:
                     likelihood[break_point] = {
-                        (1, 1): 0,
-                        (1, 0): 0,
+                        '(1, 1)': 0,
+                        '(1, 0)': 0,
                     }
                     break_points.append(break_point)
                 for zyg in zygosity:
                     likelihood[break_point][zyg] += math.log(distribution[zyg](track[kmer]['actual_count']))
-        # TODO: each term should be multiplied by P(zyg | pb) , how to calculate
-        output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
-        return output
+        # TODO: each term should be multiplied by P(zyg | bp) , how to calculate
+        # output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
+        return likelihood
+
+    def plot(self, tracks):
+        self.radius = 50
+        for track in tracks:
+            x = []
+            for begin in range(-self.radius, self.radius + 1) :
+                x.append([])
+                for end in range(-self.radius, self.radius + 1) :
+                    break_point = '(' + str(begin) + ',' + str(end) + ')'
+                    if break_point in tracks[track]:
+                        x[begin + self.radius][end + self.radius] = tracks[track][break_point]['(1, 1)'] + tracks[track][break_point]['(1, 0)']
+                    else:
+                        # TODO: fix this
+                        x[begin + self.radius][end + self.radius] = -1000
+            path = os.path.join(self.get_current_job_directory(), track + '.html')
+            trace = go.Heatmap(z = x)
+            data = [trace]
+            plotly.plot(fig, filename = path)
 
 # ============================================================================================================================ #
 # Main

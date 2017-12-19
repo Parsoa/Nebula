@@ -84,4 +84,4 @@ class GenotypingJob(map_reduce.Job):
 if __name__ == '__main__':
     config.init()
     #
-    MostLikelyBreakPointsJob.launch()
+    GenotypingJob.launch()
