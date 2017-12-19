@@ -230,8 +230,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         }
         zygosity = ['(1, 1)', '(1, 0)']
         break_points = []
-        for kmer in track:
-            for break_point in track[kmer]['break_points']:
+        for kmer in track['novel_kmers']:
+            for break_point in track['novel_kmers'][kmer]['break_points']:
                 if not break_point in likelihood:
                     likelihood[break_point] = {
                         '(1, 1)': 0,
@@ -241,7 +241,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for zyg in zygosity:
                     overflow = False
                     try:
-                        r = distribution[zyg].log_pmf(track[kmer]['actual_count'])
+                        r = distribution[zyg].log_pmf(track['novel_kmers'][kmer]['actual_count'])
                     except Exception as e:
                         overflow = True
                     if not overflow:
@@ -266,7 +266,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             path = os.path.join(self.get_current_job_directory(), track + '.html')
             trace = graph_objs.Heatmap(z = x)
             data = [trace]
-            plotly.plot(data, filename = path)
+            plotly.plot(data, filename = path, auto_open = False)
 
 # ============================================================================================================================ #
 # Main
