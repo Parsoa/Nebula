@@ -59,7 +59,7 @@ class GenotypingJob(map_reduce.Job):
 
     def transform(self, track, track_name):
         c = config.Configuration()
-        likelihood = {}
+        likelihood = {}qy
         # TODO: proper value for std?
         distribution = {
             (1, 1): statistics.NormalDistribution(mean = c.coverage, std = 5),

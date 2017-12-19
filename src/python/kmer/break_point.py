@@ -195,6 +195,10 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def check_cli_arguments(self, args):
+        # requires only --coverage option to specify the read depth
+        pass
+
     # this is upperbounded by --threads cli argument
     def find_thread_count(self):
         with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
@@ -232,7 +236,13 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     }
                     break_points.append(break_point)
                 for zyg in zygosity:
-                    likelihood[break_point][zyg] += math.log(distribution[zyg](track[kmer]['actual_count']))
+                    overflow = False
+                    try:
+                        r = math.log(distribution[zyg](track[kmer]['actual_count']))
+                    except Exception as e:
+                        overflow = True
+                    if not overflow:
+                        likelihood[break_point][zyg] += r
         # TODO: each term should be multiplied by P(zyg | bp) , how to calculate
         # output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
         return likelihood
@@ -246,10 +256,10 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for end in range(-self.radius, self.radius + 1) :
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
                     if break_point in tracks[track]:
-                        x[begin + self.radius][end + self.radius] = tracks[track][break_point]['(1, 1)'] + tracks[track][break_point]['(1, 0)']
+                        x[begin + self.radius].append(tracks[track][break_point]['(1, 1)'] + tracks[track][break_point]['(1, 0)'])
                     else:
                         # TODO: fix this
-                        x[begin + self.radius][end + self.radius] = -1000
+                        x[begin + self.radius].append(-1000)
             path = os.path.join(self.get_current_job_directory(), track + '.html')
             trace = go.Heatmap(z = x)
             data = [trace]
