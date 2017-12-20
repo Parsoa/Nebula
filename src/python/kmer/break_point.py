@@ -236,8 +236,10 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     likelihood[break_point] = {
                         '(1, 1)': 0,
                         '(1, 0)': 0,
+                        'kmers': 0
                     }
                     break_points.append(break_point)
+                likelihood[break_point]['kmers'] += 1
                 for zyg in zygosity:
                     overflow = False
                     try:
@@ -251,6 +253,27 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         return likelihood
 
     def plot(self, tracks):
+        self.plot_likelihood_heatmap()
+        self.plot_kmer_count_heatmap()
+
+    def plot_kmer_count_heatmap(self, tracks):
+        self.radius = 50
+        for track in tracks:
+            x = []
+            for begin in range(-self.radius, self.radius + 1) :
+                x.append([])
+                for end in range(-self.radius, self.radius + 1) :
+                    break_point = '(' + str(begin) + ',' + str(end) + ')'
+                    if break_point in tracks[track]:
+                        x[begin + self.radius].append(tracks[track][break_point]['kmers'])
+                    else:
+                        x[begin + self.radius].append(0)
+            path = os.path.join(self.get_current_job_directory(), track + '_kmer_count.html')
+            trace = graph_objs.Heatmap(z = x)
+            data = [trace]
+            plotly.plot(data, filename = path, auto_open = False)
+
+    def plot_likelihood_heatmap(self, tracks):
         self.radius = 50
         for track in tracks:
             x = []
@@ -262,8 +285,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                         x[begin + self.radius].append(tracks[track][break_point]['(1, 1)'] + tracks[track][break_point]['(1, 0)'])
                     else:
                         # TODO: fix this
-                        x[begin + self.radius].append(-1000)
-            path = os.path.join(self.get_current_job_directory(), track + '.html')
+                        x[begin + self.radius].append(1000)
+            path = os.path.join(self.get_current_job_directory(), track + '_likelihood.html')
             trace = graph_objs.Heatmap(z = x)
             data = [trace]
             plotly.plot(data, filename = path, auto_open = False)
