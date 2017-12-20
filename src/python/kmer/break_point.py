@@ -222,41 +222,35 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def transform(self, track, track_name):
         c = config.Configuration()
-        likelihood = {}
         # TODO: proper value for std?
         distribution = {
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = 5),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
+            '(0, 0)': statistics.ErrorDistribution(1.0 / 1000)
         }
-        zygosity = ['(1, 1)']#, '(1, 0)']
+        # find all the break points
+        likelihood = {}
         break_points = []
         for kmer in track['novel_kmers']:
             for break_point in track['novel_kmers'][kmer]['break_points']:
-                if not break_point in likelihood:
-                    likelihood[break_point] = {
-                        '(1, 1)': 0,
-                        '(1, 0)': 0,
-                        'kmers': 0,
-                        'normalized': 0
-                    }
+                if not break_point in break_points:
                     break_points.append(break_point)
-                likelihood[break_point]['kmers'] += 1
-                for zyg in zygosity:
-                    overflow = False
-                    try:
-                        r = distribution[zyg].log_pmf(track['novel_kmers'][kmer]['actual_count'])
-                    except Exception as e:
-                        overflow = True
-                    if not overflow:
-                        likelihood[break_point][zyg] += r ** 2
-                        # likelihood[break_point]['normalized'] += r ** 2
-        # TODO: each term should be multiplied by P(zyg | bp) , how to calculate
-        # output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
+                    likelihood[break_point] = 0
+        # calculate likelihoods
+        novel_kmers = track['novel_kmers']
+        for kmer in novel_kmers:
+            for break_point in break_points:
+                if break_point in novel_kmers[kmer]['break_points']:
+                    r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
+                    likelihood[break_point] += r
+                else:
+                    r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
+                    likelihood[break_point] += r
         return likelihood
 
     def plot(self, tracks):
         self.plot_likelihood_heatmap(tracks)
-        self.plot_kmer_count_heatmap(tracks)
+        # self.plot_kmer_count_heatmap(tracks)
 
     def plot_kmer_count_heatmap(self, tracks):
         self.radius = 50
@@ -284,10 +278,9 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for end in range(-self.radius, self.radius + 1) :
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
                     if break_point in tracks[track]:
-                        x[begin + self.radius].append(math.sqrt(tracks[track][break_point]['(1, 1)']))# + tracks[track][break_point]['(1, 0)'])
+                        x[begin + self.radius].append(math.sqrt(tracks[track][break_point]))
                     else:
-                        # TODO: fix this
-                        x[begin + self.radius].append(1000)
+                        x[begin + self.radius].append(10000)
             path = os.path.join(self.get_current_job_directory(), track + '_likelihood.html')
             trace = graph_objs.Heatmap(z = x)
             data = [trace]

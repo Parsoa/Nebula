@@ -16,5 +16,8 @@ class ErrorDistribution():
     def __init__(self, p):
         self.p = p
 
-    def pmg(self, x):
+    def pmf(self, x):
         return p ** x
+
+    def log_pmf(self, x):
+        return math.log(p ** x)
