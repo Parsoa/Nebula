@@ -17,7 +17,7 @@ class ErrorDistribution():
         self.p = p
 
     def pmf(self, x):
-        return p ** x
+        return self.p ** x
 
     def log_pmf(self, x):
-        return math.log(p ** x)
+        return x * math.log(self.p)

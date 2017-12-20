@@ -5,6 +5,7 @@ import pwd
 import sys
 import copy
 import json
+import math
 import time
 import argparse
 import traceback
@@ -273,14 +274,15 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         self.radius = 50
         for track in tracks:
             x = []
+            m = max(list(map(lambda x: tracks[track], tracks[track].keys())))
             for begin in range(-self.radius, self.radius + 1) :
                 x.append([])
                 for end in range(-self.radius, self.radius + 1) :
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
                     if break_point in tracks[track]:
-                        x[begin + self.radius].append(math.sqrt(tracks[track][break_point]))
+                        x[begin + self.radius].append(tracks[track][break_point])
                     else:
-                        x[begin + self.radius].append(10000)
+                        x[begin + self.radius].append(m / 10)
             path = os.path.join(self.get_current_job_directory(), track + '_likelihood.html')
             trace = graph_objs.Heatmap(z = x)
             data = [trace]
