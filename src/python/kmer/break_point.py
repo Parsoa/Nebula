@@ -252,6 +252,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
                     likelihood[break_point] += r
                     likelihood['kmers'][kmer][break_point] = r
+        likelihood['break_points'] = break_points
         return likelihood
 
     def plot(self, tracks):
@@ -278,26 +279,25 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
     def plot_likelihood_heatmap(self, tracks):
         self.radius = 50
         for track in tracks:
+            z = []
             x = []
-            m = max(list(map(lambda x: tracks[track], tracks[track].keys())))
+            y = []
+            m = max(list(map(lambda x: tracks[track][x], tracks[track]['break_points'])))
             for begin in range(-self.radius, self.radius + 1) :
-                x.append([])
+                z.append([])
+                y.append(begin)
+                x = []
                 for end in range(-self.radius, self.radius + 1) :
+                    x.append(end)
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
                     if break_point in tracks[track]:
-                        x[begin + self.radius].append(tracks[track][break_point])
+                        z[begin + self.radius].append(tracks[track][break_point])
                     else:
-                        x[begin + self.radius].append(m / 10)
+                        z[begin + self.radius].append(m + 1000)
             path = os.path.join(self.get_current_job_directory(), track + '_likelihood.html')
-            trace = graph_objs.Heatmap(z = x)
+            trace = graph_objs.Heatmap(z = z, x = x, y = y)
             data = [trace]
             plotly.plot(data, filename = path, auto_open = False)
-
-# ============================================================================================================================ #
-# Utitlizes the likelihood model to find the most likely breakpoint for each structural variation
-# ============================================================================================================================ #
-
-class MostLikelyBreakPointsJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # Main
