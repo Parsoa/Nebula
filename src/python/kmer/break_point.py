@@ -181,7 +181,7 @@ class BreakPointJob(map_reduce.Job):
         return frontier
 
 # ============================================================================================================================ #
-# ============================================================================================================================ #
+# Utitlizes the likelihood model to find the most likely breakpoint for each structural variation
 # ============================================================================================================================ #
 
 class MostLikelyBreakPointsJob(map_reduce.Job):
@@ -237,16 +237,21 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 if not break_point in break_points:
                     break_points.append(break_point)
                     likelihood[break_point] = 0
+                    likelihood['kmers'] = {}
         # calculate likelihoods
         novel_kmers = track['novel_kmers']
         for kmer in novel_kmers:
             for break_point in break_points:
+                if not kmer in likelihood['kmers']:
+                    likelihood['kmers'][kmer] = {}
                 if break_point in novel_kmers[kmer]['break_points']:
                     r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
                     likelihood[break_point] += r
+                    likelihood['kmers'][kmer][break_point] = r
                 else:
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
                     likelihood[break_point] += r
+                    likelihood['kmers'][kmer][break_point] = r
         return likelihood
 
     def plot(self, tracks):
@@ -287,6 +292,12 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             trace = graph_objs.Heatmap(z = x)
             data = [trace]
             plotly.plot(data, filename = path, auto_open = False)
+
+# ============================================================================================================================ #
+# Utitlizes the likelihood model to find the most likely breakpoint for each structural variation
+# ============================================================================================================================ #
+
+class MostLikelyBreakPointsJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # Main
