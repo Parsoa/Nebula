@@ -228,7 +228,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = 5),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
         }
-        zygosity = ['(1, 1)', '(1, 0)']
+        zygosity = ['(1, 1)']#, '(1, 0)']
         break_points = []
         for kmer in track['novel_kmers']:
             for break_point in track['novel_kmers'][kmer]['break_points']:
@@ -236,7 +236,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     likelihood[break_point] = {
                         '(1, 1)': 0,
                         '(1, 0)': 0,
-                        'kmers': 0
+                        'kmers': 0,
+                        'normalized': 0
                     }
                     break_points.append(break_point)
                 likelihood[break_point]['kmers'] += 1
@@ -248,13 +249,14 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                         overflow = True
                     if not overflow:
                         likelihood[break_point][zyg] += r
+                        likelihood[break_point]['normalized'] += r ** 2
         # TODO: each term should be multiplied by P(zyg | bp) , how to calculate
         # output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
         return likelihood
 
     def plot(self, tracks):
-        self.plot_likelihood_heatmap()
-        self.plot_kmer_count_heatmap()
+        self.plot_likelihood_heatmap(tracks)
+        self.plot_kmer_count_heatmap(tracks)
 
     def plot_kmer_count_heatmap(self, tracks):
         self.radius = 50
@@ -282,7 +284,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for end in range(-self.radius, self.radius + 1) :
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
                     if break_point in tracks[track]:
-                        x[begin + self.radius].append(tracks[track][break_point]['(1, 1)'] + tracks[track][break_point]['(1, 0)'])
+                        x[begin + self.radius].append(tracks[track][break_point]['(1, 1)'])# + tracks[track][break_point]['(1, 0)'])
+                        x[begin + self.radius].append(math.sqrt(tracks[track][break_point]['normalized']))# + tracks[track][break_point]['(1, 0)'])
                     else:
                         # TODO: fix this
                         x[begin + self.radius].append(1000)

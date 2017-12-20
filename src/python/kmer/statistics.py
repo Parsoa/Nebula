@@ -7,10 +7,10 @@ class NormalDistribution():
         self.var = std ** 2
 
     def pmf(self, x):
-        return (1 / math.sqrt(2 * math.pi * self.var)) * math.exp(-1 * ((x - self.std) ** 2) / (2 * self.var))
+        return (1 / math.sqrt(2 * math.pi * self.var)) * math.exp(-1 * ((x - self.mean) ** 2) / (2 * self.var))
 
     def log_pmf(self, x):
-        return math.log(1 / math.sqrt(2 * math.pi * self.var)) - (((x - self.std) ** 2) / (2 * self.var))
+        return math.log(1 / math.sqrt(2 * math.pi * self.var)) - (((x - self.mean) ** 2) / (2 * self.var))
 
 class ErrorDistribution():
     def __init__(self, p):
