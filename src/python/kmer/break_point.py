@@ -248,8 +248,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     except Exception as e:
                         overflow = True
                     if not overflow:
-                        likelihood[break_point][zyg] += r
-                        likelihood[break_point]['normalized'] += r ** 2
+                        likelihood[break_point][zyg] += r ** 2
+                        # likelihood[break_point]['normalized'] += r ** 2
         # TODO: each term should be multiplied by P(zyg | bp) , how to calculate
         # output = map(lambda x: likelihood[x][(1, 1)] + likelihood[x](1, 0), break_points)
         return likelihood
@@ -284,8 +284,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for end in range(-self.radius, self.radius + 1) :
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
                     if break_point in tracks[track]:
-                        x[begin + self.radius].append(tracks[track][break_point]['(1, 1)'])# + tracks[track][break_point]['(1, 0)'])
-                        x[begin + self.radius].append(math.sqrt(tracks[track][break_point]['normalized']))# + tracks[track][break_point]['(1, 0)'])
+                        x[begin + self.radius].append(math.sqrt(tracks[track][break_point]['(1, 1)']))# + tracks[track][break_point]['(1, 0)'])
                     else:
                         # TODO: fix this
                         x[begin + self.radius].append(1000)
