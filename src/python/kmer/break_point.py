@@ -240,18 +240,27 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     likelihood['kmers'] = {}
         # calculate likelihoods
         novel_kmers = track['novel_kmers']
+        s = {}
         for kmer in novel_kmers:
+            likelihood['kmers'][kmer] = {}
             for break_point in break_points:
-                if not kmer in likelihood['kmers']:
-                    likelihood['kmers'][kmer] = {}
+                if not break_point in s:
+                    s[break_point] = ""
                 if break_point in novel_kmers[kmer]['break_points']:
                     r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
+                    if self.index == 0:
+                        s[break_point] = s[break_point] + ' + ' + str(r)
                     likelihood[break_point] += r
                     likelihood['kmers'][kmer][break_point] = r
                 else:
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
+                    if self.index == 0:
+                        s[break_point] = s[break_point] + ' + ' + str(r)
                     likelihood[break_point] += r
                     likelihood['kmers'][kmer][break_point] = r
+        if self.index == 0:
+            for b in break_points:
+                print(b, ':', s[b], '\n')
         likelihood['break_points'] = break_points
         return likelihood
 
