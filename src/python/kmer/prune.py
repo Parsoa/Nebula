@@ -402,12 +402,28 @@ class CountKmersExactJob(map_reduce.Job):
 class KmerNormalDistributionFittingJob(map_reduce.Job):
 
     # ============================================================================================================================ #
+    # job-specific stuff
+    # ============================================================================================================================ #
+
+    def parse_track_file(self, path):
+        tracks = {}
+        with open(path) as bed_file:
+            line = bed_file.readline()
+            while line:
+                tokens = line.split()
+                track = bed.BedTrack(tokens[-3], tokens[-2], tokens[-1])
+                if not track in tracks:
+                    tracks[track.name] = track
+                line = bed_file.readline()
+        return tracks
+
+    # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
     @staticmethod
     def launch():
-        job = KmerNormalDistributionFittingJob(job_name = 'KmerNormalDistributionFittingJob_')
+        job = KmerNormalDistributionFittingJob(job_name = 'KmerNormalDistributionFittingJob_', previous_job_name = "")
         job.execute()
 
     # ============================================================================================================================ #
@@ -429,7 +445,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         # 
-        tracks = bed.read_tracks(config.bed_file)
+        tracks = self.parse_track_file(c.bed_file)
         for i in range(0, self.num_threads):
             self.batch[i] = {} # avoid overrding extra methods from MapReduce
         #
@@ -443,7 +459,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
     def transform(track, track_name, index):
         c = config.Configuration()
         seq = bed.extract_sequence(track)
-        for kmer in get_all_kmers(seq, c.ksize)
+        for kmer in get_all_kmers(seq, c.ksize):
             if not kmer in self.kmers:
                 self.kmers[kmer] = 0
             self.kmers[kmer] += 1

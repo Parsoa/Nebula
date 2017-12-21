@@ -104,8 +104,7 @@ def configure(args):
         exit()
     Configuration(
         ksize = 31,
-        bed_file = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../data/' + args.bed)),
+        bed_file = os.path.abspath(args.bed),
         coverage = args.coverage,
         fastq_file = os.path.abspath(os.path.abspath(args.fastq)),
         genome_chm1 = genome_chm1,
