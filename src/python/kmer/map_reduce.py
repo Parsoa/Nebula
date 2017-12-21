@@ -34,6 +34,12 @@ class Job(object):
         self.batch = {}
         self.children = {}
         self.run_for_certain_batches_only = False
+        self.resume_from_reduce = False
+        if 'batches_to_run' in kwargs:
+            self.run_for_certain_batches_only = True
+            self.batches_to_run = kwargs['batches_to_run']
+        if 'resume_from_reduce' in kwargs:
+            self.resume_from_reduce = True
 
     def prepare(self):
         pass
@@ -41,17 +47,15 @@ class Job(object):
     def check_cli_arguments(self, args):
         pass
 
-    def execute(self, **kwargs):
+    def execute(self):
         c = config.Configuration()
-        if 'batches_to_run' in kwargs:
-            self.run_for_certain_batches_only = True
-            self.batches_to_run = kwargs['batches_to_run']
         self.prepare()
         self.create_output_directories()
         self.find_thread_count()
-        self.load_inputs()
-        self.distribute_workload()
-        self.wait_for_children()
+        if not sel.resume_from_reduce:
+            self.load_inputs()
+            self.distribute_workload()
+            self.wait_for_children()
         self.reduce()
         # self.clean_up()
 
@@ -97,7 +101,7 @@ class Job(object):
         self.output_batch(batch)
         print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
-    def transform(track, track_name, index):
+    def transform(self, track, track_name):
         return track
 
     def output_batch(self, batch):

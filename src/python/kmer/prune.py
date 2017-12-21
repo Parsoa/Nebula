@@ -411,8 +411,8 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
             line = bed_file.readline()
             while line:
                 tokens = line.split()
-                track = bed.BedTrack(tokens[-3], tokens[-2], tokens[-1])
-                if not track in tracks:
+                track = bed.BedTrack(tokens[-3], int(tokens[-2]), int(tokens[-1]))
+                if not track.name in tracks:
                     tracks[track.name] = track
                 line = bed_file.readline()
         return tracks
@@ -422,13 +422,16 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     @staticmethod
-    def launch():
-        job = KmerNormalDistributionFittingJob(job_name = 'KmerNormalDistributionFittingJob_', previous_job_name = "")
+    def launch(**kwargs):
+        job = KmerNormalDistributionFittingJob(job_name = 'KmerNormalDistributionFittingJob_', previous_job_name = "", **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
+
+    def prepare(self):
+        self.kmers = {}
 
     def check_cli_arguments(self, args):
         # --reference: the reference genome to use
@@ -439,9 +442,6 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
         c = config.Configuration()
         self.num_threads = c.max_threads
 
-    def prepare(self):
-        self.kmers = {}
-
     def load_inputs(self):
         c = config.Configuration()
         # 
@@ -451,12 +451,12 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
         #
         index = 0
         for track in tracks:
-            self.batch[index][track.name] = track
+            self.batch[index][track] = tracks[track]
             index += 1
             if index == self.num_threads:
                 index = 0
 
-    def transform(track, track_name, index):
+    def transform(self, track, track_name):
         c = config.Configuration()
         seq = bed.extract_sequence(track)
         for kmer in get_all_kmers(seq, c.ksize):
@@ -483,7 +483,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
                     for kmer in batch:
                         if not kmer in kmers:
                             kmers[kmer] = 0
-                        kmers[kmer] += batch[track][kmer]
+                        kmers[kmer] += batch[kmer]
         # now that we have all the kmer counts, let fit a distribution
         counts = list(map(lambda x: kmers[x], list(kmers.keys())))
         median = stats.median(counts)
@@ -498,4 +498,4 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
 if __name__ == '__main__':
     config.init()
     # 
-    CountKmersExactJob.launch()
+    KmerNormalDistributionFittingJob.launch(resume_from_reduce = True)

@@ -20,7 +20,7 @@ import pybedtools
 
 class BedTrack:
 
-    def __init__(self, chrom, begin, end):
+    def __init__(self, chrom, start, end):
         self.chrom = chrom
         self.start = start
         self.end = end
