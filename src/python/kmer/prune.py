@@ -395,6 +395,91 @@ class CountKmersExactJob(map_reduce.Job):
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
+# Like CountKmersExactJob but it reads the kmer it needs to count from a file rather than structural variations
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class CountBedKmersExactJob(CountKmersExactJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch():
+        job = CountExonKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_')
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def check_cli_arguments(self, args):
+        # --bed: name of the bed file the kmers came from, needs to match the value used for KmerNormalDistributionFittingJob
+        # --fastq: path to the fastq file to count these kmers in
+        pass
+
+    def prepare(self):
+        self.kmers = {}
+
+    def load_inputs(self):
+        c = config.Configuration()
+        # 
+        for index in range(0, self.num_threads):
+            self.batch[index] = {} # avoid overrding extra methods from MapReduce
+            path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+            with open(path, 'r') as json_file:
+                self.kmers = json.load(json_file)
+
+    def transform(self):
+        c = config.Configuration()
+        # this one is more complicated because most results are to be commited to a global data store
+        # create a copy of data for this instance
+        output = {}
+        # 
+        for read, name in self.parse_fastq():
+            kmers = get_all_kmers(read, c.ksize)
+            for kmer in kmers:
+                reverse_complement = bed.reverse_complement_sequence(kmer)
+                if kmer in self.kmers:
+                    if not kmer in output:
+                        output[kmer] = 0
+                    output[kmer] += 1
+                if reverse_complement in self.kmers:
+                    if not kmer in output:
+                        output[kmer] = 0
+                    output[kmer] += 1
+        return output
+
+    def reduce(self):
+        c = config.Configuration()
+        # 
+        output = {}
+        for i in range(0, self.num_threads):
+            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
+                batch = json.load(json_file)
+                for kmer in batch:
+                    if not kmer in output:
+                        output[kmer] = 0
+                    output[kmer] += batch[kmer]
+        #
+        self.counts = list(map(lambda x: output[x], list(output.keys())))
+        self.median = stats.median(counts)
+        self.std = stats.stdev(counts)
+        # 
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+
+    def plot(self, outputs):
+        n = statistics.NormalDistribution(mean = self.mean, std = self.std)
+        y = list(map(lambda x: n.pmf(x), self.counts))
+        trace = graph_objs.Scatter(x = self.counts, y = y)
+        data = [trace]
+        path = os.path.join(self.get_current_job_directory(), 'distribution.html')
+        py.iplot(data, filename = path, auto_open = False)
+
+# ============================================================================================================================ #
 # MapReduce job
 # Counts the kmers inside the given BED file and produces a normal distribution for their counts
 # ============================================================================================================================ #
@@ -471,7 +556,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
             json.dump(self.kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
         exit()
 
-    def reduce():
+    def reduce(self):
         c = config.Configuration()
         kmers = {}
         # merge all the kmer counts from previous steps
@@ -490,6 +575,8 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
         std = stats.stdev(counts)
         print('median:', media)
         print('std:', std)
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
 # Main

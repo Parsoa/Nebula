@@ -52,7 +52,7 @@ class Job(object):
         self.prepare()
         self.create_output_directories()
         self.find_thread_count()
-        if not sel.resume_from_reduce:
+        if not self.resume_from_reduce:
             self.load_inputs()
             self.distribute_workload()
             self.wait_for_children()
