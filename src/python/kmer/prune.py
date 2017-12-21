@@ -9,6 +9,7 @@ import math
 import time
 import argparse
 import traceback
+import statistics as stats
 
 from multiprocessing import Process
 
@@ -224,6 +225,13 @@ class NovelKmerOverlapJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+def get_all_kmers(read, k):
+    kmers = []
+    for i in range(0, len(read) - k + 1):
+        kmer = read[i : i + k]
+        kmers.append(kmer)
+    return kmers
+
 class CountKmersExactJob(map_reduce.Job):
 
     # ============================================================================================================================ #
@@ -282,13 +290,6 @@ class CountKmersExactJob(map_reduce.Job):
                 line = self.fastq_file.readline()
                 continue
 
-    def get_all_kmers(self, read, k):
-        kmers = []
-        for i in range(0, len(read) - k + 1):
-            kmer = read[i : i + k]
-            kmers.append(kmer)
-        return kmers
-
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
@@ -339,7 +340,7 @@ class CountKmersExactJob(map_reduce.Job):
             }
         # 
         for read, name in self.parse_fastq():
-            kmers = self.get_all_kmers(read, c.ksize)
+            kmers = get_all_kmers(read, c.ksize)
             for kmer in kmers:
                 # consider reverse complement as well
                 reverse_complement = bed.reverse_complement_sequence(kmer)
@@ -392,6 +393,87 @@ class CountKmersExactJob(map_reduce.Job):
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+
+# ============================================================================================================================ #
+# MapReduce job
+# Counts the kmers inside the given BED file and produces a normal distribution for their counts
+# ============================================================================================================================ #
+
+class KmerNormalDistributionFittingJob(map_reduce.Job):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch():
+        job = KmerNormalDistributionFittingJob(job_name = 'KmerNormalDistributionFittingJob_')
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def check_cli_arguments(self, args):
+        # --reference: the reference genome to use
+        # --bed: the BED file to use
+        pass
+
+    def find_thread_count(self):
+        c = config.Configuration()
+        self.num_threads = c.max_threads
+
+    def prepare(self):
+        self.kmers = {}
+
+    def load_inputs(self):
+        c = config.Configuration()
+        # 
+        tracks = bed.read_tracks(config.bed_file)
+        for i in range(0, self.num_threads):
+            self.batch[i] = {} # avoid overrding extra methods from MapReduce
+        #
+        index = 0
+        for track in tracks:
+            self.batch[index][track.name] = track
+            index += 1
+            if index == self.num_threads:
+                index = 0
+
+    def transform(track, track_name, index):
+        c = config.Configuration()
+        seq = bed.extract_sequence(track)
+        for kmer in get_all_kmers(seq, c.ksize)
+            if not kmer in self.kmers:
+                self.kmers[kmer] = 0
+            self.kmers[kmer] += 1
+        # we are not chaning the input track, storing results in a object property instead
+        return track
+
+    def output_batch(self, batch):
+        with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        exit()
+
+    def reduce():
+        c = config.Configuration()
+        kmers = {}
+        # merge all the kmer counts from previous steps
+        for i in range(0, self.num_threads):
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as json_file:
+                    batch = json.load(json_file)
+                    for kmer in batch:
+                        if not kmer in kmers:
+                            kmers[kmer] = 0
+                        kmers[kmer] += batch[track][kmer]
+        # now that we have all the kmer counts, let fit a distribution
+        counts = list(map(lambda x: kmers[x], list(kmers.keys())))
+        median = stats.median(counts)
+        std = stats.stdev(counts)
+        print('median:', media)
+        print('std:', std)
 
 # ============================================================================================================================ #
 # Main

@@ -14,10 +14,36 @@ from . import (
 import khmer
 import colorama
 import pybedtools
+# ============================================================================================================================ #
+# BED Tracks
+# ============================================================================================================================ #
+
+class BedTrack:
+
+    def __init__(self, chrom, begin, end):
+        self.chrom = chrom
+        self.start = start
+        self.end = end
+        self.name = chrom + ':' + str(start) + '-' + str(end)
+
+    def __eq__(self, other):
+        if isinstance(self, other.__class__):
+            return self.__dict__ == other.__dict__
+        return False
 
 # ============================================================================================================================ #
 # BED Tracks
 # ============================================================================================================================ #
+
+def read_tracks(path):
+    c = config.Configuration()
+    bedtools = pybedtools.BedTool(path)
+    tracks = {}
+    for track in bedtools:
+        bed_track = BedTrack(chrom = track.chrom, start = track.start, end = track.end)
+        if bed_track not in tracks:
+            tracks[bed_track] = True
+    return tracks
 
 def export_tracks():
     c = config.Configuration()
