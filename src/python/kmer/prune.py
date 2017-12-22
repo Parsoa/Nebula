@@ -396,7 +396,7 @@ class CountKmersExactJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# Like CountKmersExactJob but it reads the kmer it needs to count from a file rather than structural variations
+# Like CountKmersExactJob but it reads the kmer it needs to count from the output of a previous KmerNormalDistributionFittingJob
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -408,7 +408,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
 
     @staticmethod
     def launch():
-        job = CountExonKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_')
+        job = CountBedKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -427,10 +427,10 @@ class CountBedKmersExactJob(CountKmersExactJob):
         c = config.Configuration()
         # 
         for index in range(0, self.num_threads):
-            self.batch[index] = {} # avoid overrding extra methods from MapReduce
-            path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-            with open(path, 'r') as json_file:
-                self.kmers = json.load(json_file)
+            self.batch[index] = {} # useless but helps avoid overrding extra methods from MapReduce
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            self.kmers = json.load(json_file)
 
     def transform(self):
         c = config.Configuration()
@@ -480,8 +480,9 @@ class CountBedKmersExactJob(CountKmersExactJob):
         py.iplot(data, filename = path, auto_open = False)
 
 # ============================================================================================================================ #
-# MapReduce job
-# Counts the kmers inside the given BED file and produces a normal distribution for their counts
+# ============================================================================================================================ #
+# MapReduce job that counts the kmers inside the given BED file and produces a normal distribution for their counts
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 class KmerNormalDistributionFittingJob(map_reduce.Job):
@@ -579,7 +580,9 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
             json.dump(kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # Main
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
