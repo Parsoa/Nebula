@@ -91,15 +91,15 @@ class Job(object):
                 self.run_batch(self.batch[index])
             else:
                 # main process
-                self.children[pid] = True
+                self.children[pid] = index
                 print('spawned child ', pid)
 
     def run_batch(self, batch):
         c = config.Configuration()
         for track in batch:
             batch[track] = self.transform(batch[track], track)
+        # ths forked process will exit after the following function call
         self.output_batch(batch)
-        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self, track, track_name):
         return track
@@ -113,8 +113,9 @@ class Job(object):
     def wait_for_children(self):
         while True:
             (pid, e) = os.wait()
+            index = self.children[pid]
             self.children.pop(pid, None)
-            print(colorama.Fore.RED + 'pid ', pid, 'finished')
+            print(colorama.Fore.RED + 'pid ', pid, index, 'finished')
             if len(self.children) == 0:
                 break
         print('all forks done, merging output ...')

@@ -10,8 +10,6 @@ import time
 import argparse
 import traceback
 
-from multiprocessing import Process
-
 from kmer import (
     bed,
     sets,

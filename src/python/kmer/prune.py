@@ -324,10 +324,8 @@ class CountKmersExactJob(map_reduce.Job):
         self.fastq_file = open(c.fastq_file, 'r')
         self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
         self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
-        # 
+        # ths forked process will exit after the following function call
         self.output_batch(self.transform())
-        # 
-        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self):
         c = config.Configuration()
@@ -471,13 +469,13 @@ class CountBedKmersExactJob(CountKmersExactJob):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
-    def plot(self, outputs):
-        n = statistics.NormalDistribution(mean = self.mean, std = self.std)
+    def plot(self):
+        n = statistics.NormalDistribution(mean = self.median, std = self.std)
         y = list(map(lambda x: n.pmf(x), self.counts))
         trace = graph_objs.Scatter(x = self.counts, y = y)
         data = [trace]
         path = os.path.join(self.get_current_job_directory(), 'distribution.html')
-        py.iplot(data, filename = path, auto_open = False)
+        plotly.plot(data, filename = path, auto_open = False)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -574,7 +572,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
         counts = list(map(lambda x: kmers[x], list(kmers.keys())))
         median = stats.median(counts)
         std = stats.stdev(counts)
-        print('median:', media)
+        print('median:', median)
         print('std:', std)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
