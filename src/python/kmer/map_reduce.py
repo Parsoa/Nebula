@@ -105,8 +105,8 @@ class Job(object):
         c = config.Configuration()
         for track in batch:
             batch[track] = self.transform(batch[track], track)
+        # ths forked process will exit after the following function call
         self.output_batch(batch)
-        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self, track, track_name):
         return track
