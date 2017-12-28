@@ -10,8 +10,6 @@ import time
 import argparse
 import traceback
 
-from multiprocessing import Process
-
 from kmer import (
     bed,
     sets,
@@ -32,6 +30,8 @@ import pybedtools
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
+
+print('importing break_point.py')
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #

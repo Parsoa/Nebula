@@ -7,11 +7,10 @@ import copy
 import json
 import math
 import time
+import random
 import argparse
 import traceback
 import statistics as stats
-
-from multiprocessing import Process
 
 from kmer import (
     bed,
@@ -20,8 +19,7 @@ from kmer import (
     commons,
     counttable,
     map_reduce,
-    break_point,
-    count_server,
+    statistics,
 )
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
@@ -31,6 +29,7 @@ import pybedtools
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
+print('done importing')
 # ============================================================================================================================ #
 # kmer helpers
 # ============================================================================================================================ #
@@ -257,11 +256,13 @@ class CountKmersExactJob(map_reduce.Job):
         # need to skip invalid lines
         line = self.fastq_file.readline()
         n = 0
+        m = 0
         t = time.time()
         while line:
             if state == HEADER_LINE:
                 if line[0] == '@':
                     if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                        print(self.index, 'reached segment boundary')
                         break
                     state = SEQUENCE_LINE
                     name = line[:-1] # ignore the EOL character
@@ -271,13 +272,17 @@ class CountKmersExactJob(map_reduce.Job):
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
                 n += 1
-                if n == 5000:
+                if n == 1000:
                     n = 0
+                    m += 1
                     c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
                     s = time.time()
                     p = c / float(self.fastq_file_chunk_size)
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
+                    #print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
+                    print(self.index, 'm =', m)
+                if m == 50:
+                    break
                 yield seq, name
                 line = self.fastq_file.readline()
                 continue
@@ -289,6 +294,7 @@ class CountKmersExactJob(map_reduce.Job):
                 state = HEADER_LINE
                 line = self.fastq_file.readline()
                 continue
+        print(self.index, ' end of input')
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -324,10 +330,8 @@ class CountKmersExactJob(map_reduce.Job):
         self.fastq_file = open(c.fastq_file, 'r')
         self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
         self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
-        # 
+        # this forked process will exit at the end of the following function call 
         self.output_batch(self.transform())
-        # 
-        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self):
         c = config.Configuration()
@@ -408,7 +412,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
 
     @staticmethod
     def launch():
-        job = CountExonKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_')
+        job = CountBedKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_', resume_from_reduce = True)
         job.execute()
 
     # ============================================================================================================================ #
@@ -424,15 +428,18 @@ class CountBedKmersExactJob(CountKmersExactJob):
         self.kmers = {}
 
     def load_inputs(self):
+        print('loading inputs...')
         c = config.Configuration()
         # 
         for index in range(0, self.num_threads):
             self.batch[index] = {} # avoid overrding extra methods from MapReduce
-            path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-            with open(path, 'r') as json_file:
-                self.kmers = json.load(json_file)
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            self.kmers = json.load(json_file)
+        print('done loading inputs')
 
     def transform(self):
+        #print('transforming', self.index)
         c = config.Configuration()
         # this one is more complicated because most results are to be commited to a global data store
         # create a copy of data for this instance
@@ -450,6 +457,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
                     if not kmer in output:
                         output[kmer] = 0
                     output[kmer] += 1
+        print('transformation done ', self.index)
         return output
 
     def reduce(self):
@@ -457,6 +465,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
         # 
         output = {}
         for i in range(0, self.num_threads):
+            print('batch', i)
             with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
                 batch = json.load(json_file)
                 for kmer in batch:
@@ -465,19 +474,26 @@ class CountBedKmersExactJob(CountKmersExactJob):
                     output[kmer] += batch[kmer]
         #
         self.counts = list(map(lambda x: output[x], list(output.keys())))
-        self.median = stats.median(counts)
-        self.std = stats.stdev(counts)
+        self.median = stats.median(self.counts)
+        self.std = stats.stdev(self.counts)
+        print('median:', self.median)
+        print('std:', self.std)
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        self.plot()
 
-    def plot(self, outputs):
-        n = statistics.NormalDistribution(mean = self.mean, std = self.std)
-        y = list(map(lambda x: n.pmf(x), self.counts))
-        trace = graph_objs.Scatter(x = self.counts, y = y)
+    def plot(self):
+        n = statistics.NormalDistribution(mean = self.median, std = self.std)
+        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 50))) ]
+        y = list(map(lambda x: n.pmf(x), r))
+        trace = graph_objs.Scatter(x = r, y = y, mode = 'markers')
         data = [trace]
-        path = os.path.join(self.get_current_job_directory(), 'distribution.html')
-        py.iplot(data, filename = path, auto_open = False)
+        path = os.path.join(self.get_current_job_directory(), 'distribution')
+        #layout = graph_objs.Layout(title = 'Exon kmer Coutn Distribtuion')
+        #fig = graph_objs.Figure(data = data, layout = layout)
+        plotly.plot(data, filename = path + '.html', auto_open = False, image = 'png', image_filename = path + '.png')
+        #plotly.image.save_as(fig, filename = path)
 
 # ============================================================================================================================ #
 # MapReduce job
@@ -561,6 +577,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
         kmers = {}
         # merge all the kmer counts from previous steps
         for i in range(0, self.num_threads):
+            print('batch', i)
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             if os.path.isfile(path):
                 with open(path, 'r') as json_file:
@@ -573,7 +590,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
         counts = list(map(lambda x: kmers[x], list(kmers.keys())))
         median = stats.median(counts)
         std = stats.stdev(counts)
-        print('median:', media)
+        print('median:', median)
         print('std:', std)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
@@ -583,6 +600,7 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
+    print('main')
     config.init()
     # 
-    KmerNormalDistributionFittingJob.launch(resume_from_reduce = True)
+    CountBedKmersExactJob.launch()

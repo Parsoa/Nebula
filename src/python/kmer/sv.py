@@ -11,6 +11,8 @@ from kmer import (
 
 import colorama
 
+print('importing sv.py')
+
 class StructuralVariation(object):
 
     def __init__(self, track, radius):
