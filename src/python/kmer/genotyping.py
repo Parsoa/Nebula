@@ -27,6 +27,7 @@ from kmer import (
 # /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00513.fq
 # /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00512.fq
 
+print('importing genotyping.py')
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job to produce a kmer signature for each break point of a deletion

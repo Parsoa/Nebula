@@ -6,6 +6,7 @@ import sys
 import copy
 import json
 import time
+import atexit
 import argparse
 import traceback
 
@@ -16,6 +17,10 @@ from kmer import (
 
 import colorama
 
+def on_exit(job):
+    print(colorama.Fore.GREEN, 'job', job.index, 'exiting', colorama.Fore.WHITE)
+
+print('importing map_reduce.py')
 # ============================================================================================================================ #
 # Job class, describes a MapReducer job
 # Will apply a transformation to a library of structural variation:
@@ -79,6 +84,7 @@ class Job(object):
             with open(path, 'r') as json_file:
                 self.batch[index] = json.load(json_file)
 
+
     def distribute_workload(self):
         for index in range(0, self.num_threads):
             if self.run_for_certain_batches_only:
@@ -88,11 +94,12 @@ class Job(object):
             if pid == 0:
                 # forked process
                 self.index = index
+                atexit.register(on_exit, self)
                 self.run_batch(self.batch[index])
             else:
                 # main process
                 self.children[pid] = index
-                print('spawned child ', pid)
+                print('spawned child ', index, ':', pid)
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -105,9 +112,24 @@ class Job(object):
         return track
 
     def output_batch(self, batch):
+        #print('outputting batch', self.index)
         # output manually, io redirection could get entangled with multiple client/servers
-        with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w') as json_file:
-            json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        n = 0
+        while False:
+            if self.index == 0:
+                break
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index - 1) + '.json')):
+                print('found output for', self.index - 1)
+                break
+            n += 1
+            if n == 100000:
+                print(self.index, 'waiting for', self.index - 1)
+                n = 0 
+        print('output', self.index, ':', len(batch))
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'a')
+            #json_file.write('Hello')
+        json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        json_file.close()
         exit()
 
     def wait_for_children(self):
@@ -115,7 +137,10 @@ class Job(object):
             (pid, e) = os.wait()
             index = self.children[pid]
             self.children.pop(pid, None)
-            print(colorama.Fore.RED + 'pid ', pid, index, 'finished')
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
+                print(colorama.Fore.RED + 'pid: ', pid, index, 'finished,', len(self.children), 'remaining', colorama.Fore.WHITE)
+            else:
+                print(colorama.Fore.RED + 'pid: ', pid, index, 'finished didn\'t produce output,', len(self.children), 'remaining', colorama.Fore.WHITE)
             if len(self.children) == 0:
                 break
         print('all forks done, merging output ...')

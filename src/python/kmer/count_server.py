@@ -26,6 +26,7 @@ import struct
 import colorama
 import pybedtools
 
+print('importing count_server.py')
 # ================================================================================================= #
 # Helpers
 # ================================================================================================= #
@@ -190,4 +191,4 @@ class CountTableServer(socketserver.TCPServer):
 if __name__ == '__main__':
     config.init()
     # 
-    CountTableServer.run_server()
+    #CountTableServer.run_server()
