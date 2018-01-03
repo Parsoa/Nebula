@@ -18,7 +18,7 @@ from kmer import (
 import colorama
 
 def on_exit(job):
-    print('job', job.index, 'exiting')
+    print(colorama.Fore.GREEN, 'job', job.index, 'exiting', colorama.Fore.WHITE)
 
 print('importing map_reduce.py')
 # ============================================================================================================================ #
@@ -137,7 +137,10 @@ class Job(object):
             (pid, e) = os.wait()
             index = self.children[pid]
             self.children.pop(pid, None)
-            print(colorama.Fore.RED + 'pid: ', pid, index, 'finished,', len(self.children), 'remaining', colorama.Fore.WHITE)
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
+                print(colorama.Fore.RED + 'pid: ', pid, index, 'finished,', len(self.children), 'remaining', colorama.Fore.WHITE)
+            else:
+                print(colorama.Fore.RED + 'pid: ', pid, index, 'finished didn\'t produce output,', len(self.children), 'remaining', colorama.Fore.WHITE)
             if len(self.children) == 0:
                 break
         print('all forks done, merging output ...')

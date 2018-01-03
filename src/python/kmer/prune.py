@@ -23,9 +23,10 @@ from kmer import (
 )
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
-import khmer
+print('importing khmer')
+#import khmer
 import colorama
-import pybedtools
+#import pybedtools
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
@@ -269,6 +270,8 @@ class CountKmersExactJob(map_reduce.Job):
                 line = self.fastq_file.readline()
                 continue
             if state == SEQUENCE_LINE:
+                #if m > 47:
+                #    print(self.index, 'SEQ', n, m)
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
                 n += 1
@@ -280,11 +283,17 @@ class CountKmersExactJob(map_reduce.Job):
                     p = c / float(self.fastq_file_chunk_size)
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
                     #print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
-                    print(self.index, 'm =', m)
+                    #print(self.index, 'm =', m)
                 if m == 50:
                     break
+                #if m > 47:
+                #    print(self.index, 'yil', n, m)
                 yield seq, name
+                #if m > 47:
+                #    print(self.index, 'red', n, m)
                 line = self.fastq_file.readline()
+                #if m > 47:
+                #    print(self.index, 'cnt', n, m)
                 continue
             if state == THIRD_LINE:
                 state = QUALITY_LINE
@@ -412,7 +421,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
 
     @staticmethod
     def launch():
-        job = CountBedKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_', resume_from_reduce = True)
+        job = CountBedKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -436,6 +445,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             self.kmers = json.load(json_file)
+        print(len(self.kmers))
         print('done loading inputs')
 
     def transform(self):
@@ -458,6 +468,8 @@ class CountBedKmersExactJob(CountKmersExactJob):
                         output[kmer] = 0
                     output[kmer] += 1
         print('transformation done ', self.index)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.out'), 'w') as output_file:
+            output_file.write('tranform')
         return output
 
     def reduce(self):
