@@ -394,7 +394,7 @@ class CountKmersExactJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# Like CountKmersExactJob but it reads the kmer it needs to count from the output of a previous KmerNormalDistributionFittingJob
+# Like CountKmersExactJob but it reads the kmer it needs to count from the output of a previous ExtractBedKmersJob
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -479,11 +479,11 @@ class CountBedKmersExactJob(CountKmersExactJob):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce job that counts the kmers inside the given BED file and produces a normal distribution for their counts
+# MapReduce job that extracts the kmers for the intervals specified in a BED file
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class KmerNormalDistributionFittingJob(map_reduce.Job):
+class ExtractBedKmersJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # job-specific stuff
@@ -568,12 +568,6 @@ class KmerNormalDistributionFittingJob(map_reduce.Job):
                         if not kmer in kmers:
                             kmers[kmer] = 0
                         kmers[kmer] += batch[kmer]
-        # now that we have all the kmer counts, let fit a distribution
-        counts = list(map(lambda x: kmers[x], list(kmers.keys())))
-        median = stats.median(counts)
-        std = stats.stdev(counts)
-        print('median:', median)
-        print('std:', std)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
