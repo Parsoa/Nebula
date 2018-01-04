@@ -31,6 +31,8 @@ print('importing genotyping.py')
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job to produce a kmer signature for each break point of a deletion
+# We need to have generated a counttable for the genome we are interested in beforehand
+# How to get this far?
 # Step 1: get the break points all of which's kmers are found in CHM1, these are the possible candidates for the structural
 # variation's boundaries -> BreakPointJob
 # Step 2: Find a set of novel kmers for each break point that can be used to indentify it. khmer never underestimates counts so
@@ -39,7 +41,7 @@ print('importing genotyping.py')
 # for a reliable likelihood model -> CountKmersExactJob
 # Step 4: With exact kmer counts available, we can find the most likely break points for each event in our library -> MostLikelyBreakPointsJob
 # Step 5: Given a sample genome, try to genotype the structural variations using the likelihood model and signatures gathered
-# above.
+# above -> GenotypingJob (this one)
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -51,16 +53,25 @@ class GenotypingJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'novel_')
+        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPoints_')
         job.execute()
 
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    # needs to know the most likely breakpoint and its kmers, MostLikelyBreakPointsJob includes that information
+    def load_inputs(self):
+        index = 0
+        for track in self.tracks:
+            self.batch[index] = {
+                track: self.tracks[track]
+            }
+            index += 1
+
     def transform(self, track, track_name):
         c = config.Configuration()
-        likelihood = {}qy
+        likelihood = {}
         # TODO: proper value for std?
         distribution = {
             (1, 1): statistics.NormalDistribution(mean = c.coverage, std = 5),

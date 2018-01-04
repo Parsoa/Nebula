@@ -217,7 +217,8 @@ class NovelKmerOverlapJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce to find reads containing kmers from deletion that produce too many novel kmers.
+# MapReduce to find reads containing kmers from structural variation events that produce too many novel kmers.
+# khmer's results simply can't be trusted but will help us reduce the exact counting to a target set of kmers.
 # Why are we really doing this?
 # Only one of the break points for a deletion should happen and that can produce 2*c.ksize but we are seeing way more novel kmers
 # than that. We get the reads containing those novel kmers to see what is happenning. For the time being lets only focus on those
@@ -321,13 +322,13 @@ class CountKmersExactJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        # 
+        # TODO: why not load the 'merge.json' and search that one instead?
         for index in range(0, self.num_threads):
             self.batch[index] = {} # avoid overrding extra methods from MapReduce
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
             with open(path, 'r') as json_file:
                 batch = json.load(json_file)
-                # find the tracks we are interested
+                # find the tracks we are interested, each one might be in a different batch
                 for track in batch:
                     for event_name in self.event_names:
                         if event_name in track:
