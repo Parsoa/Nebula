@@ -62,7 +62,6 @@ def cache(f):
 def kill():
     call(["pkill", "-f", "count_server"])
 
-# @cache
 def get_kmer_count(kmer, index, ref):
     c = config.Configuration()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -119,7 +118,7 @@ class CountTableServer(socketserver.TCPServer):
     def run_server():
         c = config.Configuration()
         # 
-        counttable.export_counttable(c.reference_genome)
+        counttable.export_counttable()
         CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.reference_genome)
         # load k-mer counts
         # this is shared between all children
@@ -191,4 +190,4 @@ class CountTableServer(socketserver.TCPServer):
 if __name__ == '__main__':
     config.init()
     # 
-    #CountTableServer.run_server()
+    CountTableServer.run_server()

@@ -20,10 +20,10 @@ print('importing couttable.py')
 # ============================================================================================================================ #
 
 @commons.measure_time
-def export_counttable(seq_file):
+def export_counttable():
     c = config.Configuration()
     # 
-    cache = seq_file + '.ct'
+    cache = c.counttable + '.ct'
     print(colorama.Fore.BLUE + 'searching for cached counttable ', cache)
     if os.path.isfile(cache):
         print(colorama.Fore.BLUE + 'found at ', cache)
