@@ -19,6 +19,7 @@ class Configuration:
                         ksize,\
                         bed_file,\
                         coverage,\
+                        counttable,\
                         fastq_file,\
                         genome_hg19,\
                         genome_hg38,\
@@ -32,6 +33,7 @@ class Configuration:
             self.ksize = ksize
             self.bed_file = bed_file
             self.coverage = coverage
+            self.counttable = counttable
             self.fastq_file = fastq_file
             self.genome_hg19 = genome_hg19
             self.genome_hg38 = genome_hg38
@@ -98,7 +100,7 @@ def configure(args):
         ksize = 31,
         bed_file = os.path.abspath(args.bed),
         coverage = args.coverage,
-        counttable = os.path.abspath(args.counttable)
+        counttable = os.path.abspath(args.counttable),
         fastq_file = os.path.abspath(args.fastq),
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
