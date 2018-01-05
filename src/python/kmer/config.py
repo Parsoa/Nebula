@@ -77,7 +77,7 @@ def parse_args():
     parser.add_argument("--coverage", type = int, default = 30)
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg38')
-    # a FASTA/FASTQ file that should be used as the source for creating a counttable
+    # a FASTA/FASTQ/SAM/BAM file that should be used as the source for creating a counttable
     parser.add_argument("--counttable")
     args = parser.parse_args()
     #
