@@ -203,7 +203,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # requires only --coverage option to specify the read depth
         pass
 
-    # this is upperbounded by --threads cli argument
+    # few tracks have been counted exactly, so using a dedicated thread per track
     def find_thread_count(self):
         with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
             tracks = json.load(json_file)
@@ -211,8 +211,6 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             self.num_threads = len(tracks)
             print('num thread: ', self.num_threads)
 
-    # As the CountKmersExactJob job doesn't work quite exactly as MapReduce expects, we need to fiddle with the input data
-    # here to make it adhere to that format
     def load_inputs(self):
         index = 0
         for track in self.tracks:
@@ -221,6 +219,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             }
             index += 1
 
+    # returns a map of "breakpoint -> likelihood"
     def transform(self, track, track_name):
         c = config.Configuration()
         # TODO: proper value for std?
@@ -230,38 +229,32 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             '(0, 0)': statistics.ErrorDistribution(1.0 / 1000)
         }
         # find all the break points
-        likelihood = {}
+        likelihood = {
+            'break_points': {}
+        }
         break_points = []
         for kmer in track['novel_kmers']:
             for break_point in track['novel_kmers'][kmer]['break_points']:
                 if not break_point in break_points:
                     break_points.append(break_point)
-                    likelihood[break_point] = 0
-                    likelihood['kmers'] = {}
+                    likelihood['break_points'][break_point] = {
+                        'likelihood': 0,
+                        'kmers': {} # we are also interested in knowing the kmer with for each one
+                    }
         # calculate likelihoods
         novel_kmers = track['novel_kmers']
-        s = {}
         for kmer in novel_kmers:
-            likelihood['kmers'][kmer] = {}
             for break_point in break_points:
-                if not break_point in s:
-                    s[break_point] = ""
+                r = 0
                 if break_point in novel_kmers[kmer]['break_points']:
                     r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
-                    if self.index == 0:
-                        s[break_point] = s[break_point] + ' + ' + str(r)
-                    likelihood[break_point] += r
-                    likelihood['kmers'][kmer][break_point] = r
                 else:
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
-                    if self.index == 0:
-                        s[break_point] = s[break_point] + ' + ' + str(r)
-                    likelihood[break_point] += r
-                    likelihood['kmers'][kmer][break_point] = r
-        if self.index == 0:
-            for b in break_points:
-                print(b, ':', s[b], '\n')
-        likelihood['break_points'] = break_points
+                likelihood['break_points'][break_point]['likelihood'] += r
+                likelihood['break_points'][break_point]['kmers'][kmer] = r
+        #TODO: also find the maximum one and keep it easily accessible in the output
+        max(likelihood['break_points'].iteritems(), key=operator.itemgetter(1))[0]
+        likelihood['most_likey'] = "name of the most likely breakpoint here"
         return likelihood
 
     def plot(self, tracks):
