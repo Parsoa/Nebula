@@ -257,53 +257,42 @@ class CountKmersExactJob(map_reduce.Job):
         state = HEADER_LINE
         # need to skip invalid lines
         line = self.fastq_file.readline()
+        ahead = self.fastq_file.readline()
         n = 0
         m = 0
         t = time.time()
-        while line:
+        while ahead:
             if state == HEADER_LINE:
-                if line[0] == '@':
+                if line[0] == '@' and ahead[0] != '@':
                     if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
                         print(self.index, 'reached segment boundary')
                         break
                     state = SEQUENCE_LINE
                     name = line[:-1] # ignore the EOL character
-                line = self.fastq_file.readline()
-                continue
-            if state == SEQUENCE_LINE:
+            elif state == SEQUENCE_LINE:
                 #if m > 47:
                 #    print(self.index, 'SEQ', n, m)
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
                 n += 1
-                if n == 1000:
+                if n == 100000:
                     n = 0
-                    m += 1
+                    #m += 1
                     c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
                     s = time.time()
                     p = c / float(self.fastq_file_chunk_size)
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    #print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
+                    print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
                     #print(self.index, 'm =', m)
-                if m == 50:
-                    break
-                #if m > 47:
-                #    print(self.index, 'yil', n, m)
+                # if m == 100000:
+                #    break
                 yield seq, name
-                #if m > 47:
-                #    print(self.index, 'red', n, m)
-                line = self.fastq_file.readline()
-                #if m > 47:
-                #    print(self.index, 'cnt', n, m)
-                continue
-            if state == THIRD_LINE:
+            elif state == THIRD_LINE:
                 state = QUALITY_LINE
-                line = self.fastq_file.readline()
-                continue
-            if state == QUALITY_LINE:
+            elif state == QUALITY_LINE:
                 state = HEADER_LINE
-                line = self.fastq_file.readline()
-                continue
+            line = ahead
+            ahead = self.fastq_file.readline()
         print(self.index, ' end of input')
 
     # ============================================================================================================================ #
@@ -444,13 +433,17 @@ class CountBedKmersExactJob(CountKmersExactJob):
         for index in range(0, self.num_threads):
             self.batch[index] = {} # avoid overrding extra methods from MapReduce
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        tmp = {}
         with open(path, 'r') as json_file:
-            self.kmers = json.load(json_file)
+            tmp = json.load(json_file)
+        kmers = random.sample(tmp.items(), int(len(tmp) / 10))
+        for pair in kmers:
+            self.kmers[pair[0]] = pair[1]
         print(len(self.kmers))
         print('done loading inputs')
 
     def transform(self):
-        #print('transforming', self.index)
+        print('transforming', self.index)
         c = config.Configuration()
         # this one is more complicated because most results are to be commited to a global data store
         # create a copy of data for this instance
