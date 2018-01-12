@@ -16,6 +16,7 @@ class Configuration:
 
     class __impl:
         def __init__(self,
+                        std,\
                         ksize,\
                         bed_file,\
                         coverage,\
@@ -30,6 +31,7 @@ class Configuration:
                         output_directory,\
                         sample_count_server_port,\
                         reference_count_server_port):
+            self.std = std
             self.ksize = ksize
             self.bed_file = bed_file
             self.coverage = coverage
@@ -71,6 +73,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", default = 'CHM1_Lumpy.Del.100bp.DEL.bed')
+    # standard devation to use for the normal distribution modeling kmers, separately calculated for each set of reads
+    parser.add_argument("--std", type = int, default = 20)
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # maximum number of cpu cores to use
@@ -80,7 +84,7 @@ def parse_args():
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg38')
     # a FASTA/FASTQ/SAM/BAM file that should be used as the source for creating a counttable
-    parser.add_argument("--counttable")
+    parser.add_argument("--counttable", default = '/share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00732.fq')
     args = parser.parse_args()
     #
     return args
@@ -97,6 +101,7 @@ def configure(args):
         print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
         exit()
     Configuration(
+        std = args.std,
         ksize = 31,
         bed_file = os.path.abspath(args.bed),
         coverage = args.coverage,

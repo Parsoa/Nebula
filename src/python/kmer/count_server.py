@@ -114,12 +114,14 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
 
 class CountTableServer(socketserver.TCPServer):
 
+    # this needs the --counttable arg to work
+
     @staticmethod
     def run_server():
         c = config.Configuration()
         # 
         counttable.export_counttable()
-        CountTableServerHandler.khmer_counttable = counttable.import_counttable(c.reference_genome)
+        CountTableServerHandler.khmer_counttable = counttable.import_counttable()
         # load k-mer counts
         # this is shared between all children
         children = {}

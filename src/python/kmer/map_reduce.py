@@ -16,6 +16,7 @@ from kmer import (
 )
 
 import colorama
+import memory_profiler
 
 def on_exit(job):
     print(colorama.Fore.GREEN, 'job', job.index, 'exiting', colorama.Fore.WHITE)
@@ -111,8 +112,9 @@ class Job(object):
     def transform(self, track, track_name):
         return track
 
-    def output_batch(self, batch):
-        #print('outputting batch', self.index)
+    @memory_profiler.profile()
+    def output_batch_profile(self, batch):
+        print('outputting batch with profiling', self.index)
         # output manually, io redirection could get entangled with multiple client/servers
         n = 0
         while False:
@@ -126,9 +128,33 @@ class Job(object):
                 print(self.index, 'waiting for', self.index - 1)
                 n = 0 
         print('output', self.index, ':', len(batch))
-        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'a')
-            #json_file.write('Hello')
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        #json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        for chunk in json.JSONEncoder().iterencode(batch):
+            json_file.write(chunk)
+        json_file.close()
+        exit()
+
+
+    def output_batch(self, batch):
+        print('outputting batch', self.index)
+        # output manually, io redirection could get entangled with multiple client/servers
+        n = 0
+        while False:
+            if self.index == 0:
+                break
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index - 1) + '.json')):
+                print('found output for', self.index - 1)
+                break
+            n += 1
+            if n == 100000:
+                print(self.index, 'waiting for', self.index - 1)
+                n = 0 
+        print('output', self.index, ':', len(batch))
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        #for chunk in json.JSONEncoder().iterencode(batch):
+        #    json_file.write(chunk)
         json_file.close()
         exit()
 

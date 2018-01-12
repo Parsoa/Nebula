@@ -8,6 +8,7 @@ import json
 import math
 import time
 import argparse
+import operator
 import traceback
 
 from kmer import (
@@ -192,7 +193,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPoints_', previous_job_name = 'exact_')
+        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPoints_', previous_job_name = 'CountKmersExactJob_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -200,43 +201,40 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     def check_cli_arguments(self, args):
-        # requires only --coverage option to specify the read depth
+        # --coverage option to specify the read depth
+        # --bed to indicate the bed file for output directory (this has the proper default value)
         pass
 
-    # few tracks have been counted exactly, so using a dedicated thread per track
-    def find_thread_count(self):
-        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
-            tracks = json.load(json_file)
-            self.tracks = tracks
-            self.num_threads = len(tracks)
-            print('num thread: ', self.num_threads)
-
     def load_inputs(self):
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            self.tracks = json.load(json_file)
+        for index in range(0, self.num_threads):
+            self.batch[index] = {}
         index = 0
         for track in self.tracks:
-            self.batch[index] = {
-                track: self.tracks[track]
-            }
+            self.batch[index][track] = self.tracks[track]
             index += 1
+            if index == self.num_threads:
+                index = 0
 
-    # returns a map of "breakpoint -> likelihood"
     def transform(self, track, track_name):
         c = config.Configuration()
-        # TODO: proper value for std?
+         #TODO add these to constructor
+        self.coverage = c.coverage
+        self.std = c.std
         distribution = {
-            '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = 5),
-            '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
+            '(1, 1)': statistics.NormalDistribution(mean = self.coverage, std = self.std),
+            '(1, 0)': statistics.NormalDistribution(mean = self.coverage / 2, std = self.std),
             '(0, 0)': statistics.ErrorDistribution(1.0 / 1000)
         }
         # find all the break points
         likelihood = {
             'break_points': {}
         }
-        break_points = []
         for kmer in track['novel_kmers']:
             for break_point in track['novel_kmers'][kmer]['break_points']:
-                if not break_point in break_points:
-                    break_points.append(break_point)
+                if not break_point in likelihood['break_points']:
                     likelihood['break_points'][break_point] = {
                         'likelihood': 0,
                         'kmers': {} # we are also interested in knowing the kmer with for each one
@@ -244,7 +242,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # calculate likelihoods
         novel_kmers = track['novel_kmers']
         for kmer in novel_kmers:
-            for break_point in break_points:
+            for break_point in likelihood['break_points']:
                 r = 0
                 if break_point in novel_kmers[kmer]['break_points']:
                     r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
@@ -252,9 +250,10 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
                 likelihood['break_points'][break_point]['likelihood'] += r
                 likelihood['break_points'][break_point]['kmers'][kmer] = r
-        #TODO: also find the maximum one and keep it easily accessible in the output
-        max(likelihood['break_points'].iteritems(), key=operator.itemgetter(1))[0]
-        likelihood['most_likey'] = "name of the most likely breakpoint here"
+        # find the maximum one and keep it easily accessible in the output
+        l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
+        #m = max(l, key = operator.itemgetter(1))[0]
+        #likelihood['most_likey'] = m
         return likelihood
 
     def plot(self, tracks):
@@ -269,8 +268,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 x.append([])
                 for end in range(-self.radius, self.radius + 1) :
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
-                    if break_point in tracks[track]:
-                        x[begin + self.radius].append(tracks[track][break_point]['kmers'])
+                    if break_point in tracks[track]['break_points']:
+                        x[begin + self.radius].append(len(tracks[track]['break_points'][break_point]['kmers']))
                     else:
                         x[begin + self.radius].append(0)
             path = os.path.join(self.get_current_job_directory(), track + '_kmer_count.html')
@@ -284,7 +283,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             z = []
             x = []
             y = []
-            m = max(list(map(lambda x: tracks[track][x], tracks[track]['break_points'])))
+            m = max(list(map(lambda x: tracks[track]['break_points'][x]['likelihood'], tracks[track]['break_points'])))
             for begin in range(-self.radius, self.radius + 1) :
                 z.append([])
                 y.append(begin)
@@ -292,8 +291,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 for end in range(-self.radius, self.radius + 1) :
                     x.append(end)
                     break_point = '(' + str(begin) + ',' + str(end) + ')'
-                    if break_point in tracks[track]:
-                        z[begin + self.radius].append(tracks[track][break_point])
+                    if break_point in tracks[track]['break_points']:
+                        z[begin + self.radius].append(tracks[track]['break_points'][break_point]['likelihood'])
                     else:
                         z[begin + self.radius].append(m + 1000)
             path = os.path.join(self.get_current_job_directory(), track + '_likelihood.html')

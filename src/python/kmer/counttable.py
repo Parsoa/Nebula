@@ -30,7 +30,7 @@ def export_counttable():
         return
     #
     print(colorama.Fore.BLUE + 'not found, generating counttable...')
-    counttable, nkmers = count_kmers_from_file(seq_file)
+    counttable, nkmers = count_kmers_from_file(c.counttable)
     counttable.save(cache)
     print(colorama.Fore.BLUE + 'done')
     #
@@ -39,10 +39,10 @@ def export_counttable():
     return
 
 @commons.measure_time
-def import_counttable(seq_file):
-    print(colorama.Fore.MAGENTA + 'importing counttable for ', seq_file)
+def import_counttable():
     c = config.Configuration()
-    cache = seq_file + '.ct'
+    print(colorama.Fore.MAGENTA + 'importing counttable for ', c.counttable)
+    cache = c.counttable + '.ct'
     counttable = khmer.Counttable.load(cache)
     print(colorama.Fore.MAGENTA + 'done')
     return counttable

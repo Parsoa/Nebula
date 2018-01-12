@@ -20,13 +20,13 @@ from kmer import (
     counttable,
     map_reduce,
     statistics,
+    count_server,
 )
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
 print('importing khmer')
-#import khmer
 import colorama
-#import pybedtools
+import memory_profiler
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
@@ -76,9 +76,15 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
     # we haven't returned yet so we didn't find any uniquely novel kmers
     return False
 
+def get_canonical_kmer_representation(kmer):
+    reverse_complement = bed.reverse_complement_sequence(kmer)
+    return kmer if kmer < reverse_complement else reverse_complement
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce job to extracting high-coverage novel kmers
+# Once we have extracted the kmers for every breakpoint of a structural variation, we will be interested in knowing
+# which of thses kmers are actually novel ones that don't normally occur in the genome.
+# REQUIRES a count_server for the reference genome
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -90,38 +96,40 @@ class NovelKmerJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = NovelKmerJob(job_name = 'novel_', previous_job_name = 'break_point_')
+        job = NovelKmerJob(job_name = 'NovelKmerJob_', previous_job_name = 'break_point_')
         job.execute()
 
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def check_cli_arguments(self, args):
+        # --bed to indicate the set of structural variations we are running this for (default value supplied)
+        # --threads to indicate number of threads (default value provided)
+        pass
+
     def transform(self, track, track_name):
         remove = {}
         novel_kmers = {}
-        for candidate in track:
-            # remove all candidates eventually
-            remove[candidate] = True
+        for break_point in track:
             # skip the json key holding the number of candidates
-            if candidate.find('candidates') != -1:
+            if break_point.find('candidates') != -1:
                 continue
-            kmers = track[candidate]['kmers']
+            kmers = track[break_point]['kmers']
             for kmer in kmers:
-                if is_kmer_novel(kmer, self.index):
-                    if not kmer in novel_kmers:
-                        novel_kmers[kmer] = {
+                canon = get_canonical_kmer_representation(kmer)
+                # we are going to be comparing these againt reads, so it is necessary to consider reverse complement as well
+                # khmer returns the same count for a kmer and its reverse complement
+                if is_kmer_novel(canon, self.index):
+                    if not canon in novel_kmers:
+                        novel_kmers[canon] = {
                             'count': [],
                             'break_points': []
                         }
-                    novel_kmers[kmer]['count'] = kmers[kmer]
-                    novel_kmers[kmer]['break_points'].append(candidate)
-        # remove every candidate, make oupput more concise
-        for candidate in remove:
-            track.pop(candidate, None)
-        # keep only those with high enough coverage
-        track['novel_kmers'] = novel_kmers
-        return track
+                    # because breakpoint kmers were extracted from reads, thr reverse complement of kmers may not necessarily appear (unless by chance)
+                    novel_kmers[canon]['count'] = kmers[kmer]
+                    novel_kmers[canon]['break_points'].append(break_point)
+        return {'novel_kmers': novel_kmers}
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -241,7 +249,7 @@ class CountKmersExactJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = CountKmersExactJob(job_name = 'exact_', previous_job_name = 'novel_')
+        job = CountKmersExactJob(job_name = 'CountKmersExactJob_', previous_job_name = 'NovelKmerJob_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -277,15 +285,13 @@ class CountKmersExactJob(map_reduce.Job):
                 n += 1
                 if n == 100000:
                     n = 0
-                    #m += 1
+                    m += 1
                     c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
                     s = time.time()
                     p = c / float(self.fastq_file_chunk_size)
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
                     print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
                     #print(self.index, 'm =', m)
-                # if m == 100000:
-                #    break
                 yield seq, name
             elif state == THIRD_LINE:
                 state = QUALITY_LINE
@@ -304,25 +310,18 @@ class CountKmersExactJob(map_reduce.Job):
         pass
 
     def prepare(self):
-        self.event_names = ["chr5_78277739_78278045", "chr6_51256300_51256602",\
-            "chr18_75997296_75997615", "chr11_102471858_102472162", "chr2_57342743_57343056"]
         self.minimum_coverage = 5
         self.tracks = {}
 
     def load_inputs(self):
         c = config.Configuration()
-        # TODO: why not load the 'merge.json' and search that one instead?
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            batch = json.load(json_file)
+            for track in batch:
+                self.tracks[track] = batch[track]
         for index in range(0, self.num_threads):
             self.batch[index] = {} # avoid overrding extra methods from MapReduce
-            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
-            with open(path, 'r') as json_file:
-                batch = json.load(json_file)
-                # find the tracks we are interested, each one might be in a different batch
-                for track in batch:
-                    for event_name in self.event_names:
-                        if event_name in track:
-                            self.tracks[event_name] = batch[track]
-                            print('found', track)
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -334,68 +333,42 @@ class CountKmersExactJob(map_reduce.Job):
 
     def transform(self):
         c = config.Configuration()
-        # this one is more complicated because most results are to be commited to a global data store
-        # create a copy of data for this instance
+        # it is gonna take too long to search inside each track when parsing the FASTQ file so lets
+        # re-index based on kmer rather than track (1 table lookup instead of len(tracks))
         output = {}
         for track in self.tracks:
-            output[track] = {
-                'novel_kmers': {}
-            }
-        # 
+            # remeber these kmers already come in the canonical representation
+            novel_kmers = self.tracks[track]['novel_kmers']
+            for kmer in novel_kmers:
+                output[kmer] = 0
+        #
         for read, name in self.parse_fastq():
             kmers = get_all_kmers(read, c.ksize)
             for kmer in kmers:
-                # consider reverse complement as well
-                reverse_complement = bed.reverse_complement_sequence(kmer)
-                for track in self.tracks:
-                    novel_kmers = self.tracks[track]['novel_kmers']
-                    if kmer in novel_kmers or reverse_complement in novel_kmers:
-                        normal = False
-                        reverse = False
-                        if kmer in novel_kmers:
-                            novel_kmer = kmer
-                            normal = True
-                        if reverse_complement in novel_kmers:
-                            novel_kmer = reverse_complement
-                            reverse = True
-                        if normal and reverse:
-                            print('BOTH APPEAR')
-                        # add the kmer to output only now, should reduce memory footprint
-                        if not novel_kmer in output[track]['novel_kmers']:
-                            output[track]['novel_kmers'][novel_kmer] = {
-                                'count': novel_kmers[novel_kmer]['count'],
-                                'break_points': novel_kmers[novel_kmer]['break_points'],
-                                'actual_count': 0,
-                            }
-                        # update the exact count of the kmer
-                        output[track]['novel_kmers'][novel_kmer]['actual_count'] += 1
+                # novel kmers for each track are already stored in canonical representation
+                canon = get_canonical_kmer_representation(kmer)
+                if canon in output:
+                    output[canon] += 1
         return output
 
     def reduce(self):
         c = config.Configuration()
-        # 
-        output = {}
-        for track in self.tracks:
-            output[track] = {
-                'novel_kmers': {}
-            }
-        # 
+        #
+        kmers = {}
         for i in range(0, self.num_threads):
             with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
                 batch = json.load(json_file)
-                for track in batch:
-                    novel_kmers = batch[track]['novel_kmers']
-                    for novel_kmer in novel_kmers:
-                        if not novel_kmer in output[track]['novel_kmers']:
-                            output[track]['novel_kmers'][novel_kmer] = {
-                                'actual_count': 0
-                            }
-                        output[track]['novel_kmers'][novel_kmer]['actual_count'] += novel_kmers[novel_kmer]['actual_count']
-                        output[track]['novel_kmers'][novel_kmer]['break_points'] = novel_kmers[novel_kmer]['break_points']
-                        output[track]['novel_kmers'][novel_kmer]['count'] = novel_kmers[novel_kmer]['count']
+                for kmer in batch:
+                    if not kmer in kmers:
+                        kmers[kmer] = 0
+                    kmers[kmer] += batch[kmer]
+        for track in self.tracks:
+            novel_kmers = self.tracks[track]['novel_kmers']
+            for novel_kmer in novel_kmers:
+                novel_kmers[novel_kmer]['actual_count'] = kmers[novel_kmer]
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+            json.dump(self.tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -411,7 +384,7 @@ class CountBedKmersExactJob(CountKmersExactJob):
 
     @staticmethod
     def launch():
-        job = CountBedKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_')
+        job = CountBedKmersExactJob(job_name = 'CountBedKmersExactJob_', previous_job_name = 'KmerNormalDistributionFittingJob_', resume_from_reduce = True)
         job.execute()
 
     # ============================================================================================================================ #
@@ -462,8 +435,6 @@ class CountBedKmersExactJob(CountKmersExactJob):
                         output[kmer] = 0
                     output[kmer] += 1
         print('transformation done ', self.index)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.out'), 'w') as output_file:
-            output_file.write('tranform')
         return output
 
     def reduce(self):
@@ -472,17 +443,27 @@ class CountBedKmersExactJob(CountKmersExactJob):
         output = {}
         for i in range(0, self.num_threads):
             print('batch', i)
-            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
-                batch = json.load(json_file)
-                for kmer in batch:
-                    if not kmer in output:
-                        output[kmer] = 0
-                    output[kmer] += batch[kmer]
+            try:
+                with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
+                    batch = json.load(json_file)
+                    for kmer in batch:
+                        reverse = bed.reverse_complement_sequence(kmer)
+                        if kmer in output:
+                            output[kmer] += batch[kmer]
+                        elif reverse in output:
+                            output[reverse] += batch[kmer] 
+                        else:
+                            output[kmer] = batch[kmer]
+            except:
+                pass
         #
         self.counts = list(map(lambda x: output[x], list(output.keys())))
-        self.median = stats.median(self.counts)
+        self.mean = stats.mean(self.counts)
+        # filter outliers
+        self.counts = list(filter(lambda x: x < 3 * self.mean, self.counts))
+        self.mean = stats.mean(self.counts)
         self.std = stats.stdev(self.counts)
-        print('median:', self.median)
+        print('mean:', self.mean)
         print('std:', self.std)
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
@@ -490,16 +471,14 @@ class CountBedKmersExactJob(CountKmersExactJob):
         self.plot()
 
     def plot(self):
-        n = statistics.NormalDistribution(mean = self.median, std = self.std)
-        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 50))) ]
-        y = list(map(lambda x: n.pmf(x), r))
-        trace = graph_objs.Scatter(x = r, y = y, mode = 'markers')
-        data = [trace]
+        n = statistics.NormalDistribution(mean = self.mean, std = self.std)
+        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 100))) ]
+        #y = list(map(lambda x: n.pmf(x), r))
+        #trace = graph_objs.Scatter(x = r, y = y, mode = 'markers')
+        #data = [trace]
+        data = [graph_objs.Histogram(x = r, xbins = dict(start = 0, end = 500, size = 5))]
         path = os.path.join(self.get_current_job_directory(), 'distribution')
-        #layout = graph_objs.Layout(title = 'Exon kmer Coutn Distribtuion')
-        #fig = graph_objs.Figure(data = data, layout = layout)
-        plotly.plot(data, filename = path + '.html', auto_open = False, image = 'png', image_filename = path + '.png')
-        #plotly.image.save_as(fig, filename = path)
+        plotly.plot(data, filename = path + '.html', auto_open = False)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -606,4 +585,4 @@ if __name__ == '__main__':
     print('main')
     config.init()
     # 
-    CountBedKmersExactJob.launch()
+    CountKmersExactJob.launch()
