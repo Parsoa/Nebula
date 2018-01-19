@@ -19,7 +19,7 @@ import colorama
 import memory_profiler
 
 def on_exit(job):
-    print(colorama.Fore.GREEN, 'job', job.index, 'exiting', colorama.Fore.WHITE)
+    print(colorama.Fore.GREEN + 'job', job.index, 'exiting', colorama.Fore.WHITE)
 
 print('importing map_reduce.py')
 # ============================================================================================================================ #
@@ -85,7 +85,6 @@ class Job(object):
             with open(path, 'r') as json_file:
                 self.batch[index] = json.load(json_file)
 
-
     def distribute_workload(self):
         for index in range(0, self.num_threads):
             if self.run_for_certain_batches_only:
@@ -104,8 +103,13 @@ class Job(object):
 
     def run_batch(self, batch):
         c = config.Configuration()
+        remove = {}
         for track in batch:
             batch[track] = self.transform(batch[track], track)
+            if batch[track] == None:
+                remove[track] = True
+        for track in remove:
+            batch.pop(track, None)
         # ths forked process will exit after the following function call
         self.output_batch(batch)
 
@@ -134,7 +138,6 @@ class Job(object):
             json_file.write(chunk)
         json_file.close()
         exit()
-
 
     def output_batch(self, batch):
         print('outputting batch', self.index)
@@ -171,6 +174,7 @@ class Job(object):
                 break
         print('all forks done, merging output ...')
 
+    #TODO: depracate this
     def merge(self, outputs):
         pass
 
@@ -192,6 +196,7 @@ class Job(object):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
         self.merge(output)
+        self.sort(output)
         self.plot(output)
 
     def clean_up(self):

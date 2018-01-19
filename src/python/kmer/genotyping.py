@@ -48,7 +48,7 @@ print('importing genotyping.py')
 class GenotypingJob(map_reduce.Job):
 
     # ============================================================================================================================ #
-    # Launcher
+# Launcher
     # ============================================================================================================================ #
 
     @staticmethod
@@ -62,32 +62,51 @@ class GenotypingJob(map_reduce.Job):
 
     # needs to know the most likely breakpoint and its kmers, MostLikelyBreakPointsJob includes that information
     def load_inputs(self):
-        index = 0
-        for track in self.tracks:
-            self.batch[index] = {
-                track: self.tracks[track]
-            }
-            index += 1
+        self.events = {}
+        self.tracks = {}
+        path = os.path.join(self.previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            self.tracks = json.load(path)
+            for track in self.tracks:
+                self.events[track] = {}
+                for break_point in self.tracks[track]['most_likely']:
+                    self.events[track][break_point] = self.tracks[track]['break_points'][break_point]
+       for index in range(0, self.num_threads):
+           self.batch[index] = {}
+       index = 0
+       for event in self.events:
+           self.bathc[index][event] = event
+           index = index + 1
+           if index == self.num_threads:
+               index = 0
 
     def transform(self, track, track_name):
         c = config.Configuration()
         likelihood = {}
-        # TODO: proper value for std?
         distribution = {
-            (1, 1): statistics.NormalDistribution(mean = c.coverage, std = 5),
-            (1, 0): statistics.NormalDistribution(mean = c.coverage / 2, std = 5),
+            (1, 1): statistics.NormalDistribution(mean = c.coverage, c.std = 5),
+            (1, 0): statistics.NormalDistribution(mean = c.coverage / 2, c.std = 5),
             (0, 0): statistics.ErrorDistribution(p = 1.0 / 1000),
         }
-        likelihood = {
-            (1, 1): 0,
-            (1, 0): 0,
-            (0, 0): 0,
-        }
         # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
-        for kmer in track:
-            for zyg in likelihood:
-                likelihood[zyg] += math.log(distribution[zyg](count_server.get_kmer_count(kmer, self.index, False)))
-        return likelihood
+        for break_point in track:
+            likelihood[break_point]
+            for zyg in distribution:
+                likelihood[break_point][zyg] = 0
+            for kmer in track[break_point]['novel_kmers']:
+                for zyg in distribution:
+                    likelihood[break_point][zyg] += distribution[zyg].log_pmf(track[break_point]['novel_kmers'][kmer]['actual_count'])
+i       # now find the maximum, for each zygosity find the maximum value, then compare
+        m = {}
+        for zyg in distribution: 
+            for break_point in break_points:
+                 if not zyg in m:
+                     m[zyg] = lieklihood[break_point][zyg]
+                 m[zyg] = max((m[zyg][0], m[zyg][1]), (likelihood[break_point][zyg], break_point), key = operator.itemgetter(0))
+        choice = max(m.items(), key = operator.itemgetter(1))[0]
+        return {
+            'prediction': choice
+        }
 
 # ============================================================================================================================ #
 # Main

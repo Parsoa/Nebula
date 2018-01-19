@@ -31,32 +31,6 @@ import pybedtools
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
-
-print('importing break_point.py')
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class BreakPoint(object):
-
-    @staticmethod
-    def to_json(break_point):
-        return {
-            'boundary': break_point.boundary,
-            'kmers': break_point.kmers,
-            'reference_kmers': break_point.reference_kmers
-        }
-
-    def __init__(self, boundary, begin, end, kmers, reference_kmers):
-        self.name = '(' + str(begin) + ',' + str(end) + ')'
-        self.boundary = boundary
-        self.begin = begin
-        self.end = end
-        self.kmers = kmers
-        self.reference_kmers = reference_kmers
-        self.score = 0
-        self.zygosity = None
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce job for finding StructuralVariation breakpoints
@@ -83,6 +57,11 @@ class BreakPointJob(map_reduce.Job):
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
+
+    def check_cli_arguments(self):
+        # --bed the BED file from which to read the tracks (sensible default provided)
+        # --threads the number of threads to use (sensible default provided)
+        pass
 
     def find_thread_count(self):
         pass
@@ -112,30 +91,34 @@ class BreakPointJob(map_reduce.Job):
         c = config.Configuration()
         sv_type = self.get_sv_type()
         output = {}
+        n = 0
+        start = time.time()
         for track in batch:
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            sv = sv_type(track = track, radius = self.radius)
-            output[name] = self.transform(sv)
+            # track coordinates might exceed boundaries of the chromosome
+            try:
+                sv = sv_type(track = track, radius = self.radius)
+                output[name] = self.transform(sv)
+            except pybedtools.helpers.BEDToolsError as e:
+                print(e)
+            t = time.time()
+            c = float(n) / len(batch)
+            print('index:', self.index, 'completion:', c, 'ETA:', ((1.0 - c) * (t - start) / c) / 3600, 'hours')
         self.output_batch(output)
-        print(colorama.Fore.GREEN, 'process ', self.index, ' done')
+        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self, sv):
         c = config.Configuration()
-        frontier = self.extract_boundary_kmers(sv)
-        # whatever that is left in the frontier is a possible break point
-        frontier = self.prune_boundary_candidates(frontier, sv)
-        # now check the reference counts to find the best match
-        results = {}
-        results['candidates'] = len(frontier)
-        for break_point in frontier :
-            for kmer in break_point.reference_kmers:
-                # counts for reference not available at this
-                break_point.reference_kmers[kmer] = -1
-            for kmer in break_point.kmers:
-                break_point.kmers[kmer] = count_server.get_kmer_count(kmer, self.index, False)
-            results[break_point.name] = BreakPoint.to_json(break_point)
+        break_points = self.extract_boundary_kmers(sv)
+        break_points = self.calc_break_point_scores(break_points, sv)
+        for break_point in break_points:
+            # counts for reference not available at this time, need a differnt count_sever instance, need to calc separately
+            #for kmer in break_points[break_point]['reference_kmers']:
+            #    break_points[break_point]['reference_kmers'][kmer] = -1
+            for kmer in break_points[break_point]['kmers']:
+                break_points[break_point]['kmers'][kmer] = count_server.get_kmer_count(kmer, self.index, False)
             # save the number of boundary candidates
-        return results
+        return break_points
 
     # ============================================================================================================================ #
     # job-specific helpers
@@ -153,33 +136,32 @@ class BreakPointJob(map_reduce.Job):
 
     def extract_boundary_kmers(self, sv):
         c = config.Configuration()
-        frontier = {}
+        break_points = {}
         for begin in range(-self.radius, self.radius + 1) :
             for end in range(-self.radius, self.radius + 1) :
                 kmers, boundary = sv.get_signature_kmers(begin, end)
                 if not kmers:
-                    # skip this candidate
+                    # skip this candidate, has overlapping ends
                     continue
-                reference_kmers = sv.get_reference_signature_kmers(begin, end)
-                #
-                break_point = BreakPoint(boundary = boundary, begin = begin, end = end,\
-                    kmers = kmers, reference_kmers = reference_kmers)
-                frontier[break_point] = True
-        return frontier
+                #reference_kmers = sv.get_reference_signature_kmers(begin, end)
+                break_points['(' + str(begin) + ',' + str(end) + ')'] = {
+                    'boundary': boundary,
+                    'kmers': kmers,
+                    #'reference_kmers': reference_kmers
+                }
+        return break_points
 
     # prunes a break points if not all its kmers appear in the counttable
-    def prune_boundary_candidates(self, frontier, sv):
+    def calc_break_point_scores(self, break_points, sv):
         c = config.Configuration()
-        remove = {}
-        for break_point in frontier:
-            for kmer in break_point.kmers:
+        for break_point in break_points:
+            n = 0
+            for kmer in break_points[break_point]['kmers']:
                 count = count_server.get_kmer_count(kmer, self.index, False)
-                if count == 0:
-                    remove[break_point] = True
-                    break
-        for break_point in remove:
-            frontier.pop(break_point, None)
-        return frontier
+                if count != 0:
+                    n = n + 1
+            break_points[break_point]['score'] = float(n) / float(len(break_points[break_point]['kmers']))
+        return break_points
 
 # ============================================================================================================================ #
 # Utitlizes the likelihood model to find the most likely breakpoint for each structural variation
@@ -202,6 +184,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def check_cli_arguments(self, args):
         # --coverage option to specify the read depth
+        # --ref the reference assembly to use for simulating structural variations (default hg38)
         # --bed to indicate the bed file for output directory (this has the proper default value)
         pass
 
@@ -237,8 +220,11 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 if not break_point in likelihood['break_points']:
                     likelihood['break_points'][break_point] = {
                         'likelihood': 0,
-                        'kmers': {} # we are also interested in knowing the kmer with for each one
+                        'novel_kmers': {} # we are also interested in knowing the kmer with for each one
                     }
+        # in case no breakpoints with adequate score existed for this track
+        if len(likelihood['break_points']) == 0:
+            return None
         # calculate likelihoods
         novel_kmers = track['novel_kmers']
         for kmer in novel_kmers:
@@ -246,14 +232,15 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 r = 0
                 if break_point in novel_kmers[kmer]['break_points']:
                     r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
+                    likelihood['break_points'][break_point]['novel_kmers'][kmer] = r
                 else:
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
                 likelihood['break_points'][break_point]['likelihood'] += r
-                likelihood['break_points'][break_point]['kmers'][kmer] = r
         # find the maximum one and keep it easily accessible in the output
+        # TODO sort and pic 5 best
         l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
-        #m = max(l, key = operator.itemgetter(1))[0]
-        #likelihood['most_likey'] = m
+        m = max(l, key = operator.itemgetter(1))[0]
+        likelihood['most_likey'] = m
         return likelihood
 
     def plot(self, tracks):
@@ -308,3 +295,4 @@ if __name__ == '__main__':
     config.init()
     #
     MostLikelyBreakPointsJob.launch()
+    #BreakPointJob.launch()

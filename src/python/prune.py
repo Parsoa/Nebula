@@ -24,12 +24,11 @@ from kmer import (
 )
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
+print('importing khmer')
 import colorama
 import memory_profiler
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
-
-from pympler import asizeof
 
 print('done importing')
 # ============================================================================================================================ #
@@ -94,33 +93,37 @@ class NovelKmerJob(map_reduce.Job):
     # This helper job will read a heavy json file and output each top level object in it to a separate file in parallel
     class NovelKmerLoadInputJob(map_reduce.Job):
 
+        @staticmethod
+        def launch(index):
+            job = NovelKmerLoadInputJob(job_name = 'NovelKmerJob_', previous_job_name = 'break_point_')
+            job.index = index
+            job.execute()
+            return job.tracks
+
         def find_thread_count(self):
-            c = config.Configuration()
+            c = confing.Configurtion()
             self.num_threads = c.max_threads
 
         def load_inputs(self): 
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(self.index) + '.json')
             self.prefix = 'tmp_' + str(self.index) + '_'
             with open(path, 'r') as json_file:
-                self.tracks = json.load(json_file)
-                for index in range(0, self.num_threads):
-                    self.batch[index] = {}
+                tracks = json.load(json_file)
                 index = 0
-                for track in self.tracks:
-                    self.batch[index][track] = self.tracks[track]
+                for i in range(0, self.num_threads):
+                    self.batch[index] = {}
+                for track in tracks:
+                    self.batch[index][track] = tracks[track]
                     index += 1
                     if index == self.num_threads:
                         index = 0
-                for track in self.tracks:
-                    path = os.path.join(self.get_current_job_directory(), self.prefix + track)
-                    self.tracks[track] = path 
 
         def transform(self, track, track_name):
-            path = os.path.join(self.get_current_job_directory(), self.prefix + track_name)
+            path = os.path.join(self.get_current_job_directory(), self.prefix + track)
             print('writing', path)
-            with open(path, 'w') as tmp_file:
-                json.dump(track, tmp_file, sort_keys = True, indent = 4)
-            return path
+            #with open(path, 'w') as tmp_file:
+            #    json.dump(batch[track], tmp_file, sort_keys = True, indent = 4)
+            return track
 
         def reduce(self):
             # no need to merge stuff here
@@ -145,31 +148,26 @@ class NovelKmerJob(map_reduce.Job):
         pass
 
     # the output from previous stage is too large, we need to load it sequentially to avoid memory allocation errors
-    # json libraries don't seem to support reading sequenctially from a file so we will read each batch of the previous job
-    # and export each of its tracks to a separate file in parallel.
+    # we can't do this step in parallel as then it would require keeping all outputs from previous stage in
+    # memory which is the very thing we are trying to avoid
     #TODO: test this
     def load_inputs(self):
         for index in range(0, self.num_threads):
-            print(colorama.Fore.BLUE + 'handling previous batch', index, colorama.Fore.WHITE)
-            tracks = self.launch_input_loader(index = index) 
-            self.batch[index] = {}
-            for track in tracks:
-                self.batch[index][track] = tracks[track]
-            #path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
-            #with open(path, 'r') as json_file:
-            #    batch = json.load(json_file)
-            #    for track in batch:
-            #        # no need to write these files again if we have created them previously
-            #        path = os.path.join(self.get_current_job_directory(), 'tmp_' + str(index) + '_' + track)
-            #        with open(path, 'w') as tmp_file:
-            #            json.dump(batch[track], tmp_file, sort_keys = True, indent = 4)
-            #        self.batch[index][track] = path
-
-    def launch_input_loader(self, index):
-        job = self.NovelKmerLoadInputJob(job_name = 'NovelKmerJob_', previous_job_name = 'break_point_')
-        job.index = index
-        job.execute()
-        return job.tracks
+            #print(colorama.Fore.BLUE + 'handling previous batch', index, colorama.Fore.WHITE)
+            #tracks = NovelKmerLoadInputJob().launch(index = index) 
+            #self.batch[index] = {}
+            #for track in tracks:
+            #    path = os.path.join(self.get_current_job_directory(), 'tmp_' + str(index) + '_' + track)
+            #    self.batch[index][track] = path
+            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
+            with open(path, 'r') as json_file:
+                batch = json.load(json_file)
+                for track in batch:
+                    # no need to write these files again if we have created them previously
+                    path = os.path.join(self.get_current_job_directory(), 'tmp_' + str(index) + '_' + track)
+                    with open(path, 'w') as tmp_file:
+                        json.dump(batch[track], tmp_file, sort_keys = True, indent = 4)
+                    self.batch[index][track] = path
 
     def transform(self, path, track_name):
         # load each job's input separately to reduce memory footprint
@@ -376,24 +374,15 @@ class CountKmersExactJob(map_reduce.Job):
 
     def prepare(self):
         self.minimum_coverage = 5
+        self.tracks = {}
 
     def load_inputs(self):
         c = config.Configuration()
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        tracks = {}
         with open(path, 'r') as json_file:
             batch = json.load(json_file)
             for track in batch:
-                tracks[track] = batch[track]
-        #print('tracks:', asizeof.asizeof(tracks))
-        self.kmers = {}
-        for track in tracks:
-            # remember these kmers already come in the canonical representation
-            novel_kmers = tracks[track]['novel_kmers']
-            for kmer in novel_kmers:
-                self.kmers[kmer] = 0
-        del tracks
-        #print('kmers:', asizeof.asizeof(self.kmers))
+                self.tracks[track] = batch[track]
         for index in range(0, self.num_threads):
             self.batch[index] = {} # avoid overrding extra methods from MapReduce
 
@@ -402,53 +391,42 @@ class CountKmersExactJob(map_reduce.Job):
         self.fastq_file = open(c.fastq_file, 'r')
         self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
         self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
-        # this forked process will exit at the end of the following function call
-        self.transform()
-        self.output_batch(self.kmers)
+        # this forked process will exit at the end of the following function call 
+        self.output_batch(self.transform())
 
     def transform(self):
         c = config.Configuration()
         # it is gonna take too long to search inside each track when parsing the FASTQ file so lets
         # re-index based on kmer rather than track (1 table lookup instead of len(tracks))
-        #output = {}
-        #for track in self.tracks:
-        #    # remember these kmers already come in the canonical representation
-        #    novel_kmers = self.tracks[track]['novel_kmers']
-        #    for kmer in novel_kmers:
-        #        output[kmer] = 0
+        output = {}
+        for track in self.tracks:
+            # remeber these kmers already come in the canonical representation
+            novel_kmers = self.tracks[track]['novel_kmers']
+            for kmer in novel_kmers:
+                output[kmer] = 0
         #
         for read, name in self.parse_fastq():
             kmers = get_all_kmers(read, c.ksize)
             for kmer in kmers:
                 # novel kmers for each track are already stored in canonical representation
                 canon = get_canonical_kmer_representation(kmer)
-                if canon in self.kmers: 
-                    self.kmers[canon] += 1
+                if canon in output:
+                    output[canon] += 1
+        return output
 
     def reduce(self):
         c = config.Configuration()
-        # merge kmer counts from all children
+        #
         kmers = {}
         for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            if not os.path.isfile(path):
-                print(colorama.Fore.RED + 'couldn\'t find batch', i, ' results will be suspicious')
-                continue
-            with open (path, 'r') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json'), 'r') as json_file:
                 batch = json.load(json_file)
                 for kmer in batch:
                     if not kmer in kmers:
                         kmers[kmer] = 0
                     kmers[kmer] += batch[kmer]
-        # reindex based on track
-        tracks = {}
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as json_file:
-            batch = json.load(json_file)
-            for track in batch:
-                tracks[track] = batch[track]
-        for track in tracks:
-            novel_kmers = tracks[track]['novel_kmers']
+        for track in self.tracks:
+            novel_kmers = self.tracks[track]['novel_kmers']
             for novel_kmer in novel_kmers:
                 novel_kmers[novel_kmer]['actual_count'] = kmers[novel_kmer]
         # 
@@ -670,5 +648,4 @@ if __name__ == '__main__':
     print('main')
     config.init()
     # 
-    #NovelKmerJob.launch()
-    CountKmersExactJob.launch()
+    NovelKmerJob.launch()

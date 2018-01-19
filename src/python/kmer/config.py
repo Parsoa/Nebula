@@ -72,7 +72,7 @@ def init():
 def parse_args():
     parser = argparse.ArgumentParser()
     # path to a BED files, for jobs that need one as input
-    parser.add_argument("--bed", default = 'CHM1_Lumpy.Del.100bp.DEL.bed')
+    parser.add_argument("--bed", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/CHM1_Lumpy.Del.100bp.DEL.bed')
     # standard devation to use for the normal distribution modeling kmers, separately calculated for each set of reads
     parser.add_argument("--std", type = int, default = 20)
     # path to a FASTQ files, for jobs that need one as input
