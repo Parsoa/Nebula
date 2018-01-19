@@ -22,6 +22,9 @@ from kmer import (
     statistics,
     count_server,
 )
+from kmer.threading import {
+    exact_counter
+}
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
 import colorama
@@ -456,6 +459,10 @@ class CountKmersExactJob(map_reduce.Job):
             json.dump(self.tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 class CountKmersExactMultiThread():
+
+    @staticmethod
+    def launch():
+        exact_counter.execute()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
