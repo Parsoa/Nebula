@@ -455,6 +455,8 @@ class CountKmersExactJob(map_reduce.Job):
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(self.tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
+class CountKmersExactMultiThread():
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # Like CountKmersExactJob but it reads the kmer it needs to count from the output of a previous ExtractBedKmersJob
