@@ -117,29 +117,6 @@ class Job(object):
     def transform(self, track, track_name):
         return track
 
-    @memory_profiler.profile()
-    def output_batch_profile(self, batch):
-        print('outputting batch with profiling', self.index)
-        # output manually, io redirection could get entangled with multiple client/servers
-        n = 0
-        while False:
-            if self.index == 0:
-                break
-            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index - 1) + '.json')):
-                print('found output for', self.index - 1)
-                break
-            n += 1
-            if n == 100000:
-                print(self.index, 'waiting for', self.index - 1)
-                n = 0 
-        print('output', self.index, ':', len(batch))
-        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
-        #json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
-        for chunk in json.JSONEncoder().iterencode(batch):
-            json_file.write(chunk)
-        json_file.close()
-        exit()
-
     def output_batch(self, batch):
         print('outputting batch', self.index)
         # output manually, io redirection could get entangled with multiple client/servers
@@ -164,6 +141,8 @@ class Job(object):
 
     def wait_for_children(self):
         while True:
+            if len(self.children) == 0:
+                break
             (pid, e) = os.wait()
             index = self.children[pid]
             self.children.pop(pid, None)
@@ -171,8 +150,6 @@ class Job(object):
                 print(colorama.Fore.RED + 'pid: ', pid, index, 'finished,', len(self.children), 'remaining', colorama.Fore.WHITE)
             else:
                 print(colorama.Fore.RED + 'pid: ', pid, index, 'finished didn\'t produce output,', len(self.children), 'remaining', colorama.Fore.WHITE)
-            if len(self.children) == 0:
-                break
         print('all forks done, merging output ...')
 
     #TODO: depracate this

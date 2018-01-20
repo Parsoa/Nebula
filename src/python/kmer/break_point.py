@@ -164,7 +164,9 @@ class BreakPointJob(map_reduce.Job):
         return break_points
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # Utitlizes the likelihood model to find the most likely breakpoint for each structural variation
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 class MostLikelyBreakPointsJob(map_reduce.Job):
@@ -203,7 +205,6 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def transform(self, track, track_name):
         c = config.Configuration()
-         #TODO add these to constructor
         self.coverage = c.coverage
         self.std = c.std
         distribution = {
