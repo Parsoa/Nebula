@@ -128,6 +128,10 @@ def get_all_kmers(read, k):
         kmers.append(kmer)
     return kmers
 
+def get_canonical_kmer_representation(kmer):
+    reverse_complement = bed.reverse_complement_sequence(kmer)
+    return kmer if kmer < reverse_complement else reverse_complement
+
 def find_thread_count():
     c = config.Configuration()
     max_index = 0

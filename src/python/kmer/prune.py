@@ -431,8 +431,10 @@ class CountKmersExactJob(map_reduce.Job):
     def reduce(self):
         c = config.Configuration()
         # merge kmer counts from all children
+        print('reducing results ...')
         kmers = {}
         for i in range(0, self.num_threads):
+            print('batch', i)
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
             if not os.path.isfile(path):
                 print(colorama.Fore.RED + 'couldn\'t find batch', i, ' results will be suspicious')
