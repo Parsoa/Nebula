@@ -395,7 +395,7 @@ class CountKmersExactJob(map_reduce.Job):
                 novel_kmers[novel_kmer]['actual_count'] = kmers[novel_kmer]
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+            json.dump(tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -579,4 +579,4 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
 if __name__ == '__main__':
     config.init()
     #NovelKmerJob.launch()
-    CountKmersExactJob.launch(resume_from_reduce = True)
+    CountKmersExactJob.launch()

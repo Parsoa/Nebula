@@ -14,6 +14,7 @@ import traceback
 from multiprocessing.dummy import Pool as ThreadPool
 
 from kmer import (
+    bed,
     config,
     commons,
 )
@@ -71,16 +72,17 @@ def parse_fastq(index, fastq_file):
     m = 0
     lines = []
     t = time.time()
-    chunk_size = 1000
+    chunk_size = 100000
     for i in range(0, chunk_size):
         lines.append(fastq_file.readline())
     line = lines.pop(0)
     ahead = lines.pop(0)
     while ahead:
         if state == HEADER_LINE:
-            # both the header and phred line can start with @ so we need to distinguish between them
-            # this can happen the first time we are looking for a header as our offset may start from
-            # a phred line
+            # both the header and phred line can start with a @ so we need to distinguish between them to avoid picking the phred as the header
+            # this can happen the first time we are looking for a header as our offset may start from a phred line
+            # If we start from a phred line that starts with @ then the next line (a header) will also start with a @ and we know
+            # that we shouldn't pick this line as the header
             if line[0] == '@' and ahead[0] != '@':
                 state = SEQUENCE_LINE
                 name = line[:-1] # ignore the EOL character
@@ -116,7 +118,7 @@ def parse_fastq(index, fastq_file):
                     break
                 lines.append(l)
                 j = j + 1
-                if j == chunk_size():
+                if j == chunk_size:
                     break
         ahead = lines.pop(0)
     print(index, ' end of input')
@@ -141,6 +143,8 @@ def find_thread_count():
             max_index = index + 1
     global num_threads
     num_threads = max_index
+    global thread_pool
+    thread_pool = ThreadPool(num_threads)
 
 def load_inputs():
     c = config.Configuration()
@@ -150,7 +154,7 @@ def load_inputs():
     fastq_file_chunk_size = math.ceil(os.path.getsize(fastq_file.name) / float(num_threads))
     #
     print('loading tracks ...') 
-    path = os.path.join(get_previous_job_directory(), 'merge.json')
+    path = os.path.join(get_previous_job_directory(), 'batch_1.json')
     tracks = {}
     with open(path, 'r') as json_file:
         batch = json.load(json_file)
@@ -163,15 +167,16 @@ def load_inputs():
         novel_kmers = tracks[track]['novel_kmers']
         for kmer in novel_kmers:
             kmers[kmer] = 0
+    print(len(kmers), 'kmers')
 
 def transform(index):
     c = config.Configuration()
     fastq_file = open(c.fastq_file, 'r')
     fastq_file.seek(index * fastq_file_chunk_size, 0)
+    global kmers
     for read, name in parse_fastq(index, fastq_file):
         for kmer in get_all_kmers(read, c.ksize):
             canon = get_canonical_kmer_representation(kmer)
-            global kmers
             if canon in kmers: 
                 kmers[canon] += 1
 
@@ -201,13 +206,12 @@ def join():
 def execute():
     find_thread_count()
     create_output_directories()
+    load_inputs()
     global kmers
-    kmers = load_inputs()
-    global thread_pool
-    thread_pool = ThreadPool(num_threads) 
     thread_pool.map(transform, range(0, num_threads))
     thread_pool.close()
     thread_pool.join()
+    print(len(kmers))
     join()
 
 if __name__ == '__main__':
