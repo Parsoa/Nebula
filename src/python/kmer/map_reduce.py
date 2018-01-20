@@ -45,6 +45,7 @@ class Job(object):
             self.run_for_certain_batches_only = True
             self.batches_to_run = kwargs['batches_to_run']
         if 'resume_from_reduce' in kwargs:
+            print('resuming from reduce')
             self.resume_from_reduce = True
 
     def prepare(self):

@@ -5,10 +5,13 @@ import pwd
 import sys
 import copy
 import json
+import math
 import time
 import atexit
 import argparse
 import traceback
+
+from multiprocessing.dummy import Pool as ThreadPool
 
 from kmer import (
     config,
@@ -22,10 +25,10 @@ import colorama
 # ============================================================================================================================ #
 
 kmers = {}
-job_name = "CountKmersExactJob_"
+job_name = "CountKmersExactThreadedJob_"
 num_threads = 12
 thread_pool = None
-previous_job_name = "NovelKmersJob_"
+previous_job_name = "NovelKmerJob_"
 
 # ============================================================================================================================ #
 # filesystem helpers
@@ -35,7 +38,7 @@ def get_output_directory():
     c = config.Configuration()
     bed_file_name = c.bed_file.split('/')[-1]
     return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-        '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/'))
+        '../../../../output/' + bed_file_name + '/' + str(c.ksize) + '/'))
 
 def get_previous_job_directory():
     # get rid of the final _
@@ -64,19 +67,21 @@ def parse_fastq(index, fastq_file):
     THIRD_LINE = 2
     QUALITY_LINE = 3
     state = HEADER_LINE
-    # need to skip invalid lines
-    line = fastq_file.readline()
-    ahead = fastq_file.readline()
     n = 0
     m = 0
+    lines = []
     t = time.time()
-    # TODO: to make IO waits more meaningful, load a 1000 lines or so per iteration
+    chunk_size = 1000
+    for i in range(0, chunk_size):
+        lines.append(fastq_file.readline())
+    line = lines.pop(0)
+    ahead = lines.pop(0)
     while ahead:
         if state == HEADER_LINE:
+            # both the header and phred line can start with @ so we need to distinguish between them
+            # this can happen the first time we are looking for a header as our offset may start from
+            # a phred line
             if line[0] == '@' and ahead[0] != '@':
-                if fastq_file.tell() >= (index + 1) * fastq_file_chunk_size:
-                    print(index, 'reached segment boundary')
-                    break
                 state = SEQUENCE_LINE
                 name = line[:-1] # ignore the EOL character
         elif state == SEQUENCE_LINE:
@@ -97,7 +102,23 @@ def parse_fastq(index, fastq_file):
         elif state == QUALITY_LINE:
             state = HEADER_LINE
         line = ahead
-        ahead = fastq_file.readline()
+        # we have reached the end of this chunk of lines, read another chunk
+        if len(lines) == 0:
+            j = 0
+            while True:
+                if state == HEADER_LINE:
+                    # we have reached a header line in the next segment of the file, stop
+                    if fastq_file.tell() >= (index + 1) * fastq_file_chunk_size:
+                        break
+                l = fastq_file.readline()
+                # end of file probably, only happens for the last segment
+                if not l:
+                    break
+                lines.append(l)
+                j = j + 1
+                if j == chunk_size():
+                    break
+        ahead = lines.pop(0)
     print(index, ' end of input')
 
 def get_all_kmers(read, k):
@@ -116,15 +137,15 @@ def find_thread_count():
             max_index = index + 1
     global num_threads
     num_threads = max_index
-    global thread_pool
-    thread_pool = ThreadPool(num_threads) 
 
 def load_inputs():
     c = config.Configuration()
     #
     global fastq_file_chunk_size
+    fastq_file = open(c.fastq_file, 'r')
     fastq_file_chunk_size = math.ceil(os.path.getsize(fastq_file.name) / float(num_threads))
-    # 
+    #
+    print('loading tracks ...') 
     path = os.path.join(get_previous_job_directory(), 'merge.json')
     tracks = {}
     with open(path, 'r') as json_file:
@@ -132,6 +153,7 @@ def load_inputs():
         for track in batch:
             tracks[track] = batch[track]
     #
+    print('re-indexing on kmers')
     global kmers
     for track in tracks:
         novel_kmers = tracks[track]['novel_kmers']
@@ -152,13 +174,14 @@ def transform(index):
 def join():
     c = config.Configuration()
     # no need to merge kmer counts
-    # reindex based on track
-    path = os.path.join(.get_previous_job_directory(), 'merge.json')
+    # load the sv break points
+    path = os.path.join(get_previous_job_directory(), 'merge.json')
     tracks = {}
     with open(path, 'r') as json_file:
         batch = json.load(json_file)
         for track in batch:
             tracks[track] = batch[track]
+    # re-index based on track
     for track in tracks:
         novel_kmers = tracks[track]['novel_kmers']
         for novel_kmer in novel_kmers:
@@ -176,7 +199,13 @@ def execute():
     create_output_directories()
     global kmers
     kmers = load_inputs()
+    global thread_pool
+    thread_pool = ThreadPool(num_threads) 
     thread_pool.map(transform, range(0, num_threads))
     thread_pool.close()
     thread_pool.join()
     join()
+
+if __name__ == '__main__':
+    config.init()
+    execute()

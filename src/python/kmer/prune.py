@@ -22,9 +22,9 @@ from kmer import (
     statistics,
     count_server,
 )
-from kmer.threading import {
+from kmer.threading import (
     exact_counter
-}
+)
 from kmer.sv import StructuralVariation, Inversion, Deletion
 
 import colorama
@@ -318,8 +318,8 @@ class CountKmersExactJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     @staticmethod
-    def launch():
-        job = CountKmersExactJob(job_name = 'CountKmersExactJob_', previous_job_name = 'NovelKmerJob_')
+    def launch(**kwargs):
+        job = CountKmersExactJob(job_name = 'CountKmersExactJob_', previous_job_name = 'NovelKmerJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -680,4 +680,4 @@ if __name__ == '__main__':
     config.init()
     # 
     #NovelKmerJob.launch()
-    CountKmersExactJob.launch()
+    CountKmersExactJob.launch(resume_from_reduce = True)
