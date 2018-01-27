@@ -4,7 +4,7 @@ import re
 import pwd
 import sys
 import copy
-import json
+#import json
 import time
 import atexit
 import argparse
@@ -15,8 +15,12 @@ from kmer import (
     commons,
 )
 
+from kmer.commons import pretty_print as print
+
 import colorama
 import memory_profiler
+
+import rapidjson as json
 
 def on_exit(job):
     print(colorama.Fore.GREEN + 'job', job.index, 'exiting', colorama.Fore.WHITE)
@@ -44,6 +48,7 @@ class Job(object):
         if 'batches_to_run' in kwargs:
             self.run_for_certain_batches_only = True
             self.batches_to_run = kwargs['batches_to_run']
+            print('resuming from reduce')
         if 'resume_from_reduce' in kwargs:
             print('resuming from reduce')
             self.resume_from_reduce = True
@@ -60,6 +65,7 @@ class Job(object):
         self.create_output_directories()
         self.find_thread_count()
         if not self.resume_from_reduce:
+            print('normal execution flow')
             self.load_inputs()
             self.distribute_workload()
             self.wait_for_children()
@@ -97,18 +103,27 @@ class Job(object):
                 self.index = index
                 atexit.register(on_exit, self)
                 self.run_batch(self.batch[index])
+                exit()
             else:
                 # main process
                 self.children[pid] = index
                 print('spawned child ', index, ':', pid)
+        print(colorama.Fore.CYAN + 'done distributing workload')
 
     def run_batch(self, batch):
         c = config.Configuration()
         remove = {}
+        n = 0
+        start = time.time()
         for track in batch:
             batch[track] = self.transform(batch[track], track)
             if batch[track] == None:
                 remove[track] = True
+            n = n + 1
+            t = time.time()
+            p = float(n) / len(batch)
+            eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
+            print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
         for track in remove:
             batch.pop(track, None)
         # ths forked process will exit after the following function call
@@ -117,6 +132,7 @@ class Job(object):
     def transform(self, track, track_name):
         return track
 
+    # This MUST call exit()
     def output_batch(self, batch):
         print('outputting batch', self.index)
         # output manually, io redirection could get entangled with multiple client/servers
@@ -133,7 +149,7 @@ class Job(object):
                 n = 0 
         print('output', self.index, ':', len(batch))
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
-        json.dump(batch, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+        json.dump(batch, json_file, sort_keys = True, indent = 4)
         #for chunk in json.JSONEncoder().iterencode(batch):
         #    json_file.write(chunk)
         json_file.close()
@@ -150,11 +166,7 @@ class Job(object):
                 print(colorama.Fore.RED + 'pid: ', pid, index, 'finished,', len(self.children), 'remaining', colorama.Fore.WHITE)
             else:
                 print(colorama.Fore.RED + 'pid: ', pid, index, 'finished didn\'t produce output,', len(self.children), 'remaining', colorama.Fore.WHITE)
-        print('all forks done, merging output ...')
-
-    #TODO: depracate this
-    def merge(self, outputs):
-        pass
+        print(colorama.Fore.CYAN + 'all forks done, merging output ...')
 
     def plot(self, outputs):
         pass
@@ -172,8 +184,7 @@ class Job(object):
                     batch = json.load(json_file)
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
-        self.merge(output)
+            json.dump(output, json_file, sort_keys = True, indent = 4)
         self.sort(output)
         self.plot(output)
 
@@ -208,3 +219,4 @@ class Job(object):
         dir = self.get_current_job_directory()
         if not os.path.exists(dir):
             os.makedirs(dir)
+

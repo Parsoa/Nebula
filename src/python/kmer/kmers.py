@@ -15,7 +15,6 @@ import statistics as stats
 from kmer import (
     bed,
     sets,
-    kmer,
     config,
     commons,
     counttable,

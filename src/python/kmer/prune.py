@@ -4,7 +4,7 @@ import re
 import pwd
 import sys
 import copy
-import json
+#import json
 import math
 import time
 import random
@@ -15,7 +15,6 @@ import statistics as stats
 from kmer import (
     bed,
     sets,
-    kmer,
     config,
     commons,
     counttable,
@@ -23,17 +22,17 @@ from kmer import (
     statistics,
     count_server,
 )
-from kmer.threading import (
-    exact_counter
-)
 from kmer.sv import StructuralVariation, Inversion, Deletion
+from kmer.kmers import *
+
+from pympler import asizeof
 
 import colorama
 import memory_profiler
+
+import rapidjson as json
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
-
-from pympler import asizeof
 
 print('done importing')
 
@@ -129,10 +128,10 @@ class NovelKmerJob(map_reduce.Job):
                 continue
             kmers = track[break_point]['kmers']
             for kmer in kmers:
-                canon = kmer.get_canonical_kmer_representation(kmer)
+                canon = get_canonical_kmer_representation(kmer)
                 # we are going to be comparing these againt reads, so it is necessary to consider reverse complement as well
                 # khmer returns the same count for a kmer and its reverse complement
-                if kmer.is_kmer_novel(canon, self.index):
+                if is_kmer_novel(canon, self.index):
                     if not canon in novel_kmers:
                         novel_kmers[canon] = {
                             'count': [],
@@ -233,7 +232,7 @@ class NovelKmerOverlapJob(map_reduce.Job):
         sorted_output = sorted(tmp.items(), key = operator.itemgetter(1))
         # dump
         with open(os.path.join(self.get_current_job_directory(), 'sort.json'), 'w') as json_file:
-            json.dump(sorted_output, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+            json.dump(sorted_output, json_file, sort_keys = True, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -361,7 +360,7 @@ class CountKmersExactJob(map_reduce.Job):
             kmers = get_all_kmers(read, c.ksize)
             for kmer in kmers:
                 # novel kmers for each track are already stored in canonical representation
-                canon = kmer.get_canonical_kmer_representation(kmer)
+                canon = get_canonical_kmer_representation(kmer)
                 if canon in self.kmers: 
                     self.kmers[canon] += 1
 
@@ -395,7 +394,7 @@ class CountKmersExactJob(map_reduce.Job):
                 novel_kmers[novel_kmer]['actual_count'] = kmers[novel_kmer]
         # 
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+            json.dump(tracks, json_file, sort_keys = True, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -464,7 +463,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
             c = config.Configuration()
             seq = bed.extract_sequence(track)
             for kmer in get_all_kmers(seq, c.ksize):
-                canon = kmer.get_canonical_kmer_representation(kmer)
+                canon = get_canonical_kmer_representation(kmer)
                 if not canon in self.kmers:
                     self.kmers[canon] = 0
                 self.kmers[canon] += 1
@@ -473,7 +472,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         def output_batch(self, batch):
             path = os.path.join(self.get_current_job_directory(), 'kmers_' + str(self.index) + '.json')
             with open(path, 'w') as json_file:
-                json.dump(self.kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+                json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
 
         def reduce(self):
             # merge all the kmer counts from previous steps
@@ -486,7 +485,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
                             self.kmers[kmer] = 0
                         self.kmers[kmer] += batch[kmer]
             with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-                json.dump(self.kmers, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+                json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
 
         # ============================================================================================================================ #
         # filesystem helpers
@@ -499,7 +498,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
                 '../../../output/genotyping/exonic_kmers'))
 
         def get_current_job_directory(self):
-            return get_output_directory()
+            return self.get_output_directory()
 
     # ============================================================================================================================ #
     # MapReduce overrides
@@ -518,7 +517,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
 
     def load_inputs(self):
         c = config.Configuration()
-        job = self.NovelKmerLoadInputJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_')
+        job = self.ExtractExonicKmersJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_')
         job.execute()
         self.kmers = job.kmers
 
@@ -536,7 +535,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
                     kmers[kmer] += batch[kmer]
         # output merged kmer counts
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+            json.dump(self.tracks, json_file, sort_keys = True, indent = 4)
         # calculate mean and std
         self.counts = list(map(lambda x: kmer[x], list(kmers.keys())))
         self.mean = stats.mean(self.counts)
@@ -547,12 +546,12 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         print('mean:', self.mean)
         print('std:', self.std)
         with open(os.path.join(self.get_current_job_directory(), 'distribution.json'), 'w') as json_file:
-            json.dump({'median': median, 'std': std}, json_file, sort_keys = True, indent = 4, separators = (',', ': '))
+            json.dump({'median': median, 'std': std}, json_file, sort_keys = True, indent = 4)
         self.plot()
 
         def plot(self):
             n = statistics.NormalDistribution(mean = self.mean, std = self.std)
-            r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 10    0))) ]
+            r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 100))) ]
             data = [graph_objs.Histogram(x = r, xbins = dict(start = 0, end = 500, size = 5))]
             path = os.path.join(self.get_current_job_directory(), 'distribution.html')
             plotly.plot(data, filename = path + '.html', auto_open = False)
@@ -568,7 +567,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
             '../../../output/genotyping/' + fastq_file_name + '/coverage/'))
 
     def get_current_job_directory(self):
-        return get_output_directory()
+        return self.get_output_directory()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -578,5 +577,6 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
 
 if __name__ == '__main__':
     config.init()
-    #NovelKmerJob.launch()
     CountKmersExactJob.launch()
+    #NovelKmerJob.launch()
+    #DepthOfCoverageEstimationJob.launch()

@@ -5,6 +5,8 @@ colorama
 memory_profiler
 pylru
 plotly
+pympler
+python-rapidjson
 # comment this line first
 #-e git+git@github.com:dib-lab/khmer.git#egg=khmer
 -e git+git@github.com:dib-lab/kevlar.git#egg=kevlar

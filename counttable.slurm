@@ -11,7 +11,7 @@
 
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv/bin/activate
-cd src/python
-
+#cd src/python
 #python -m kmer.prune --fastq /share/hormozdiarilab/Data/Genomes/Illumina/CHMs/CHM1_hg38/CHM1.samtoolsversion.fq --threads 48
-python -m kmer.count_server --threads 4 --counttable /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00512.cor.fq
+#python -m kmer.count_server --threads 4 --counttable /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00512.cor.fq
+python -m counttable
