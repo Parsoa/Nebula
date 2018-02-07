@@ -50,8 +50,7 @@ class Job(object):
             self.batches_to_run = kwargs['batches_to_run']
             print('resuming from reduce')
         if 'resume_from_reduce' in kwargs:
-            print('resuming from reduce')
-            self.resume_from_reduce = True
+            self.resume_from_reduce = kwargs['resume_from_reduce']
 
     def prepare(self):
         pass
@@ -69,6 +68,8 @@ class Job(object):
             self.load_inputs()
             self.distribute_workload()
             self.wait_for_children()
+        else:
+            print('resuming from reduce')
         self.reduce()
         # self.clean_up()
 

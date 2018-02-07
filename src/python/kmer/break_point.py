@@ -241,7 +241,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 r = 0
                 if break_point in novel_kmers[kmer]['break_points']:
                     r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
-                    likelihood['break_points'][break_point]['novel_kmers'][kmer] = r
+                    likelihood['break_points'][break_point]['novel_kmers'][kmer] = {'count': novel_kmers[kmer]['actual_count'],\
+                        'likelihood': r}
                 else:
                     r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
                 likelihood['break_points'][break_point]['likelihood'] += r
@@ -249,11 +250,40 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # TODO sort and pic 5 best
         l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
         m = max(l, key = operator.itemgetter(1))[0]
-        likelihood['most_likey'] = m
+        likelihood['most_likely'] = {m: likelihood['break_points'][m]}
         return likelihood
 
-    def plot(self, tracks):
-        MostLikelyBreakPointsPlottingJob.launch()
+    def reduce(self):
+        c = config.Configuration()
+        path = (os.path.join(self.get_previous_job_directory(), 'merge.json'))
+        print('building kmer count cache')
+        with open(path, 'r') as kmers_file:
+            tracks = json.load(kmers_file)
+            kmers = {}
+            for track in tracks:
+                for kmer in tracks[track]['novel_kmers']:
+                    kmers[kmer] = tracks[track]['novel_kmers'][kmer]['actual_count']
+        print('done with the kmer counts')
+        output = {}
+        path = (os.path.join(self.get_current_job_directory(), 'most_likely'))
+        if not os.path.exists(path):
+            os.makedirs(path)
+        for i in range(0, self.num_threads):
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as json_file:
+                    batch = json.load(json_file)
+                    for track in batch:
+                        path = os.path.join(self.get_current_job_directory(), 'most_likely', track + '.most_likely.json')
+                        with open(path, 'w') as most_likely_file:
+                            json.dump(batch[track]['most_likely'], most_likely_file, sort_keys = True, indent = 4)
+                    output.update(batch)
+            print('merging,', i, ' out of', self.num_threads, ' done')
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(output, json_file, sort_keys = True, indent = 4)
+
+    #def plot(self, tracks):
+    #    MostLikelyBreakPointsPlottingJob.launch()
 
 # ============================================================================================================================ #
 # Helper job for rapidly generating likelihood plots
@@ -356,6 +386,6 @@ class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
 if __name__ == '__main__':
     config.init()
     #
-    #MostLikelyBreakPointsJob.launch(resume_from_reduce = True)
-    MostLikelyBreakPointsPlottingJob.launch()
+    MostLikelyBreakPointsJob.launch(resume_from_reduce = False)
+    #MostLikelyBreakPointsPlottingJob.launch()
     #BreakPointJob.launch()

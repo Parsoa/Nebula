@@ -414,7 +414,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         job.execute()
 
     # ============================================================================================================================ #
-    # This helper job will read a heavy json file and output each top level object in it to a separate file in parallel
+    # This helper job will extract the set of kmers to be counted for an estimation of depth of coverage
     # ============================================================================================================================ #
 
     class ExtractExonicKmersJob(map_reduce.Job):
@@ -437,16 +437,17 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         def find_thread_count(self):
             c = config.Configuration()
             self.num_threads = c.max_threads
-            path = os.path.join(self.get_current_job_directory(), 'kmers.json')
-            if os.path.isfile(path):
-                print('kmers already extracted, skipping')
-                # setting this to zero will effectively skip all processing
-                self.num_threads = 0
-                with open(path, 'r') as json_file:
-                    self.tracks = json.load(json_file)
 
         def load_inputs(self):
             c = config.Configuration()
+            # check if we already have the kmers
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'kmers.json')):
+                with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'r') as kmers_file:
+                    print('Exon kmers already extracted, reloading from cache')
+                    self.kmers = json.load(kmers_file)
+                    # setting num_threads to 0 will bypass all execution
+                    self.num_threads = 0
+                    return
             # load exonic regions
             tracks = self.parse_track_file(c.bed_file)
             for index in range(0, self.num_threads):
@@ -475,6 +476,8 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
                 json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
 
         def reduce(self):
+            if self.num_threads == 0:
+                return
             # merge all the kmer counts from previous steps
             for i in range(0, self.num_threads):
                 path = os.path.join(self.get_current_job_directory(), 'kmers_' + str(i) + '.json')
@@ -483,19 +486,14 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
                     for kmer in batch:
                         if not kmer in self.kmers:
                             self.kmers[kmer] = 0
-                        self.kmers[kmer] += batch[kmer]
             with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
                 json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
-
-        # ============================================================================================================================ #
-        # filesystem helpers
-        # ============================================================================================================================ #
 
         def get_output_directory(self):
             c = config.Configuration()
             fastq_file_name = c.fastq_file.split('/')[-1][::-1].split('.')[-1][::-1]
             return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../output/genotyping/exonic_kmers'))
+                '../../../output/genotyping/', fastq_file_name, self.job_name[:-1]))
 
         def get_current_job_directory(self):
             return self.get_output_directory()
@@ -508,7 +506,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         # --bed: the BED file with exon locations
         # --fastq: the sample genome for which we are calculating the coverage
         # --threads: maximum number of threads to use
-        # --reference: the reference genome to use
+        # --reference: the reference genome to use for the exon locations
         pass
 
     def find_thread_count(self):
@@ -517,27 +515,36 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
 
     def load_inputs(self):
         c = config.Configuration()
+        print('running helper job to get kmers')
         job = self.ExtractExonicKmersJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_')
         job.execute()
-        self.kmers = job.kmers
+        # all kmers begin with a count of zero
+        kmers = job.kmers
+        self.kmers = {}
+        # sample from these kmers
+        print('got', len(kmers), 'kmers, sampling 100000 randomly')
+        sample = random.sample(kmers.items(), 100000)
+        for key, value in sample:
+            self.kmers[key] = value
+        print('kmers available, counting for coverage')
+        # dummy, to avoid overrding distribute_workload
+        for index in range(0, self.num_threads):
+            self.batch[index] = {}
 
     def reduce(self):
         c = config.Configuration()
         # merge kmer counts from all children
-        kmers = {}
+        kmers = {'kmers': {}}
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
             with open (path, 'r') as json_file:
                 batch = json.load(json_file)
                 for kmer in batch:
-                    if not kmer in kmers:
-                        kmers[kmer] = 0
-                    kmers[kmer] += batch[kmer]
-        # output merged kmer counts
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, sort_keys = True, indent = 4)
+                    if not kmer in kmers['kmers']:
+                        kmers['kmers'][kmer] = 0
+                    kmers['kmers'][kmer] += batch[kmer]
         # calculate mean and std
-        self.counts = list(map(lambda x: kmer[x], list(kmers.keys())))
+        self.counts = list(map(lambda x: kmers['kmers'][x], list(kmers['kmers'].keys())))
         self.mean = stats.mean(self.counts)
         # filter outliers
         self.counts = list(filter(lambda x: x < 3 * self.mean, self.counts))
@@ -545,11 +552,13 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         self.std = stats.stdev(self.counts)
         print('mean:', self.mean)
         print('std:', self.std)
-        with open(os.path.join(self.get_current_job_directory(), 'distribution.json'), 'w') as json_file:
-            json.dump({'median': median, 'std': std}, json_file, sort_keys = True, indent = 4)
-        self.plot()
+        kmers['coverage'] = {'mean': self.mean, 'std': self.std}
+        # output merged kmer counts
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(kmers, json_file, sort_keys = True, indent = 4)
+        self.plot(self.counts)
 
-        def plot(self):
+        def plot(self, _):
             n = statistics.NormalDistribution(mean = self.mean, std = self.std)
             r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 100))) ]
             data = [graph_objs.Histogram(x = r, xbins = dict(start = 0, end = 500, size = 5))]
@@ -564,7 +573,7 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
         c = config.Configuration()
         fastq_file_name = c.fastq_file.split('/')[-1][::-1].split('.')[-1][::-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/genotyping/' + fastq_file_name + '/coverage/'))
+            '../../../output/genotyping/', fastq_file_name, self.job_name[:-1]))
 
     def get_current_job_directory(self):
         return self.get_output_directory()
@@ -577,6 +586,6 @@ class DepthOfCoverageEstimationJob(CountKmersExactJob):
 
 if __name__ == '__main__':
     config.init()
-    CountKmersExactJob.launch()
+    #CountKmersExactJob.launch()
     #NovelKmerJob.launch()
-    #DepthOfCoverageEstimationJob.launch()
+    DepthOfCoverageEstimationJob.launch(resume_from_reduce = True)
