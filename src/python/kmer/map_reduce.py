@@ -221,3 +221,120 @@ class Job(object):
         if not os.path.exists(dir):
             os.makedirs(dir)
 
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# MapReduce Job to find reads containing kmers from structural variation events that produce too many novel kmers.
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class BaseExactCountingJob(Job):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = CountKmersExactJob(job_name = 'CountKmersExactJob_', previous_job_name = 'NovelKmerJob_', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # job-specific stuff
+    # ============================================================================================================================ #
+
+    def get_all_kmers(self, read, k):
+        kmers = []
+        for i in range(0, len(read) - k + 1):
+            kmer = read[i : i + k]
+            kmers.append(kmer)
+        return kmers
+
+    def parse_fastq(self):
+        name = None
+        HEADER_LINE = 0
+        SEQUENCE_LINE = 1
+        THIRD_LINE = 2
+        QUALITY_LINE = 3
+        state = HEADER_LINE
+        # need to skip invalid lines
+        line = self.fastq_file.readline()
+        ahead = self.fastq_file.readline()
+        n = 0
+        m = 0
+        t = time.time()
+        while ahead:
+            if state == HEADER_LINE:
+                if line[0] == '@' and ahead[0] != '@':
+                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                        print(self.index, 'reached segment boundary')
+                        break
+                    state = SEQUENCE_LINE
+                    name = line[:-1] # ignore the EOL character
+            elif state == SEQUENCE_LINE:
+                state = THIRD_LINE
+                seq = line[:-1] # ignore the EOL character
+                n += 1
+                if n == 100000:
+                    n = 0
+                    m += 1
+                    c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
+                    s = time.time()
+                    p = c / float(self.fastq_file_chunk_size)
+                    e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                    print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
+                    #print(self.index, 'm =', m)
+                yield seq, name
+            elif state == THIRD_LINE:
+                state = QUALITY_LINE
+            elif state == QUALITY_LINE:
+                state = HEADER_LINE
+            line = ahead
+            ahead = self.fastq_file.readline()
+        print(self.index, ' end of input')
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def check_cli_arguments(self, args):
+        # --bed to specify the set of structural variations
+        # --fastq: the genome from which we are getting the kmer counts
+        pass
+
+    def run_batch(self, batch):
+        c = config.Configuration()
+        self.fastq_file = open(c.fastq_file, 'r')
+        self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
+        self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
+        # this forked process will exit at the end of the following function call
+        self.transform()
+        self.output_batch(self.kmers)
+
+    def transform(self):
+        c = config.Configuration()
+        for read, name in self.parse_fastq():
+            kmers = self.get_all_kmers(read, c.ksize)
+            for kmer in kmers:
+                # novel kmers for each track are already stored in canonical representation
+                canon = get_canonical_kmer_representation(kmer)
+                if canon in self.kmers: 
+                    self.kmers[canon] += 1
+
+    def merge_counts(self):
+        c = config.Configuration()
+        # merge kmer counts from all children
+        print('merging kmer counts ...')
+        kmers = {}
+        for i in range(0, self.num_threads):
+            print('batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
+            if not os.path.isfile(path):
+                print(colorama.Fore.RED + 'couldn\'t find batch', i, ' results will be suspicious')
+                continue
+            with open (path, 'r') as json_file:
+                batch = json.load(json_file)
+                for kmer in batch:
+                    if not kmer in kmers:
+                        kmers[kmer] = 0
+                    kmers[kmer] += batch[kmer]
+        return kmers

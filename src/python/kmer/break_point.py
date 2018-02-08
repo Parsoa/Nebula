@@ -45,7 +45,7 @@ import plotly.graph_objs as graph_objs
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BreakPointJob(map_reduce.Job):
+class AllBreakPointsJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # Launcher
@@ -53,7 +53,7 @@ class BreakPointJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = BreakPointJob(job_name = 'break_point_', previous_job_name = '')
+        job = BreakPointJob(job_name = 'AllBreakPoints_', previous_job_name = '')
         job.execute()
 
     # ============================================================================================================================ #
@@ -112,14 +112,14 @@ class BreakPointJob(map_reduce.Job):
 
     def transform(self, sv):
         c = config.Configuration()
-        break_points = self.extract_boundary_kmers(sv)
-        break_points = self.calc_break_point_scores(break_points, sv)
-        for break_point in break_points:
+        break_points = self.generate_break_points(sv)
+        # break_points = self.calc_break_point_scores(break_points, sv)
+        # for break_point in break_points:
             # counts for reference not available at this time, need a differnt count_sever instance, need to calc separately
             #for kmer in break_points[break_point]['reference_kmers']:
             #    break_points[break_point]['reference_kmers'][kmer] = -1
-            for kmer in break_points[break_point]['kmers']:
-                break_points[break_point]['kmers'][kmer] = count_server.get_kmer_count(kmer, self.index, False)
+            # for kmer in break_points[break_point]['kmers']:
+                # break_points[break_point]['kmers'][kmer] = count_server.get_kmer_count(kmer, self.index, False)
             # save the number of boundary candidates
         return break_points
 
@@ -137,7 +137,7 @@ class BreakPointJob(map_reduce.Job):
             return Inversion
         return StructuralVariation
 
-    def extract_boundary_kmers(self, sv):
+    def generate_break_points(self, sv):
         c = config.Configuration()
         break_points = {}
         for begin in range(-self.radius, self.radius + 1) :
@@ -154,17 +154,73 @@ class BreakPointJob(map_reduce.Job):
                 }
         return break_points
 
-    # prunes a break points if not all its kmers appear in the counttable
-    def calc_break_point_scores(self, break_points, sv):
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# MapReduce job for finding StructuralVariation breakpoints
+# Algorithm: starts with a set of structural variation events and their approximate breakpoints and tries to refine them
+# considers a radius of [-50, 50] around each end of the breakpoint, and for each pair of endpoints within that radius considers
+# the area as the structural variations and applies it to the reference genome to generate a set of kmers. Discards those endpoints
+# whose kmers do not all appear in the base genome the event was detected in. 
+# Output: Reports the remaining boundary candidates with their list of associated kmers and the count of those kmers in the
+# base genome.
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class ExactCountBreakPointsJob(map_reduce.BaseExactCountingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch():
+        job = BreakPointJob(job_name = 'ExactCountBreakPoints_', previous_job_name = 'AllBreakPoints_')
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
         c = config.Configuration()
-        for break_point in break_points:
-            n = 0
-            for kmer in break_points[break_point]['kmers']:
-                count = count_server.get_kmer_count(kmer, self.index, False)
-                if count != 0:
-                    n = n + 1
-            break_points[break_point]['score'] = float(n) / float(len(break_points[break_point]['kmers']))
-        return break_points
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            tracks = json.load(json_file)
+        # accumulate all kmers from all tracks into a large dict to improve performance
+        # if we keep each tracks's kmers in a seperate dict, runtime will grow linearly with number of tracks
+        self.kmers = {}
+        for track in tracks:
+            # remember these kmers already come in the canonical representation
+            for break_point in tracks[track]:
+                for kmer in tracks[track][break_point]['kmers']:
+                    self.kmers[kmer] = 0
+        # these are just dummies
+        for index in range(0, self.num_threads):
+            self.batch[index] = {} # avoid overrding extra methods from MapReduce
+
+    def reduce(self):
+        kmers = self.merge_counts()
+        # reload tracks
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            tracks = json.load(json_file)
+        # update exact counts for break points
+        for track in tracks:
+            for break_point in tracks[track]:
+                for kmer in tracks[track][break_point]['kmers']:
+                    tracks[track][break_point]['kmers'] = kmers[kmer]
+        # prune low quality break points
+        for track in tracks:
+            for break_point in tracks[track]:
+                self.calc_break_point_scores(break_point)
+
+    def calc_break_point_scores(self, break_points):
+        c = config.Configuration()
+        n = 0
+        for kmer in break_point['kmers']:
+            if break_point['kmers'][kmer] != 0:
+                n = n + 1
+        break_point['score'] = float(n) / float(len(break_point['kmers']))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
