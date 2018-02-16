@@ -1,5 +1,8 @@
+import os
 import time
 import functools
+import linecache
+import tracemalloc
 
 import colorama
 
@@ -24,30 +27,54 @@ def measure_time(f):
         return result
     return wrapper
 
+def display_top(snapshot, key_type='lineno', limit=10):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        # replace "/path/to/module/file.py" with "module/file.py"
+        filename = os.sep.join(frame.filename.split(os.sep)[-2:])
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
 # ============================================================================================================================ #
 # STDIO Wrappers/Helpers
 # ============================================================================================================================ #
 
-def identitiy(*vargs, sep = ' '):
+def colorize(*vargs, sep = ' '):
     return ''.join(functools.reduce(lambda x, y: x + str(y) + sep, vargs))
 
-def white(*args):
-    return identitiy(colorama.Fore.WHITE, *args)
-
-def green(*args):
-    return identitiy(colorama.Fore.GREEN, *args)
-
 def red(*args):
-    return identitiy(colorama.Fore.RED, *args)
+    return colorize(colorama.Fore.RED, *args)
 
 def cyan(*args):
-    return identitiy(colorama.Fore.CYAN, *args)
+    return colorize(colorama.Fore.CYAN, *args)
 
 def blue(*args):
-    return identitiy(colorama.Fore.BLUE, *args)
+    return colorize(colorama.Fore.BLUE, *args)
+
+def white(*args):
+    return colorize(colorama.Fore.WHITE, *args)
+
+def green(*args):
+    return colorize(colorama.Fore.GREEN, *args)
 
 def magenta(*args):
-    return identitiy(colorama.Fore.MAGENTA, *args)
+    return colorize(colorama.Fore.MAGENTA, *args)
 
 def pretty_print(*args):
     def inner(*vargs):

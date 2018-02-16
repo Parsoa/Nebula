@@ -16,13 +16,9 @@ from kmer import (
     bed,
     sets,
     config,
-    commons,
     counttable,
-    map_reduce,
-    statistics,
     count_server,
 )
-from kmer.sv import StructuralVariation, Inversion, Deletion
 
 import colorama
 
@@ -73,5 +69,17 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
 
 def get_canonical_kmer_representation(kmer):
     reverse_complement = bed.reverse_complement_sequence(kmer)
-    return kmer if kmer < reverse_complement else reverse_complement
-    
+    return kmer if kmer < reverse_complement else reverse_complement 
+
+def extract_kmers(k, *args):
+    kmers = {}
+    for s in args:
+        for i in range(0, len(s) - k + 1):
+            kmer = s[i : i + k]
+            canon = get_canonical_kmer_representation(kmer)
+            if not canon in kmers:
+                kmers[canon] = 0
+            else:
+                kmers[canon] += 1
+    return kmers
+

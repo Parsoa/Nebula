@@ -4,17 +4,19 @@ import re
 import pwd
 import sys
 import copy
-#import json
+import math
 import time
 import atexit
 import argparse
 import traceback
+import tracemalloc
 
 from kmer import (
     config,
-    commons,
 )
 
+from kmer.kmers import *
+from kmer.commons import *
 from kmer.commons import pretty_print as print
 
 import colorama
@@ -45,12 +47,8 @@ class Job(object):
         self.children = {}
         self.run_for_certain_batches_only = False
         self.resume_from_reduce = False
-        if 'batches_to_run' in kwargs:
-            self.run_for_certain_batches_only = True
-            self.batches_to_run = kwargs['batches_to_run']
-            print('resuming from reduce')
-        if 'resume_from_reduce' in kwargs:
-            self.resume_from_reduce = kwargs['resume_from_reduce']
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     def prepare(self):
         pass
@@ -60,6 +58,7 @@ class Job(object):
 
     def execute(self):
         c = config.Configuration()
+        self.check_cli_arguments(None)
         self.prepare()
         self.create_output_directories()
         self.find_thread_count()
@@ -102,13 +101,13 @@ class Job(object):
             if pid == 0:
                 # forked process
                 self.index = index
-                atexit.register(on_exit, self)
+                # atexit.register(on_exit, self)
                 self.run_batch(self.batch[index])
                 exit()
             else:
                 # main process
                 self.children[pid] = index
-                print('spawned child ', index, ':', pid)
+                print('spawned child', '{:2d}'.format(index), ':', pid)
         print(colorama.Fore.CYAN + 'done distributing workload')
 
     def run_batch(self, batch):
@@ -135,7 +134,6 @@ class Job(object):
 
     # This MUST call exit()
     def output_batch(self, batch):
-        print('outputting batch', self.index)
         # output manually, io redirection could get entangled with multiple client/servers
         n = 0
         while False:
@@ -148,11 +146,8 @@ class Job(object):
             if n == 100000:
                 print(self.index, 'waiting for', self.index - 1)
                 n = 0 
-        print('output', self.index, ':', len(batch))
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)
-        #for chunk in json.JSONEncoder().iterencode(batch):
-        #    json_file.write(chunk)
         json_file.close()
         exit()
 
@@ -164,10 +159,10 @@ class Job(object):
             index = self.children[pid]
             self.children.pop(pid, None)
             if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
-                print(colorama.Fore.RED + 'pid: ', pid, index, 'finished,', len(self.children), 'remaining', colorama.Fore.WHITE)
+                print(red('pid', '{:5d}'.format(pid), ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
             else:
-                print(colorama.Fore.RED + 'pid: ', pid, index, 'finished didn\'t produce output,', len(self.children), 'remaining', colorama.Fore.WHITE)
-        print(colorama.Fore.CYAN + 'all forks done, merging output ...')
+                print(red('pid', '{:5d}'.format(pid), ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
+        print(cyan('all forks done, merging output ...'))
 
     def plot(self, outputs):
         pass
@@ -241,16 +236,9 @@ class BaseExactCountingJob(Job):
     # ============================================================================================================================ #
     # job-specific stuff
     # ============================================================================================================================ #
-
-    def get_all_kmers(self, read, k):
-        kmers = []
-        for i in range(0, len(read) - k + 1):
-            kmer = read[i : i + k]
-            kmers.append(kmer)
-        return kmers
-
     def parse_fastq(self):
         name = None
+        #tracemalloc.start()
         HEADER_LINE = 0
         SEQUENCE_LINE = 1
         THIRD_LINE = 2
@@ -281,8 +269,9 @@ class BaseExactCountingJob(Job):
                     s = time.time()
                     p = c / float(self.fastq_file_chunk_size)
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    print(self.index, 'progress:', p, 'took: ', s - t, 'ETA: ', e)
-                    #print(self.index, 'm =', m)
+                    print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+                    #snapshot = tracemalloc.take_snapshot()
+                    #display_top(snapshot)
                 yield seq, name
             elif state == THIRD_LINE:
                 state = QUALITY_LINE
@@ -297,9 +286,14 @@ class BaseExactCountingJob(Job):
     # ============================================================================================================================ #
 
     def check_cli_arguments(self, args):
+        #tracemalloc.start()
         # --bed to specify the set of structural variations
         # --fastq: the genome from which we are getting the kmer counts
         pass
+
+    def find_thread_count(self):
+        c = config.Configuration()
+        self.num_threads = c.max_threads
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -319,6 +313,24 @@ class BaseExactCountingJob(Job):
                 canon = get_canonical_kmer_representation(kmer)
                 if canon in self.kmers: 
                     self.kmers[canon] += 1
+    """
+    def transform(self):
+        counts = {}
+        c = config.Configuration()
+        for read, name in self.parse_fastq():
+            kmers = extract_kmers(c.ksize, read)
+            n = 0
+            for kmer in kmers:
+                # we are only interested in kmers in self.kmers
+                if not kmer in self.kmers:
+                    continue
+                if not kmer in counts:
+                    counts[kmer] = 0 
+                counts[kmer] += 1
+                n += 1
+            #print('added', n, 'out of', len(kmers))
+        self.kmers = counts
+    """
 
     def merge_counts(self):
         c = config.Configuration()

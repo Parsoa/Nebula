@@ -82,7 +82,7 @@ def parse_args():
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = int, default = 30)
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
-    parser.add_argument("--reference", default = 'hg38')
+    parser.add_argument("--reference", default = 'hg19')
     # a FASTA/FASTQ/SAM/BAM file that should be used as the source for creating a counttable
     parser.add_argument("--counttable", default = '/share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00732.fq')
     args = parser.parse_args()

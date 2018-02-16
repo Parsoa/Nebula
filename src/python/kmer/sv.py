@@ -3,11 +3,11 @@ import time
 
 from kmer import (
     bed,
-    sets,
     config,
     commons,
-    count_server,
 )
+
+from kmer.kmers import *
 
 import colorama
 
@@ -37,7 +37,7 @@ class StructuralVariation(object):
         #
         self.ref_head = seq[0:2 * c.ksize]
         self.ref_tail = seq[-2 * c.ksize:]
-        kmers = count_server.count_kmers_exact_list(self.ref_head, self.ref_tail)
+        kmers = extract_kmers(self.ref_head, self.ref_tail)
         return kmers
 
 class Inversion(StructuralVariation):
@@ -60,7 +60,7 @@ class Inversion(StructuralVariation):
         #
         self.head = head
         self.tail = tail
-        kmers = count_server.count_kmers_exact_list(head, tail)
+        kmers = extract_kmers(head, tail)
         return kmers, {'head': head, 'tail': tail}
 
     def get_boundaries():
@@ -78,6 +78,6 @@ class Deletion(StructuralVariation):
             return None, None
         #
         seq = seq[:c.ksize] + seq[-c.ksize:]
-        kmers = count_server.count_kmers_exact_list(seq)
+        kmers = extract_kmers(seq)
         return kmers, seq
 
