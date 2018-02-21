@@ -2,6 +2,8 @@
 
 venv/
 
+*.pyc
+
 *.fa
 *.fai
 *.ref
@@ -11,7 +13,4 @@ venv/
 *.out
 *.log
 output/*
-!output/*.sh
-!output/*.py
-
-*.pyc
+data/*
