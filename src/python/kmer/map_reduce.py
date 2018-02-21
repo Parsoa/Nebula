@@ -225,15 +225,6 @@ class Job(object):
 class BaseExactCountingJob(Job):
 
     # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        job = CountKmersExactJob(job_name = 'CountKmersExactJob_', previous_job_name = 'NovelKmerJob_', **kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
     # job-specific stuff
     # ============================================================================================================================ #
     def parse_fastq(self):
@@ -307,30 +298,12 @@ class BaseExactCountingJob(Job):
     def transform(self):
         c = config.Configuration()
         for read, name in self.parse_fastq():
-            kmers = self.get_all_kmers(read, c.ksize)
+            kmers = extract_kmers(c.ksize, read)
             for kmer in kmers:
                 # novel kmers for each track are already stored in canonical representation
                 canon = get_canonical_kmer_representation(kmer)
                 if canon in self.kmers: 
                     self.kmers[canon] += 1
-    """
-    def transform(self):
-        counts = {}
-        c = config.Configuration()
-        for read, name in self.parse_fastq():
-            kmers = extract_kmers(c.ksize, read)
-            n = 0
-            for kmer in kmers:
-                # we are only interested in kmers in self.kmers
-                if not kmer in self.kmers:
-                    continue
-                if not kmer in counts:
-                    counts[kmer] = 0 
-                counts[kmer] += 1
-                n += 1
-            #print('added', n, 'out of', len(kmers))
-        self.kmers = counts
-    """
 
     def merge_counts(self):
         c = config.Configuration()

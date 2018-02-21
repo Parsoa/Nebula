@@ -5,7 +5,7 @@ import sys
 import json
 import time
 
-from . import (
+from kmer import (
     sets,
     config,
     commons,

@@ -53,9 +53,8 @@ class NovelKmerJob(map_reduce.Job):
             c = config.Configuration()
             self.num_threads = c.max_threads
 
-        def load_inputs(self): 
+        def load_inputs(self):
             path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(self.index) + '.json')
-            self.prefix = 'tmp_' + str(self.index) + '_'
             with open(path, 'r') as json_file:
                 self.tracks = json.load(json_file)
                 for index in range(0, self.num_threads):
@@ -67,11 +66,11 @@ class NovelKmerJob(map_reduce.Job):
                     if index == self.num_threads:
                         index = 0
                 for track in self.tracks:
-                    path = os.path.join(self.get_current_job_directory(), self.prefix + track)
+                    path = os.path.join(self.get_current_job_directory(), track)
                     self.tracks[track] = path 
 
         def transform(self, track, track_name):
-            path = os.path.join(self.get_current_job_directory(), self.prefix + track_name)
+            path = os.path.join(self.get_current_job_directory(), track_name)
             print('writing', path)
             with open(path, 'w') as tmp_file:
                 json.dump(track, tmp_file, sort_keys = True, indent = 4)
@@ -80,6 +79,10 @@ class NovelKmerJob(map_reduce.Job):
         def reduce(self):
             # no need to merge stuff here
             pass
+
+        def get_current_job_directory(self):
+            # get rid of the final _
+            return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], 'tracks'))
 
     # ============================================================================================================================ #
     # Launcher
@@ -345,7 +348,7 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
                 line = bed_file.readline()
                 while line:
                     tokens = line.split()
-                    track = bed.BedTrack(tokens[-3], int(tokens[-2]), int(tokens[-1]))
+                    track = bed.BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
                     if not track.name in tracks:
                         tracks[track.name] = track
                     line = bed_file.readline()
@@ -461,6 +464,9 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
         # filter outliers
         self.counts = list(filter(lambda x: x < 3 * self.mean, self.counts))
         self.mean = stats.mean(self.counts)
+        # filter anything appearing more than twice the medium, 4x coverage or more, repeatimg kmer
+        self.counts = list(filter(lambda x: x < 2 * self.mean, self.counts))
+        self.mean = stats.mean(self.counts)
         self.std = stats.stdev(self.counts)
         print('mean:', self.mean)
         print('std:', self.std)
@@ -500,4 +506,4 @@ if __name__ == '__main__':
     config.init()
     #CountKmersExactJob.launch()
     #NovelKmerJob.launch()
-    DepthOfCoverageEstimationJob.launch(resume_from_reduce = True)
+    DepthOfCoverageEstimationJob.launch(resume_from_reduce = False)

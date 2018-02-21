@@ -51,11 +51,12 @@ def display_top(snapshot, key_type='lineno', limit=10):
         print("%s other: %.1f KiB" % (len(other), size / 1024))
     total = sum(stat.size for stat in top_stats)
     print("Total allocated size: %.1f KiB" % (total / 1024))
+
 # ============================================================================================================================ #
 # STDIO Wrappers/Helpers
 # ============================================================================================================================ #
 
-def colorize(*vargs, sep = ' '):
+def colorize(sep = ' ', *vargs):
     return ''.join(functools.reduce(lambda x, y: x + str(y) + sep, vargs))
 
 def red(*args):

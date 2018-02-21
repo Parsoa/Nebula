@@ -24,7 +24,7 @@ from kmer import (
 from kmer.sv import StructuralVariation, Inversion, Deletion
 from kmer.kmers import *
 from kmer.commons import *
-from kmer.commons import pretty_print as print
+#from kmer.commons import pretty_print as print
 
 import khmer
 import colorama
@@ -183,191 +183,6 @@ class BreakPointJob(map_reduce.Job):
                     n = n + 1
             break_points[break_point]['score'] = float(n) / float(len(break_points[break_point]['kmers']))
         return break_points
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# MapReduce job for finding StructuralVariation breakpoints
-# Algorithm: starts with a set of structural variation events and their approximate breakpoints and tries to refine them
-# considers a radius of [-50, 50] around each end of the breakpoint, and for each pair of endpoints within that radius considers
-# the area as the structural variations and applies it to the reference genome to generate a set of kmers. Discards those endpoints
-# whose kmers do not all appear in the base genome the event was detected in. 
-# Output: Reports the remaining boundary candidates with their list of associated kmers and the count of those kmers in the
-# base genome.
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class AllBreakPointsJob(map_reduce.Job):
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch():
-        job = AllBreakPointsJob(job_name = 'AllBreakPoints_', previous_job_name = '')
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def check_cli_arguments(self):
-        # --bed the BED file from which to read the tracks (sensible default provided)
-        # --threads the number of threads to use (sensible default provided)
-        # --reference the reference assemby on which the coordinates in the BED are based
-        pass
-
-    def find_thread_count(self):
-        pass
-
-    def load_inputs(self):
-        c = config.Configuration()
-        bedtools = pybedtools.BedTool(c.bed_file)
-        self.radius = 50
-        # split variations into batches
-        n = 0
-        for track in bedtools:
-            name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            # too large, skip
-            if track.end - track.start > 1000000:
-                print(colorama.Fore.RED + 'skipping ', name, ', too large')
-                continue
-            index = n % c.max_threads 
-            if not index in self.batch:
-                self.batch[index] = []
-            self.batch[index].append(track)
-            print(colorama.Fore.BLUE + 'assigned ', name, ' to ', index)
-            n = n + 1
-        self.num_threads = len(self.batch)
-        print('running on ', self.num_threads, ' threads')
-
-    def run_batch(self, batch):
-        c = config.Configuration()
-        sv_type = self.get_sv_type()
-        output = {}
-        n = 0
-        start = time.time()
-        for track in batch:
-            name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            # track coordinates might exceed boundaries of the chromosome
-            try:
-                sv = sv_type(track = track, radius = self.radius)
-                output[name] = self.transform(sv)
-            except pybedtools.helpers.BEDToolsError as e:
-                print(e)
-            n = n + 1
-            t = time.time()
-            p = float(n) / len(batch)
-            eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
-            print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
-        self.output_batch(output)
-        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
-
-    def transform(self, sv):
-        c = config.Configuration()
-        break_points = self.generate_break_points(sv)
-        return break_points
-
-    # ============================================================================================================================ #
-    # job-specific helpers
-    # ============================================================================================================================ #
-
-    def get_sv_type(self):
-        c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        sv_type = bed_file_name.split('.')[-2]
-        if sv_type == 'DEL':
-            return Deletion
-        if sv_type == 'INV':
-            return Inversion
-        return StructuralVariation
-
-    def generate_break_points(self, sv):
-        c = config.Configuration()
-        break_points = {}
-        for begin in range(-self.radius, self.radius + 1) :
-            for end in range(-self.radius, self.radius + 1) :
-                kmers, boundary = sv.get_signature_kmers(begin, end)
-                if not kmers:
-                    # skip this candidate, has overlapping ends
-                    continue
-                #reference_kmers = sv.get_reference_signature_kmers(begin, end)
-                break_points['(' + str(begin) + ',' + str(end) + ')'] = {
-                    'boundary': boundary,
-                    'kmers': kmers,
-                    #'reference_kmers': reference_kmers
-                }
-        return break_points
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# Counts the kmers within the boundaries of each structural variation exactly. 
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class ExactCountBreakPointsJob(map_reduce.BaseExactCountingJob):
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch():
-        for i in range(0, 24):
-            job = ExactCountBreakPointsJob(job_name = 'ExactCountBreakPoints_', previous_job_name = 'AllBreakPoints_', input_chunk = i, input_chunk_size = 2)
-            job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        tracks = {}
-        for batch in range(self.input_chunk * self.input_chunk_size, (self.input_chunk + 1) * self.input_chunk_size):
-            print('loading batch', batch)
-            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(batch) + '.json')
-            with open(path, 'r') as json_file:
-                tracks.update(json.load(json_file))
-        # accumulate all kmers from all tracks into a large dict to improve performance
-        # if we keep each tracks's kmers in a seperate dict, runtime will grow linearly with number of tracks
-        self.kmers = {}
-        for track in tracks:
-            # remember these kmers already come in the canonical representation
-            for break_point in tracks[track]:
-                for kmer in tracks[track][break_point]['kmers']:
-                    self.kmers[kmer] = 0
-        print('done loading kmers,', len(self.kmers), 'total')
-        # these are just dummies
-        for index in range(0, self.num_threads):
-            self.batch[index] = {} # avoid overrding extra methods from MapReduce
-
-    def reduce(self):
-        kmers = self.merge_counts()
-        # reload tracks
-        path = os.path.join(self.get_current_job_directory(), 'merge_' + str(self.input_chunk) + '.json')
-        with open(path, 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4)
-        """
-        racks = json.load(json_file)
-        # update exact counts for break points
-        for track in tracks:
-            for break_point in tracks[track]:
-                for kmer in tracks[track][break_point]['kmers']:
-                    tracks[track][break_point]['kmers'] = kmers[kmer]
-        # prune low quality break points
-        for track in tracks:
-            for break_point in tracks[track]:
-                self.calc_break_point_score(break_point)
-        """
-
-    def calc_break_point_score(self, break_point):
-        c = config.Configuration()
-        n = 0
-        for kmer in break_point['kmers']:
-            if break_point['kmers'][kmer] != 0:
-                n = n + 1
-        break_point['score'] = float(n) / float(len(break_point['kmers']))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -619,6 +434,6 @@ if __name__ == '__main__':
     #
     #ExactCountBreakPointsJob.launch()
     #AllBreakPointsJob.launch()
-    #MostLikelyBreakPointsJob.launch(resume_from_reduce = True)
+    MostLikelyBreakPointsJob.launch(resume_from_reduce = False)
     #MostLikelyBreakPointsPlottingJob.launch()
-    BreakPointJob.launch(resume_from_reduce = True)
+    #BreakPointJob.launch(resume_from_reduce = True)
