@@ -21,7 +21,7 @@ from kmer import (
     count_server,
 )
 
-from kmer.sv import StructuralVariation, Inversion, Deletion
+from kmer.sv import StructuralVariation, Inversion, Deletion, SNP
 from kmer.kmers import *
 from kmer.commons import *
 #from kmer.commons import pretty_print as print
@@ -54,7 +54,7 @@ class BreakPointJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = BreakPointJob(job_name = 'break_point_', previous_job_name = '', **kwargs)
+        job = BreakPointJob(job_name = 'CommonVariantBreakPoints_', previous_job_name = '', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -63,18 +63,22 @@ class BreakPointJob(map_reduce.Job):
 
     def check_cli_arguments(self, args):
         # --bed the BED file from which to read the tracks (default: CHM1.Lumpy)
+        # --snp the BED file containing the coordinates of commons SNPs
         # --threads the number of threads to use (default 48)
         # --reference the reference assemby on which the coordinates in the BED are based (default: hg19)
         pass
 
     def find_thread_count(self):
         c = config.Configuration()
-        self.bedtools = pybedtools.BedTool(c.bed_file)
-        self.num_threads = max(c.max_threads, len(self.bedtools))
+        self.num_threads = c.max_threads
 
     def load_inputs(self):
         c = config.Configuration()
+        self.bedtools = pybedtools.BedTool(c.bed_file)
         self.radius = 50
+        self.snps = {}
+        for track in bed.parse_bed_file(open(c.snp, 'r')):
+            self.snps[track[2]] = SNP(chrom = track[1], begin = track[2], end = track[3], variants = track[9])
         # split events into batches
         n = 0
         for track in self.bedtools:
@@ -89,6 +93,7 @@ class BreakPointJob(map_reduce.Job):
             self.batch[index].append(track)
             print(colorama.Fore.BLUE + 'assigned ', name, ' to ', index)
             n = n + 1
+            self.num_threads = max(self.num_threads, index + 1)
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -101,22 +106,30 @@ class BreakPointJob(map_reduce.Job):
             # track coordinates might exceed boundaries of the chromosome
             try:
                 sv = sv_type(track = track, radius = self.radius)
-                output[name] = self.transform(sv)
+                break_points = self.transform(sv)
+                output[name] = break_points
+                print(output[name])
+                break
             except pybedtools.helpers.BEDToolsError as e:
                 print(e)
+            n = n + 1
             t = time.time()
             c = float(n) / len(batch)
+            print(c)
             print('index:', self.index, 'completion:', c, 'ETA:', ((1.0 - c) * (t - start) / c) / 3600, 'hours')
         self.output_batch(output)
         print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self, sv):
+        #pretty_print(blue('transforming'))
         c = config.Configuration()
         break_points = self.extract_boundary_kmers(sv)
+        if not break_points:
+            return None
         break_points = self.calc_break_point_scores(break_points, sv)
         for break_point in break_points:
             # counts for reference not available at this time, need a differnt count_sever instance, need to calc separately
-            #for kmer in break_points[break_point]['reference_kmers']:
+            # for kmer in break_points[break_point]['reference_kmers']:
             #    break_points[break_point]['reference_kmers'][kmer] = -1
             for kmer in break_points[break_point]['kmers']:
                 break_points[break_point]['kmers'][kmer] = count_server.get_kmer_count(kmer, self.index, False)
@@ -158,25 +171,35 @@ class BreakPointJob(map_reduce.Job):
     def extract_boundary_kmers(self, sv):
         c = config.Configuration()
         break_points = {}
+        events = sv.find_snps_within_boundaries(self.snps)
         for begin in range(-self.radius, self.radius + 1) :
             for end in range(-self.radius, self.radius + 1) :
                 kmers, boundary = sv.get_signature_kmers(begin, end)
                 if not kmers:
                     # skip this candidate, has overlapping ends
+                    #pretty_print(begin, end, red('skipping'))
                     continue
-                #reference_kmers = sv.get_reference_signature_kmers(begin, end)
                 break_points['(' + str(begin) + ',' + str(end) + ')'] = {
                     'boundary': boundary,
                     'kmers': kmers,
-                    #'reference_kmers': reference_kmers
                 }
-        return break_points
+                if events:
+                    for event in events:
+                        for kmers, seq, variant in sv.get_signature_kmers_with_variation(event, begin, end):
+                            break_points['(' + str(begin) + ',' + str(end) + ')_' + event.begin + '_' + variant] = {
+                                'boundary': boundary,
+                                'kmers': kmers,
+                            }
+                #pretty_print(red('no snps found'))
+        print(break_points)
+        return break_points if break_points else None
 
     # prunes a break points if not all its kmers appear in the counttable
     def calc_break_point_scores(self, break_points, sv):
         c = config.Configuration()
         for break_point in break_points:
             n = 0
+            print(break_points[break_point]['kmers'])
             for kmer in break_points[break_point]['kmers']:
                 count = count_server.get_kmer_count(kmer, self.index, False)
                 if count != 0:
@@ -432,8 +455,6 @@ class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
 if __name__ == '__main__':
     config.init()
     #
-    #ExactCountBreakPointsJob.launch()
-    #AllBreakPointsJob.launch()
-    MostLikelyBreakPointsJob.launch(resume_from_reduce = False)
+    #MostLikelyBreakPointsJob.launch(resume_from_reduce = False)
     #MostLikelyBreakPointsPlottingJob.launch()
-    #BreakPointJob.launch(resume_from_reduce = True)
+    BreakPointJob.launch(resume_from_reduce = False)

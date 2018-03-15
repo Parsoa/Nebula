@@ -105,7 +105,10 @@ class CountTableServer(socketserver.TCPServer):
         c = config.Configuration()
         # 
         counttable.export_counttable()
-        CountTableServerHandler.khmer_counttable = counttable.import_counttable()
+        if c.is_dummy:
+            CountTableServerHandler.khmer_counttable = counttable.DummyCountTable()
+        else:
+            CountTableServerHandler.khmer_counttable = counttable.import_counttable()
         # load k-mer counts
         # this is shared between all children
         children = {}

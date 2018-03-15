@@ -15,6 +15,13 @@ import khmer
 import colorama
 
 print('importing couttable.py')
+
+class DummyCountTable(object):
+
+    def get_kmer_counts(kmer):
+        print('dummy')
+        return [40]
+
 # ============================================================================================================================ #
 # Counttable Import/Export/Creation
 # ============================================================================================================================ #

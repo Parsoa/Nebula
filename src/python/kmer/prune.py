@@ -249,13 +249,6 @@ class NovelKmerOverlapJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-def get_all_kmers(read, k):
-    kmers = []
-    for i in range(0, len(read) - k + 1):
-        kmer = read[i : i + k]
-        kmers.append(kmer)
-    return kmers
-
 class CountKmersExactJob(map_reduce.BaseExactCountingJob):
 
     # ============================================================================================================================ #
@@ -386,11 +379,10 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
         def transform(self, track, track_name):
             c = config.Configuration()
             seq = bed.extract_sequence(track)
-            for kmer in get_all_kmers(seq, c.ksize):
-                canon = get_canonical_kmer_representation(kmer)
-                if not canon in self.kmers:
-                    self.kmers[canon] = 0
-                self.kmers[canon] += 1
+            for kmer in extract_kmers(c.ksize, seq):
+                if not kmer in self.kmers:
+                    self.kmers[kmer] = 0
+                self.kmers[kmer] += 1
             return None
 
         def output_batch(self, batch):
@@ -478,7 +470,7 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
         self.plot(self.counts)
 
     def plot(self, _):
-        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 100))) ]
+        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.kmers)), int(len(self.kmers) / 100))) ]
         data = [graph_objs.Histogram(x = r, xbins = dict(start = 0, end = 500, size = 5))]
         filename = os.path.join(self.get_current_job_directory(), 'distribution.html')
         plotly.plot(data, filename = filename, auto_open = False)

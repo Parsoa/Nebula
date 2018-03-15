@@ -16,10 +16,12 @@ class Configuration:
 
     class __impl:
         def __init__(self,
+                        snp,\
                         std,\
                         ksize,\
                         bed_file,\
                         coverage,\
+                        is_dummy,\
                         counttable,\
                         fastq_file,\
                         genome_hg19,\
@@ -31,10 +33,12 @@ class Configuration:
                         output_directory,\
                         sample_count_server_port,\
                         reference_count_server_port):
+            self.snp = snp
             self.std = std
             self.ksize = ksize
             self.bed_file = bed_file
             self.coverage = coverage
+            self.is_dummy = is_dummy
             self.counttable = counttable
             self.fastq_file = fastq_file
             self.genome_hg19 = genome_hg19
@@ -73,8 +77,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/CHM1_Lumpy.Del.100bp.DEL.bed')
-    # standard devation to use for the normal distribution modeling kmers, separately calculated for each set of reads
+    # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
+    parser.add_argument("--snp", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hg19.Common_SNPs.bed')
+    # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
     parser.add_argument("--std", type = int, default = 20)
+    # specifies that this counttable should return dummy values
+    parser.add_argument("--dummy", action='store_true')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # maximum number of cpu cores to use
@@ -101,10 +109,12 @@ def configure(args):
         print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
         exit()
     Configuration(
+        snp = args.snp,
         std = args.std,
         ksize = 31,
         bed_file = os.path.abspath(args.bed),
         coverage = args.coverage,
+        is_dummy = args.dummy,
         counttable = os.path.abspath(args.counttable),
         fastq_file = os.path.abspath(args.fastq),
         genome_hg19 = genome_hg19,

@@ -68,7 +68,8 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
     return False
 
 def get_canonical_kmer_representation(kmer):
-    reverse_complement = bed.reverse_complement_sequence(kmer)
+    kmer = kmer.upper()
+    reverse_complement = reverse_complement_sequence(kmer)
     return kmer if kmer < reverse_complement else reverse_complement 
 
 def extract_kmers(k, *args):
@@ -79,7 +80,20 @@ def extract_kmers(k, *args):
             canon = get_canonical_kmer_representation(kmer)
             if not canon in kmers:
                 kmers[canon] = 0
-            else:
-                kmers[canon] += 1
+            kmers[canon] += 1
     return kmers
 
+def reverse_complement_sequence(seq):
+    return complement_sequence(seq[::-1])
+
+def complement_sequence(seq):
+    # A-> C and C->A
+    seq = seq.replace('A', 'Z')
+    seq = seq.replace('T', 'A')
+    seq = seq.replace('Z', 'T')
+    #
+    seq = seq.replace('G', 'Z')
+    seq = seq.replace('C', 'G')
+    seq = seq.replace('Z', 'C')
+    #
+    return seq

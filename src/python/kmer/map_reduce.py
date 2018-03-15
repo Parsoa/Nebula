@@ -236,19 +236,19 @@ class BaseExactCountingJob(Job):
         QUALITY_LINE = 3
         state = HEADER_LINE
         # need to skip invalid lines
-        line = self.fastq_file.readline()
-        ahead = self.fastq_file.readline()
+        line = self.fastq_file.readline().strip()
+        ahead = self.fastq_file.readline().strip()
         n = 0
         m = 0
         t = time.time()
         while ahead:
+            #print(state, line)
             if state == HEADER_LINE:
                 if line[0] == '@' and ahead[0] != '@':
                     if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
                         print(self.index, 'reached segment boundary')
-                        break
-                    state = SEQUENCE_LINE
                     name = line[:-1] # ignore the EOL character
+                    state = SEQUENCE_LINE
             elif state == SEQUENCE_LINE:
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
@@ -300,10 +300,8 @@ class BaseExactCountingJob(Job):
         for read, name in self.parse_fastq():
             kmers = extract_kmers(c.ksize, read)
             for kmer in kmers:
-                # novel kmers for each track are already stored in canonical representation
-                canon = get_canonical_kmer_representation(kmer)
-                if canon in self.kmers: 
-                    self.kmers[canon] += 1
+                if kmer in self.kmers: 
+                    self.kmers[kmer] += 1
 
     def merge_counts(self):
         c = config.Configuration()

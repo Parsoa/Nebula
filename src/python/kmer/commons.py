@@ -56,8 +56,9 @@ def display_top(snapshot, key_type='lineno', limit=10):
 # STDIO Wrappers/Helpers
 # ============================================================================================================================ #
 
-def colorize(sep = ' ', *vargs):
-    return ''.join(functools.reduce(lambda x, y: x + str(y) + sep, vargs))
+def colorize(*vargs):
+    s = ''.join(functools.reduce(lambda x, y: x + str(y) + ' ', vargs))
+    return s.strip() + colorama.Fore.WHITE
 
 def red(*args):
     return colorize(colorama.Fore.RED, *args)
