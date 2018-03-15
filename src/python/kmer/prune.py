@@ -17,7 +17,6 @@ from kmer import (
     sets,
     config,
     commons,
-    counttable,
     map_reduce,
     statistics,
     count_server,
@@ -347,6 +346,16 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
                     line = bed_file.readline()
             return tracks
 
+        # def load_genes(self):
+        #     c = config.Configuration()
+        #     self.genes = {}
+        #     with open(c.genes) as genes_file:
+        #         lines = genes_file.readlines()
+        #         for line in lines:
+        #             gene = line.strip()
+        #             print(gene)
+        #             self.genes[gene] = True
+
         def prepare(self):
             self.kmers = {}
 
@@ -364,6 +373,7 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
                     # setting num_threads to 0 will bypass all execution
                     self.num_threads = 0
                     return
+            # self.load_genes()
             # load exonic regions
             tracks = self.parse_track_file(c.bed_file)
             for index in range(0, self.num_threads):
@@ -371,18 +381,20 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
             # split exonic regions into several batches
             index = 0
             for track in tracks:
+                print(track)
                 self.batch[index][track] = tracks[track]
                 index += 1
                 if index == self.num_threads:
                     index = 0
 
         def transform(self, track, track_name):
+            self.kmers[track_name] = {}
             c = config.Configuration()
             seq = bed.extract_sequence(track)
             for kmer in extract_kmers(c.ksize, seq):
-                if not kmer in self.kmers:
-                    self.kmers[kmer] = 0
-                self.kmers[kmer] += 1
+                if not kmer in self.kmers[track_name]:
+                    self.kmers[track_name][kmer] = 0
+                self.kmers[track_name][kmer] += 1
             return None
 
         def output_batch(self, batch):
@@ -394,13 +406,15 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
             if self.num_threads == 0:
                 return
             # merge all the kmer counts from previous steps
+            self.kmers = {}
             for i in range(0, self.num_threads):
                 path = os.path.join(self.get_current_job_directory(), 'kmers_' + str(i) + '.json')
                 with open(path, 'r') as json_file:
                     batch = json.load(json_file)
-                    for kmer in batch:
-                        if not kmer in self.kmers:
-                            self.kmers[kmer] = 0
+                    for track in batch:
+                        self.kmers[track] = batch[track]
+                        # if not kmer in self.kmers:
+                        #     self.kmers[kmer] = 0
             with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
                 json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
 
@@ -431,10 +445,14 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
     def load_inputs(self):
         c = config.Configuration()
         print('running helper job to get kmers')
-        job = self.ExtractExonicKmersJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_')
+        job = self.ExtractExonicKmersJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_', resume_from_reduce = True)
         job.execute()
         # all kmers begin with a count of zero
-        kmers = job.kmers
+        tracks = job.kmers
+        kmers = {}
+        for track in tracks:
+            for kmer in tracks[track]:
+                kmers[kmer] = 0
         self.kmers = {}
         # sample from these kmers
         print('got', len(kmers), 'kmers, sampling 100000 randomly')

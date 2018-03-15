@@ -85,6 +85,8 @@ def parse_args():
     parser.add_argument("--dummy", action='store_true')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
+        # path to a FASTQ files, for jobs that need one as input
+    parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
@@ -104,10 +106,10 @@ def configure(args):
     khmer_table_size = 16e9
     khmer_num_tables = 4
     #
-    reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38
-    if not os.path.isfile(reference_genome):
-        print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
-        exit()
+    reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38 if args.reference == 'hg38' else args.reference
+    # if not os.path.isfile(reference_genome):
+    #     print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
+    #     exit()
     Configuration(
         snp = args.snp,
         std = args.std,

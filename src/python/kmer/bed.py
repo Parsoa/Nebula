@@ -11,7 +11,6 @@ from kmer import (
     commons,
 )
 
-import khmer
 import colorama
 import pybedtools
 

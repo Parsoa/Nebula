@@ -247,6 +247,7 @@ class BaseExactCountingJob(Job):
                 if line[0] == '@' and ahead[0] != '@':
                     if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
                         print(self.index, 'reached segment boundary')
+                        break
                     name = line[:-1] # ignore the EOL character
                     state = SEQUENCE_LINE
             elif state == SEQUENCE_LINE:
