@@ -445,7 +445,7 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
     def load_inputs(self):
         c = config.Configuration()
         print('running helper job to get kmers')
-        job = self.ExtractExonicKmersJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_', resume_from_reduce = True)
+        job = self.ExtractExonicKmersJob(job_name = 'DepthOfCoverageEstimationJob_', previous_job_name = '_', resume_from_reduce = False)
         job.execute()
         # all kmers begin with a count of zero
         tracks = job.kmers
@@ -488,7 +488,7 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
         self.plot(self.counts)
 
     def plot(self, _):
-        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.kmers)), int(len(self.kmers) / 100))) ]
+        r = [ self.counts[i] for i in sorted(random.sample(range(len(self.counts)), int(len(self.counts) / 100))) ]
         data = [graph_objs.Histogram(x = r, xbins = dict(start = 0, end = 500, size = 5))]
         filename = os.path.join(self.get_current_job_directory(), 'distribution.html')
         plotly.plot(data, filename = filename, auto_open = False)

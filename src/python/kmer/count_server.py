@@ -99,7 +99,6 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
 class CountTableServer(socketserver.TCPServer):
 
     # this needs the --counttable arg to work
-
     @staticmethod
     def run_server():
         c = config.Configuration()

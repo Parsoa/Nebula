@@ -5,7 +5,7 @@
 #SBATCH --mem=60G
 #SBATCH --job-name="HG512/EstimateDepthOfCoverage"
 #SBATCH --ntasks=24
-#SBATCH --time=24:00:00
+#SBATCH --time=3-12:00:00
 #SBATCH --mail-user=pkhorsand@ucdavis.edu
 #SBATCH --output=/share/hormozdiarilab/Codes/NebulousSerendipity/HG512.coverage.out
 #SBATCH --mail-type=ALL

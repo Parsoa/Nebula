@@ -87,23 +87,20 @@ class Deletion(StructuralVariation):
         begin = self.track.start - self.radius - c.ksize
         end = self.track.end + self.radius + c.ksize
         #pretty_print('checking for snps between', green(begin), 'and', green(end))
-        events = []
+        events = {}
         for i in range(begin, end):
-            if str(i) in snps:
-                events.append(snps[str(i)])
+            if str(i) in snps and snps[str(i)].chrom == self.track.chrom:
+                events[str(i)] = snps[str(i)]
         return events
 
-    #
     # <K bases><R bases>[self.track.start .....<self.track.end - 1>]<self.track.end><R bases><K bases>
-    #
-
     def get_signature_kmers_with_variation(self, event, begin, end):
         c = config.Configuration()
         begin = (self.radius + c.ksize) + begin - c.ksize
         end = (len(self.sequence) - self.radius - c.ksize) + end + c.ksize
         p = self.sequence[begin : end]
         p = p[:c.ksize] + p[-c.ksize:]
-        # location in genome where the entire sequence ofr this sv begins
+        # location in genome where the entire sequence for this sv begins
         offset = self.track.start - self.radius - c.ksize
         snp_index = int(event.begin) - offset
         # SNP falls inside the sequence for this track
@@ -116,7 +113,7 @@ class Deletion(StructuralVariation):
                 s = s[:c.ksize] + s[-c.ksize:]
                 if s == p:
                     continue
-                #print(self.track.chrom, ':', blue(self.track.start) , '-', green(self.track.end), ' @ ', cyan(event.begin), ' -> ', white(self.sequence[:self.radius + c.ksize - offset]), cyan(variant), white(self.sequence[self.radius + c.ksize - offset + 1:]), sep = '')
+                #print(self.track.chrom, ':', blue(self.track.start - self.radius - c.ksize) , '-', green(self.track.end + self.radius + c.ksize), ' @ ', cyan(event.begin), ',', variant, ' -> ', white(self.sequence[:snp_index]), cyan(variant), white(self.sequence[snp_index + 1:]), sep = '')
                 kmers = extract_kmers(c.ksize, s)
                 yield kmers, s, variant
 

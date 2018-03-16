@@ -237,6 +237,9 @@ class BaseExactCountingJob(Job):
         state = HEADER_LINE
         # need to skip invalid lines
         line = self.fastq_file.readline().strip()
+        # for the very rare occasion that the first byte in a segment is a line feed
+        if len(line) == 0:
+            line = self.fastq_file.readline().strip()
         ahead = self.fastq_file.readline().strip()
         n = 0
         m = 0
@@ -244,17 +247,21 @@ class BaseExactCountingJob(Job):
         while ahead:
             #print(state, line)
             if state == HEADER_LINE:
-                if line[0] == '@' and ahead[0] != '@':
-                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
-                        print(self.index, 'reached segment boundary')
-                        break
-                    name = line[:-1] # ignore the EOL character
-                    state = SEQUENCE_LINE
+                try:
+                    if line[0] == '@' and ahead[0] != '@':
+                        if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                            print(self.index, 'reached segment boundary')
+                            break
+                        name = line[:-1] # ignore the EOL character
+                        state = SEQUENCE_LINE
+                except:
+                    print(self.index, self.fastq_file.tell())
+                    print(cyan(len(line)), '#', green(len(ahead)), '#')
             elif state == SEQUENCE_LINE:
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
                 n += 1
-                if n == 100000:
+                if n == 1000000:
                     n = 0
                     m += 1
                     c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
@@ -264,6 +271,7 @@ class BaseExactCountingJob(Job):
                     print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
                     #snapshot = tracemalloc.take_snapshot()
                     #display_top(snapshot)
+                    break
                 yield seq, name
             elif state == THIRD_LINE:
                 state = QUALITY_LINE

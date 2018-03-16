@@ -77,6 +77,7 @@ class BreakPointJob(map_reduce.Job):
         self.bedtools = pybedtools.BedTool(c.bed_file)
         self.radius = 50
         self.snps = {}
+        # SNPs are indexed by their position
         for track in bed.parse_bed_file(open(c.snp, 'r')):
             self.snps[track[2]] = SNP(chrom = track[1], begin = track[2], end = track[3], variants = track[9])
         # split events into batches
@@ -108,32 +109,24 @@ class BreakPointJob(map_reduce.Job):
                 sv = sv_type(track = track, radius = self.radius)
                 break_points = self.transform(sv)
                 output[name] = break_points
-                print(output[name])
-                break
             except pybedtools.helpers.BEDToolsError as e:
                 print(e)
             n = n + 1
             t = time.time()
             c = float(n) / len(batch)
-            print(c)
             print('index:', self.index, 'completion:', c, 'ETA:', ((1.0 - c) * (t - start) / c) / 3600, 'hours')
         self.output_batch(output)
         print(colorama.Fore.GREEN + 'process ', self.index, ' done')
 
     def transform(self, sv):
-        #pretty_print(blue('transforming'))
         c = config.Configuration()
         break_points = self.extract_boundary_kmers(sv)
         if not break_points:
             return None
-        break_points = self.calc_break_point_scores(break_points, sv)
         for break_point in break_points:
-            # counts for reference not available at this time, need a differnt count_sever instance, need to calc separately
-            # for kmer in break_points[break_point]['reference_kmers']:
-            #    break_points[break_point]['reference_kmers'][kmer] = -1
             for kmer in break_points[break_point]['kmers']:
                 break_points[break_point]['kmers'][kmer] = count_server.get_kmer_count(kmer, self.index, False)
-            # save the number of boundary candidates
+            self.calc_break_point_score(break_points[break_point])
         return break_points
 
     def reduce(self):
@@ -172,6 +165,7 @@ class BreakPointJob(map_reduce.Job):
         c = config.Configuration()
         break_points = {}
         events = sv.find_snps_within_boundaries(self.snps)
+        print(len(events), 'events found')
         for begin in range(-self.radius, self.radius + 1) :
             for end in range(-self.radius, self.radius + 1) :
                 kmers, boundary = sv.get_signature_kmers(begin, end)
@@ -183,29 +177,21 @@ class BreakPointJob(map_reduce.Job):
                     'boundary': boundary,
                     'kmers': kmers,
                 }
-                if events:
-                    for event in events:
-                        for kmers, seq, variant in sv.get_signature_kmers_with_variation(event, begin, end):
-                            break_points['(' + str(begin) + ',' + str(end) + ')_' + event.begin + '_' + variant] = {
-                                'boundary': boundary,
-                                'kmers': kmers,
-                            }
+                for event in events:
+                    for kmers, seq, variant in sv.get_signature_kmers_with_variation(events[event], begin, end):
+                        break_points['(' + str(begin) + ',' + str(end) + ')_' + events[event].begin + '_' + variant] = {
+                            'boundary': boundary,
+                            'kmers': kmers,
+                        }
                 #pretty_print(red('no snps found'))
-        print(break_points)
+        print(len(break_points))
         return break_points if break_points else None
 
     # prunes a break points if not all its kmers appear in the counttable
-    def calc_break_point_scores(self, break_points, sv):
+    def calc_break_point_score(self, break_point):
         c = config.Configuration()
-        for break_point in break_points:
-            n = 0
-            print(break_points[break_point]['kmers'])
-            for kmer in break_points[break_point]['kmers']:
-                count = count_server.get_kmer_count(kmer, self.index, False)
-                if count != 0:
-                    n = n + 1
-            break_points[break_point]['score'] = float(n) / float(len(break_points[break_point]['kmers']))
-        return break_points
+        n = len(list(filter(lambda kmer: break_point['kmers'][kmer] != 0, break_point['kmers'])))
+        break_point['score'] = float(n) / float(len(break_point['kmers']))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
