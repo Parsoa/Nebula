@@ -78,9 +78,9 @@ def green(*args):
 def magenta(*args):
     return colorize(colorama.Fore.MAGENTA, *args)
 
-def pretty_print(*args):
+def pretty_print(sep = ' ', *args):
     def inner(*vargs):
-        return ''.join(functools.reduce(lambda x, y: x + str(y) + ' ', vargs))
+        return ''.join(functools.reduce(lambda x, y: x + str(y) + sep, vargs))
     print(inner(colorama.Fore.WHITE, *args))
 
 def json_print(d):

@@ -30,7 +30,8 @@ from kmer.kmers import *
 # base class for all genotyping jobs
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-class BaseGenotypingJob(map_reduce.Job):
+
+class BaseGenotypingJob(map_reduce.BaseExactCountingJob):
 
     def get_output_directory(self):
         c = config.Configuration()
@@ -54,11 +55,11 @@ class BaseGenotypingJob(map_reduce.Job):
 # MapReduce job for exact counting the signature kmers of the sv library in a sample genomew
 # ============================================================================================================================ #
 
-class SampleExactKmerCountJob(map_reduce.BaseExactCountingJob):
+class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = SampleExactKmerCountJob(job_name = 'SampleExactKmerCountJob_', previous_job_name = 'MostLikelyBreakPoints_', **kwargs)
+        job = SampleExactKmerCountJob(job_name = 'SampleExactKmerCountingJob_', previous_job_name = 'MostLikelyBreakPoints_', **kwargs)
         job.execute()
 
     def check_cli_arguments(self, args):
@@ -70,21 +71,19 @@ class SampleExactKmerCountJob(map_reduce.BaseExactCountingJob):
     def load_inputs(self):
         # load the kmers for this set of structural variations
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        # we are only interested in the most likely break points from each event
-        with open(path, 'r') as kmers_file:
-            self.kmers = {}
-            self.tracks = {}
-            tracks = json.load(kmers_file)
-            for track in tracks:
+        self.kmers = {}
+        self.tracks = {}
+        with open(path, 'r') as tracks_file:
+            paths = json.load(tracks_file)
+            for track in paths:
                 self.tracks[track] = {}
-                self.tracks[track]['break_points'] = tracks[track]['most_likely']
-                for break_point in tracks[track]['most_likely']:
-                    for kmer in tracks[track]['most_likely'][break_point]['novel_kmers']:
-                        self.kmers[kmer] = 0
-            print('counting signature kmers for', len(tracks), 'tracks totalling', len(self.kmers), 'kmers')
-        # cache the break points locally
-        with open(os.path.join(self.get_current_job_directory(), 'break_points.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, sort_keys = True, indent = 4)
+                with open(paths[track], 'r') as json_file:
+                    break_points = json.load(json_file)
+                    self.tracks[track]['break_points'] = break_points
+                    for break_point in break_points:
+                        for kmer in break_points[break_point]['novel_kmers']:
+                            self.kmers[kmer] = 0
+        print('counting signature kmers for', len(self.tracks), 'tracks totalling', len(self.kmers), 'kmers')
         # dummy, avoid overrding extra methods
         for index in range(0, self.num_threads):
             self.batch[index] = {}
@@ -92,24 +91,23 @@ class SampleExactKmerCountJob(map_reduce.BaseExactCountingJob):
     def reduce(self):
         c = config.Configuration()
         kmers = self.merge_counts()
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(kmers, json_file, sort_keys = True, indent = 4)
         # update break_points
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as kmers_file:
-            tracks = json.load(kmers_file)
-            for track in tracks:
-                tracks[track]['break_points'] = tracks[track]['most_likely']
-                tracks[track].pop('most_likely', None)
-        with open(os.path.join(self.get_current_job_directory(), 'break_points.json'), 'r') as json_file:
-            tracks = json.load(json_file)
-        for track in tracks:
-            for break_point in tracks[track]['break_points']:
-                for kmer in tracks[track]['break_points'][break_point]['novel_kmers']:
-                     tracks[track]['break_points'][break_point]['novel_kmers'][kmer] = kmers[kmer]
-        with open(os.path.join(self.get_current_job_directory(), 'break_points.json'), 'w') as json_file:
-            json.dump(tracks, json_file, sort_keys = True, indent = 4)
+        output = {}
+        for track in self.tracks:
+            for break_point in self.tracks[track]['break_points']:
+                for kmer in self.tracks[track]['break_points'][break_point]['novel_kmers']:
+                    break_points[break_point]['novel_kmers'][kmer].pop('count', None)
+                    break_points[break_point]['novel_kmers'][kmer].pop('actual_count', None)
+                    break_points[break_point]['novel_kmers'][kmer]['sample_count'] = kmers[kmer]
+            path = os.path.join(self.get_current_job_directory(), 'sample_exact_counts_' + track + '.json')
+            output[track] = path
+            with open(path, 'w') as json_file:
+                json.dump(self.tracks[track], json_file, sort_keys = True, indent = 4)
         # dump the kmer counts
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(kmers, json_file, sort_keys = True, indent = 4)
+            json.dump(output, json_file, sort_keys = True, indent = 4)
 
     def get_output_directory(self):
         c = config.Configuration()
@@ -251,6 +249,8 @@ class GenotypingJob(BaseGenotypingJob):
 
 if __name__ == '__main__':
     config.init()
-    #
-    GenotypingJob.launch()
-    #SampleExactKmerCountJob.launch(resume_from_reduce = True)
+    c = config.Configuration()
+    if c.job == 'GenotypingJob':
+        GenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'SampleExactKmerCountingJob':
+        SampleExactKmerCountJob.launch(resume_from_reduce = c.resume_from_reduce)

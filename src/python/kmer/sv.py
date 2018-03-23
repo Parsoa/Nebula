@@ -32,7 +32,8 @@ class StructuralVariation(object):
         print('here')
         pass
 
-    # the end position itself is not included in the sequence
+    # the begin position itself is not included in the sequence
+    # the end position is included in the sequence
     def extract_base_sequence(self):
         c = config.Configuration()
         track = copy.deepcopy(self.track)
@@ -41,6 +42,9 @@ class StructuralVariation(object):
         track.start = track.start - self.radius - c.ksize
         track.end   = track.end   + self.radius + c.ksize
         self.sequence = bed.extract_sequence(track)
+        #print(track.start, track.end, len(self.sequence), track.end - track.start + 1)
+        #print(self.sequence)
+        #exit()
         #print(len(self.sequence), track.end - track.start + 1)
 
     def get_reference_signature_kmers(self, begin, end):
@@ -103,6 +107,9 @@ class Deletion(StructuralVariation):
         # location in genome where the entire sequence for this sv begins
         offset = self.track.start - self.radius - c.ksize
         snp_index = int(event.begin) - offset
+        # find the exact coordinates of the current break point
+        bp_begin = self.track.start + begin - c.ksize
+        bp_end = self.track.end + end
         # SNP falls inside the sequence for this track
         for variant in event.variants:
             if len(variant) == 1 and variant != '-':

@@ -15,42 +15,9 @@ class Configuration:
     kmer_cache_size = 10000
 
     class __impl:
-        def __init__(self,
-                        snp,\
-                        std,\
-                        ksize,\
-                        bed_file,\
-                        coverage,\
-                        is_dummy,\
-                        counttable,\
-                        fastq_file,\
-                        genome_hg19,\
-                        genome_hg38,\
-                        max_threads,\
-                        reference_genome,\
-                        khmer_num_tables,\
-                        khmer_table_size,\
-                        output_directory,\
-                        sample_count_server_port,\
-                        reference_count_server_port):
-            self.snp = snp
-            self.std = std
-            self.ksize = ksize
-            self.bed_file = bed_file
-            self.coverage = coverage
-            self.is_dummy = is_dummy
-            self.counttable = counttable
-            self.fastq_file = fastq_file
-            self.genome_hg19 = genome_hg19
-            self.genome_hg38 = genome_hg38
-            self.max_threads = max_threads
-            self.reference_genome = reference_genome
-            self.khmer_num_tables = khmer_num_tables
-            self.khmer_table_size = khmer_table_size
-            self.output_directory = output_directory
-            self.count_server_port = sample_count_server_port
-            self.sample_count_server_port = sample_count_server_port
-            self.reference_count_server_port = reference_count_server_port
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
 
     __instance = None
 
@@ -77,20 +44,24 @@ def parse_args():
     parser = argparse.ArgumentParser()
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/CHM1_Lumpy.Del.100bp.DEL.bed')
+    # the job to execute from this file
+    parser.add_argument("--job")
     # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
-    parser.add_argument("--snp", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hg19.Common_SNPs.bed')
+    parser.add_argument("--snp")
     # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
-    parser.add_argument("--std", type = int, default = 20)
+    parser.add_argument("--std", type = int)
     # specifies that this counttable should return dummy values
     parser.add_argument("--dummy", action='store_true')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
         # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
+    # whether to resume this job from reduce or not
+    parser.add_argument("--reduce", action = 'store_true')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
-    parser.add_argument("--coverage", type = int, default = 30)
+    parser.add_argument("--coverage", type = int)
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
     # a FASTA/FASTQ/SAM/BAM file that should be used as the source for creating a counttable
@@ -102,15 +73,13 @@ def parse_args():
 def configure(args):
     genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
     genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
+    reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38 if args.reference == 'hg38' else args.reference
     max_threads = args.threads
     khmer_table_size = 16e9
     khmer_num_tables = 4
-    #
-    reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38 if args.reference == 'hg38' else args.reference
-    # if not os.path.isfile(reference_genome):
-    #     print("fatal error: couldn't find reference genome", args.reference, " aborting ...")
-    #     exit()
+    # set up configuration
     Configuration(
+        job = args.job,
         snp = args.snp,
         std = args.std,
         ksize = 31,
@@ -127,6 +96,7 @@ def configure(args):
         khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output')),
+        resume_from_reduce = args.reduce,
         sample_count_server_port = 6985,
         reference_count_server_port = 8569
     )

@@ -4,7 +4,6 @@ import re
 import pwd
 import sys
 import copy
-#import json
 import math
 import time
 import random
@@ -24,16 +23,11 @@ from kmer import (
 from kmer.sv import StructuralVariation, Inversion, Deletion
 from kmer.kmers import *
 
-from pympler import asizeof
-
 import colorama
-import memory_profiler
 
 import rapidjson as json
-import plotly.offline as plotly
-import plotly.graph_objs as graph_objs
-
-print('done importing')
+#import plotly.offline as plotly
+#import plotly.graph_objs as graph_objs
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -44,44 +38,6 @@ print('done importing')
 # ============================================================================================================================ #
 
 class NovelKmerJob(map_reduce.Job):
-    
-    # This helper job will read a heavy json file and output each top level object in it to a separate file in parallel
-    class NovelKmerLoadInputJob(map_reduce.Job):
-
-        def find_thread_count(self):
-            c = config.Configuration()
-            self.num_threads = c.max_threads
-
-        def load_inputs(self):
-            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(self.index) + '.json')
-            with open(path, 'r') as json_file:
-                self.tracks = json.load(json_file)
-                for index in range(0, self.num_threads):
-                    self.batch[index] = {}
-                index = 0
-                for track in self.tracks:
-                    self.batch[index][track] = self.tracks[track]
-                    index += 1
-                    if index == self.num_threads:
-                        index = 0
-                for track in self.tracks:
-                    path = os.path.join(self.get_current_job_directory(), track)
-                    self.tracks[track] = path 
-
-        def transform(self, track, track_name):
-            path = os.path.join(self.get_current_job_directory(), track_name)
-            print('writing', path)
-            with open(path, 'w') as tmp_file:
-                json.dump(track, tmp_file, sort_keys = True, indent = 4)
-            return path
-
-        def reduce(self):
-            # no need to merge stuff here
-            pass
-
-        def get_current_job_directory(self):
-            # get rid of the final _
-            return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], 'tracks'))
 
     # ============================================================================================================================ #
     # Launcher
@@ -89,7 +45,7 @@ class NovelKmerJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = NovelKmerJob(job_name = 'NovelKmerJob_', previous_job_name = 'break_point_')
+        job = NovelKmerJob(job_name = 'NovelKmerJob_', previous_job_name = 'ExtractBreakPointsJob_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -105,23 +61,23 @@ class NovelKmerJob(map_reduce.Job):
     # json libraries don't seem to support reading sequenctially from a file so we will read each batch of the previous job
     # and export each of its tracks to a separate file in parallel.
     def load_inputs(self):
-        for index in range(0, self.num_threads):
-            print(colorama.Fore.BLUE + 'handling previous batch', index, colorama.Fore.WHITE)
-            tracks = self.launch_input_loader(index = index) 
-            self.batch[index] = {}
+        self.batch = {}
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            tracks = json.load(json_file)
+            for index in range(0, self.num_threads):
+                self.batch[index] = {}
+            index = 0
             for track in tracks:
                 self.batch[index][track] = tracks[track]
-
-    def launch_input_loader(self, index):
-        job = self.NovelKmerLoadInputJob(job_name = 'NovelKmerJob_', previous_job_name = 'break_point_')
-        job.index = index
-        job.execute()
-        return job.tracks
+                index = index + 1
+                if index == self.num_threads:
+                    index = 0
 
     def transform(self, path, track_name):
         # load each job's input separately to reduce memory footprint
         with open(path, 'r') as json_file:
-            track = json.load(json_file)
+            track = json.load(json_file)['break_points']
         remove = {}
         novel_kmers = {}
         for break_point in track:
@@ -130,19 +86,20 @@ class NovelKmerJob(map_reduce.Job):
                 continue
             kmers = track[break_point]['kmers']
             for kmer in kmers:
-                canon = get_canonical_kmer_representation(kmer)
-                # we are going to be comparing these againt reads, so it is necessary to consider reverse complement as well
-                # khmer returns the same count for a kmer and its reverse complement
-                if is_kmer_novel(canon, self.index):
-                    if not canon in novel_kmers:
-                        novel_kmers[canon] = {
-                            'count': [],
+                if is_kmer_novel(kmer, self.index):
+                    if not kmer in novel_kmers:
+                        novel_kmers[kmer] = {
+                            'count': kmers[kmer],
                             'break_points': []
                         }
-                    # because breakpoint kmers were extracted from reads, thr reverse complement of kmers may not necessarily appear (unless by chance)
-                    novel_kmers[canon]['count'] = kmers[kmer]
-                    novel_kmers[canon]['break_points'].append(break_point)
-        return {'novel_kmers': novel_kmers}
+                    novel_kmers[kmer]['break_points'].append(break_point)
+        return self.output_novel_kmers(track_name, novel_kmers)
+
+    def output_novel_kmers(self, track_name, novel_kmers):
+        path = os.path.join(self.get_current_job_directory(), 'novel_kmers_' + track_name  + '.json') 
+        with open(path, 'w') as json_file:
+            json.dump({'novel_kmers': novel_kmers}, json_file, sort_keys = True, indent = 4)
+        return path
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -251,8 +208,46 @@ class NovelKmerOverlapJob(map_reduce.Job):
 class CountKmersExactJob(map_reduce.BaseExactCountingJob):
 
     # ============================================================================================================================ #
+    # Helper to speed up exporting
+    # ============================================================================================================================ #
+
+    class ExportHelperJob(map_reduce.Job):
+
+        def find_thread_count(self):
+            c = config.Configuration()
+            self.num_threads = c.max_threads
+
+        def load_inputs(self):
+            for i in range(0, self.num_threads):
+                self.batch[i] = {}
+            with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
+                paths = json.load(json_file)
+                index = 0
+                for track in paths:
+                    self.batch[index][track] = paths[track]
+                    index = index + 1
+                    if index == self.num_threads:
+                        index = 0
+
+        def transform(self, track, track_name):
+            novel_kmers = {}
+            with open(track, 'r') as track_file:
+                novel_kmers = json.load(track_file)
+                for kmer in novel_kmers['novel_kmers']:
+                    novel_kmers['novel_kmers'][kmer]['actual_count'] = self.kmers[kmer]
+            path = os.path.join(self.get_current_job_directory(), 'exact_counts_' + track_name + '.json')
+            with open(path, 'w') as track_file:
+                json.dump(novel_kmers, track_file, sort_keys = True, indent = 4)
+            return path
+
+    # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
+
+    @staticmethod
+    def launch_export_helper(kmers, **kwargs):
+        job = CountKmersExactJob.ExportHelperJob(job_name = 'CountKmersExactJob_', previous_job_name = 'NovelKmerJob_', kmers = kmers, **kwargs)
+        job.execute()
 
     @staticmethod
     def launch(**kwargs):
@@ -264,54 +259,42 @@ class CountKmersExactJob(map_reduce.BaseExactCountingJob):
     # ============================================================================================================================ #
 
     def check_cli_arguments(self, args):
-        # --bed to specify the set of structural variations
+        # --bed to specify the set of structural variations (default CHM1_Lumpy.Del.100bp.DEL.bed)
         # --fastq: the genome from which we are getting the kmer counts
+        # --thread: number of threads to use
         pass
 
     def load_inputs(self):
         c = config.Configuration()
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        tracks = {}
-        with open(path, 'r') as json_file:
-            batch = json.load(json_file)
-            for track in batch:
-                tracks[track] = batch[track]
         # accumulate all kmers from all tracks into a large dict to improve performance
         # if we keep each event's kmers in a seperate dict, runtime will grow linearly with number of events
         self.kmers = {}
-        for track in tracks:
-            # remember these kmers already come in the canonical representation
-            novel_kmers = tracks[track]['novel_kmers']
-            for kmer in novel_kmers:
-                self.kmers[kmer] = 0
-        # we are not gonna need the tracks until the reduce step and it takes a whole lot of memory so delete it
-        del tracks
-        # these are just dummies
+        with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
+            tracks = json.load(json_file)
+            for path in tracks:
+                with open(tracks[path], 'r') as track_file:
+                    track = json.load(track_file)
+                    for kmer in track['novel_kmers']:
+                        self.kmers[kmer] = 0
+        print('counting', len(self.kmers), 'kmers')
+        # these two next lines are just to avoid overrding another method
         for index in range(0, self.num_threads):
-            self.batch[index] = {} # avoid overrding extra methods from MapReduce
+            self.batch[index] = {}
 
     def reduce(self):
         c = config.Configuration()
-        # merge kmer counts from all children
         kmers = self.merge_counts()
-        # reindex based on track
-        tracks = {}
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as json_file:
-            batch = json.load(json_file)
-            for track in batch:
-                tracks[track] = batch[track]
-        for track in tracks:
-            novel_kmers = tracks[track]['novel_kmers']
-            for novel_kmer in novel_kmers:
-                novel_kmers[novel_kmer]['actual_count'] = kmers[novel_kmer]
-        # 
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(tracks, json_file, sort_keys = True, indent = 4)
+        # update counts for each break point
+        CountKmersExactJob.launch_export_helper(kmers)
+        # export kmers
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as kmers_file:
+            json.dump(kmers, kmers_file, sort_keys = True, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # MapReduce job that extracts the kmers for the intervals specified in a BED file
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -514,6 +497,10 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
 
 if __name__ == '__main__':
     config.init()
-    #CountKmersExactJob.launch()
-    #NovelKmerJob.launch()
-    DepthOfCoverageEstimationJob.launch(resume_from_reduce = False)
+    c = config.Configuration()
+    if c.job == 'NovelKmersJob':
+        NovelKmersJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'CountKmersExactJob':
+        CountKmersExactJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'DepthOfCoverageEstimationJob':
+        DepthOfCoverageEstimationJob.launch(resume_from_reduce = c.resume_from_reduce)

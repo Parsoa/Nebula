@@ -24,7 +24,7 @@ from kmer import (
 from kmer.sv import StructuralVariation, Inversion, Deletion, SNP
 from kmer.kmers import *
 from kmer.commons import *
-#from kmer.commons import pretty_print as print
+from kmer.commons import pretty_print as print
 
 import khmer
 import colorama
@@ -36,6 +36,7 @@ import plotly.graph_objs as graph_objs
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # MapReduce job for finding StructuralVariation breakpoints
 # Algorithm: starts with a set of structural variation events and their approximate breakpoints and tries to refine them
 # considers a radius of [-50, 50] around each end of the breakpoint, and for each pair of endpoints within that radius considers
@@ -45,8 +46,9 @@ import plotly.graph_objs as graph_objs
 # base genome.
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 
-class BreakPointJob(map_reduce.Job):
+class ExtractBreakPointsJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # Launcher
@@ -54,7 +56,7 @@ class BreakPointJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = BreakPointJob(job_name = 'CommonVariantBreakPoints_', previous_job_name = '', **kwargs)
+        job = BreakPointJob(job_name = 'ExtractBreakPointsJob_', previous_job_name = '', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -63,7 +65,7 @@ class BreakPointJob(map_reduce.Job):
 
     def check_cli_arguments(self, args):
         # --bed the BED file from which to read the tracks (default: CHM1.Lumpy)
-        # --snp the BED file containing the coordinates of commons SNPs
+        # --snp the BED file containing the coordinates of commons SNPs (optional)
         # --threads the number of threads to use (default 48)
         # --reference the reference assemby on which the coordinates in the BED are based (default: hg19)
         pass
@@ -99,7 +101,7 @@ class BreakPointJob(map_reduce.Job):
     def run_batch(self, batch):
         c = config.Configuration()
         sv_type = self.get_sv_type()
-        output = {}
+        self.tracks = {}
         n = 0
         start = time.time()
         for track in batch:
@@ -108,15 +110,14 @@ class BreakPointJob(map_reduce.Job):
             try:
                 sv = sv_type(track = track, radius = self.radius)
                 break_points = self.transform(sv)
-                output[name] = break_points
+                self.output_break_points(name, break_points)
             except pybedtools.helpers.BEDToolsError as e:
                 print(e)
             n = n + 1
             t = time.time()
             c = float(n) / len(batch)
             print('index:', self.index, 'completion:', c, 'ETA:', ((1.0 - c) * (t - start) / c) / 3600, 'hours')
-        self.output_batch(output)
-        print(colorama.Fore.GREEN + 'process ', self.index, ' done')
+        self.output_batch(self.tracks)
 
     def transform(self, sv):
         c = config.Configuration()
@@ -132,20 +133,23 @@ class BreakPointJob(map_reduce.Job):
     def reduce(self):
         c = config.Configuration()
         output = {}
-        path = os.path.join(self.get_current_job_directory(), 'break_points')
-        if not os.path.exists(path):
-            os.makedirs(path)
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             if os.path.isfile(path):
                 with open(path, 'r') as json_file:
                     batch = json.load(json_file)
-                    for track in batch:
-                        with open(os.path.join(self.get_current_job_directory(), 'break_points', track + '.json'), 'w') as track_file:
-                            json.dump({track: batch[track]}, track_file, sort_keys = True, indent = 4)
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
+        self.sort(output)
+        self.plot(output)
+
+    def output_break_points(self, track_name, break_points):
+        path = os.path.join(self.get_current_job_directory(), 'break_points_' + track_name  + '.json') 
+        self.tracks[track_name] = path
+        json_file = open(path, 'w')
+        json.dump({'break_points': break_points}, json_file, sort_keys = True, indent = 4)
+        json_file.close()
 
     # ============================================================================================================================ #
     # job-specific helpers
@@ -164,27 +168,26 @@ class BreakPointJob(map_reduce.Job):
     def extract_boundary_kmers(self, sv):
         c = config.Configuration()
         break_points = {}
-        events = sv.find_snps_within_boundaries(self.snps)
-        print(len(events), 'events found')
+        if c.snp:
+            events = sv.find_snps_within_boundaries(self.snps)
+            print(len(events), 'events found')
         for begin in range(-self.radius, self.radius + 1) :
             for end in range(-self.radius, self.radius + 1) :
                 kmers, boundary = sv.get_signature_kmers(begin, end)
                 if not kmers:
-                    # skip this candidate, has overlapping ends
-                    #pretty_print(begin, end, red('skipping'))
                     continue
                 break_points['(' + str(begin) + ',' + str(end) + ')'] = {
                     'boundary': boundary,
                     'kmers': kmers,
                 }
-                for event in events:
-                    for kmers, seq, variant in sv.get_signature_kmers_with_variation(events[event], begin, end):
-                        break_points['(' + str(begin) + ',' + str(end) + ')_' + events[event].begin + '_' + variant] = {
-                            'boundary': boundary,
-                            'kmers': kmers,
-                        }
-                #pretty_print(red('no snps found'))
-        print(len(break_points))
+                if c.snp:
+                    for event in events:
+                        for kmers, boundary, variant in sv.get_signature_kmers_with_variation(events[event], begin, end):
+                            break_points['(' + str(begin) + ',' + str(end) + ')_' + events[event].begin + '_' + variant] = {
+                                'boundary': boundary,
+                                'kmers': kmers,
+                            }
+        print(len(break_points), 'break points found')
         return break_points if break_points else None
 
     # prunes a break points if not all its kmers appear in the counttable
@@ -195,7 +198,9 @@ class BreakPointJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # Utitlizes the likelihood model to find the most likely breakpoint for each structural variation
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -207,7 +212,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPoints_', previous_job_name = 'CountKmersExactJob_', **kwargs)
+        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'CountKmersExactJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -226,27 +231,30 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         self.num_threads = c.max_threads
 
     def load_inputs(self):
+        c = config.Configuration()
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
-            self.tracks = json.load(json_file)
+            paths = json.load(json_file)
         for index in range(0, self.num_threads):
             self.batch[index] = {}
         index = 0
-        for track in self.tracks:
-            self.batch[index][track] = self.tracks[track]
+        for track in paths:
+            self.batch[index][track] = paths[track]
             index += 1
             if index == self.num_threads:
                 index = 0
-
-    def transform(self, track, track_name):
-        c = config.Configuration()
         self.coverage = c.coverage
         self.std = c.std
-        distribution = {
+        self.distribution = {
             '(1, 1)': statistics.NormalDistribution(mean = self.coverage, std = self.std),
             '(1, 0)': statistics.NormalDistribution(mean = self.coverage / 2, std = self.std),
             '(0, 0)': statistics.ErrorDistribution(1.0 / 1000)
         }
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        with open(track, 'r') as track_file:
+            track = json.load(track_file)
         # find all the break points
         likelihood = {
             'break_points': {}
@@ -261,71 +269,37 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # in case no breakpoints with adequate score existed for this track
         if len(likelihood['break_points']) == 0:
             return None
+        print(track_name, ': ', len(likelihood['break_points']), ' break points')
         # calculate likelihoods
+        m = None
         novel_kmers = track['novel_kmers']
         for kmer in novel_kmers:
+            r_1_1 = self.distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
+            r_0_0 = self.distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
             for break_point in likelihood['break_points']:
-                r = 0
                 if break_point in novel_kmers[kmer]['break_points']:
-                    r = distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
-                    likelihood['break_points'][break_point]['novel_kmers'][kmer] = novel_kmers[kmer]#{'count': novel_kmers[kmer]['actual_count'], 'likelihood': r}
+                    likelihood['break_points'][break_point]['novel_kmers'][kmer] = {
+                        'count': novel_kmers[kmer]['count'],
+                        'likelihood': r_1_1,
+                        'actual_count': novel_kmers[kmer]['actual_count']
+                    }
+                    likelihood['break_points'][break_point]['likelihood'] += r_1_1
                 else:
-                    r = distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
-                likelihood['break_points'][break_point]['likelihood'] += r
+                    likelihood['break_points'][break_point]['likelihood'] += r_0_0
+                m = break_point if not m or likelihood['break_points'][break_point]['likelihood'] > likelihood['break_points'][m]['likelihood'] else m
         # find the maximum one and keep it easily accessible in the output
-        # TODO sort and pic 5 best
-        l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
-        m = max(l, key = operator.itemgetter(1))[0]
-        likelihood['most_likely'] = {m: likelihood['break_points'][m]}
-        return likelihood
-
-    def reduce(self):
-        c = config.Configuration()
-        output = {}
-        path = (os.path.join(self.get_current_job_directory(), 'most_likely'))
-        if not os.path.exists(path):
-            os.makedirs(path)
-        distribution = []
-        # collect all most likely breakpoints in a single for reference
-        most_likely = {}
-        # dump each event's most likely break point to a separate file for easier access
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
-            if os.path.isfile(path):
-                with open(path, 'r') as json_file:
-                    batch = json.load(json_file)
-                    for track in batch:
-                        most_likely[track] = {}
-                        most_likely[track]['break_points'] = {}
-                        path = os.path.join(self.get_current_job_directory(), 'most_likely', track + '.most_likely.json')
-                        with open(path, 'w') as most_likely_file:
-                            json.dump(batch[track]['most_likely'], most_likely_file, sort_keys = True, indent = 4)
-                            # this prints extra stuff for debugging purposes
-                            for break_point in batch[track]['most_likely']:
-                                most_likely[track]['break_points'][break_point] = batch[track]['most_likely'][break_point]
-                                break
-                                novel_kmers = batch[track]['most_likely'][break_point]['novel_kmers']
-                                n = 0
-                                m = 0
-                                k = 0
-                                for kmer in novel_kmers:
-                                    if abs(novel_kmers[kmer]['count'] - c.coverage) <= c.std:
-                                        n += 1
-                                    if abs(novel_kmers[kmer]['count'] - c.coverage) <= 2 * c.std:
-                                        m += 1
-                                    if abs(novel_kmers[kmer]['count'] - c.coverage) <= 3 * c.std:
-                                        k += 1
-                                distribution.append(float(n) / len(novel_kmers))
-                                #print('{:30}'.format(track), '{:12}'.format(break_point), '{:4d}'.format(len(novel_kmers)), '{:4d}'.format(n), '{:4d}'.format(m), '{:4d}'.format(k))
-                    output.update(batch)
-            print('merging,', i, ' out of', self.num_threads, ' done')
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'most_likely.json'), 'w') as json_file:
-            json.dump(most_likely, json_file, sort_keys = True, indent = 4)
-        self.plot(distribution)
+        # l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
+        # m = max(l, key = operator.itemgetter(1))[0]
+        path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(likelihood, json_file, sort_keys = True, indent = 4)
+        path = os.path.join(self.get_current_job_directory(), 'most_likely_' + track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump({m: likelihood['break_points'][m]}, json_file, sort_keys = True, indent = 4)
+        return path
 
     def plot(self, x):
+        return
         path = os.path.join(self.get_current_job_directory(), 'plot_most_likely_break_point_kmer_counts.html')
         trace = graph_objs.Histogram(
             x = x,
@@ -333,7 +307,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             xbins = dict(
                 start = 0.0,
                 end = 1.0,
-                size = 0.05
+                sizs = 0.05
             )
         )
         layout = graph_objs.Layout(title = 'Deviation from Mean')
@@ -341,14 +315,16 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         plotly.plot(fig, filename = path)
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 # Helper job for rapidly generating likelihood plots
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
 
     @staticmethod
     def launch():
-        job = MostLikelyBreakPointsPlottingJob(job_name = 'MostLikelyBreakPoints_', previous_job_name = 'MostLikelyBreakPoints_')
+        job = MostLikelyBreakPointsPlottingJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'MostLikelyBreakPointsJob_')
         job.execute()
 
     def find_thread_count(self):
@@ -435,12 +411,17 @@ class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
         return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], 'plots'))
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 # Main
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
     config.init()
-    #
-    #MostLikelyBreakPointsJob.launch(resume_from_reduce = False)
-    #MostLikelyBreakPointsPlottingJob.launch()
-    BreakPointJob.launch(resume_from_reduce = False)
+    c = config.Configuration()
+    if c.job == 'ExtractBreakPointsJob':
+        BreakPointJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'MostLikelyBreakPointsJob':
+        MostLikelyBreakPointsJob.launch(resume_from_reduce = c.resume_from_reduce)

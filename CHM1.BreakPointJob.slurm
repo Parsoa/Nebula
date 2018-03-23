@@ -3,7 +3,7 @@
 #SBATCH --partition=gc
 #SBATCH --nodes=1
 #SBATCH --mem=60G
-#SBATCH --job-name="HG512/EstimateDepthOfCoverage"
+#SBATCH --job-name="CHM1/BreakPoint"
 #SBATCH --ntasks=24
 #SBATCH --time=12:00:00
 #SBATCH --mail-user=pkhorsand@ucdavis.edu
