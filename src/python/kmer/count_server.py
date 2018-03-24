@@ -6,55 +6,20 @@ import copy
 import json
 import time
 import argparse
-import socketserver
+import SocketServer as socketserver
 
 from subprocess import call
 
 from kmer import (
-    bed,
-    sets,
     config,
-    commons,
     counttable,
 )
 
-import json
-import khmer
-import pylru
+#import pylru
 import socket
 import struct
-import colorama
-import pybedtools
 
 print('importing count_server.py')
-# ================================================================================================= #
-# Helpers
-# ================================================================================================= #
-
-def colorful_print(*args):
-    print(colorama.Fore.CYAN, args)
-
-# ================================================================================================= #
-# Caching
-# ================================================================================================= #
-
-def cache(f):
-    cache = pylru.lrucache(config.Configuration.kmer_cache_size)
-    hits = 0
-    misses = 0
-    def wrapper(kmer, index):
-        if kmer in cache:
-            print('miss')
-            nonlocal misses
-            misses += 1
-            return cache[kmer]
-        nonlocal hits
-        hits += 1
-        print('hit: ', hits / (hits + misses), 'hits: ', hits, ' misses: ', misses)
-        cache[kmer] = f(kmer, index) 
-        return cache[kmer]
-    return wrapper
-
 # ================================================================================================= #
 # 
 # ================================================================================================= #
@@ -79,7 +44,7 @@ def get_kmer_count(kmer, index, ref):
 
 class CountTableServerHandler(socketserver.BaseRequestHandler):
 
-    khmer_counttable = None
+    counts_provider = None
 
     def setup(self):
         return socketserver.BaseRequestHandler.setup(self)
@@ -89,7 +54,7 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
         buffer = self.request.recv(c.ksize)
         fmt = str(c.ksize) + 's'
         kmer = struct.unpack(fmt, buffer)[0].decode("ascii") 
-        count = CountTableServerHandler.khmer_counttable.get_kmer_counts(kmer)[0]
+        count = CountTableServerHandler.counts_provider.get_kmer_count(kmer)
         self.request.send(struct.pack('!i', count))
         return
 
@@ -98,51 +63,11 @@ class CountTableServerHandler(socketserver.BaseRequestHandler):
 
 class CountTableServer(socketserver.TCPServer):
 
-    # this needs the --counttable arg to work
-    @staticmethod
-    def run_server():
-        c = config.Configuration()
-        # 
-        counttable.export_counttable()
-        if c.is_dummy:
-            CountTableServerHandler.khmer_counttable = counttable.DummyCountTable()
-        else:
-            CountTableServerHandler.khmer_counttable = counttable.import_counttable()
-        # load k-mer counts
-        # this is shared between all children
-        children = {}
-        port = c.count_server_port
-        print('spawning chlidren ...')
-        for i in range(0, c.max_threads) :
-            pid = os.fork()
-            if pid == 0:
-                # child
-                print('starting server ', i)
-                address = ('localhost', port + i)
-                server = CountTableServer(server_address = address, handler_class = CountTableServerHandler)
-                ip, port = server.server_address
-                colorful_print('ip: ', ip, ', port: ', port)
-                print('serving forever ', i, ' ...')
-                server.serve_forever()
-                # will never exit
-                exit()
-            else:
-                # parent
-                children[pid] = True
-        # only parent process will ever get here
-        while True:
-            (pid, e) = os.wait()
-            children.pop(pid, None)
-            print(colorama.Fore.RED, 'pid ', pid, 'finished')
-            if len(children) == 0:
-                break
-
     def __init__(self, server_address, handler_class):
-        socketserver.UnixStreamServer.__init__(self, server_address, handler_class)
-        return
+        socketserver.TCPServer.__init__(self, server_address, handler_class)
 
     def server_activate(self):
-        socketserver.UnixStreamServer.server_activate(self)
+        socketserver.TCPServer.server_activate(self)
         return
 
     def serve_forever(self):
@@ -171,11 +96,47 @@ class CountTableServer(socketserver.TCPServer):
     def close_request(self, request_address):
         return socketserver.TCPServer.close_request(self, request_address)
 
+def run_server():
+    c = config.Configuration()
+    # 
+    if c.is_dummy:
+        CountTableServerHandler.counts_provider = counttable.DummyCountsProvider()
+    #elif c.khmer:
+    #    CountTableServerHandler.counts_provider = counttable.KhmerCountsProvider()
+    elif c.jellyfish:
+        CountTableServerHandler.counts_provider = counttable.JellyfishCountsProvider()
+    # this is shared between all children
+    children = {}
+    port = c.count_server_port
+    print('spawning chlidren ...')
+    for i in range(0, c.max_threads) :
+        pid = os.fork()
+        if pid == 0:
+            # child
+            print('starting server ', i)
+            address = ('localhost', port + i)
+            server = CountTableServer(address, CountTableServerHandler)
+            ip, port = server.server_address
+            print('ip: ', ip, ', port: ', port)
+            print('serving forever ', i, ' ...')
+            server.serve_forever()
+            # will never exit
+            exit()
+        else:
+            # parent
+            children[pid] = True
+    # only parent process will ever get here
+    while True:
+        (pid, e) = os.wait()
+        children.pop(pid, None)
+        print(colorama.Fore.RED, 'pid ', pid, 'finished')
+        if len(children) == 0:
+            break
+
 # ================================================================================================= #
 #
 # ================================================================================================= #
 
 if __name__ == '__main__':
     config.init()
-    # 
-    CountTableServer.run_server()
+    run_server()

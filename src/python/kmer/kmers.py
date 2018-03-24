@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import io
 import os
 import re
@@ -11,26 +13,39 @@ import random
 import argparse
 import traceback
 import statistics as stats
+import SocketServer as socketserver
 
 from kmer import (
     bed,
     sets,
     config,
-    counttable,
-    count_server,
 )
 
-import colorama
+import socket
+import struct
 
 # ============================================================================================================================ #
 # kmer helpers
 # ============================================================================================================================ #
 
+def get_kmer_count(kmer, index, ref):
+    start = time.time()
+    c = config.Configuration()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    port = c.count_server_port
+    s.connect(('localhost', port + index))
+    s.send(bytearray(kmer, 'ascii'))
+    response = s.recv(4) # integer size
+    count = struct.unpack('!i', response)[0]
+    end = time.time()
+    print(end - start)
+    return count
+
 def get_novel_kmers(kmers, index):
     novel_kmers = {}
     for kmer in kmers:
         if not kmer in novel_kmers:
-            count = count_server.get_kmer_count(kmer, index, True)
+            count = get_kmer_count(kmer, index, True)
             if count != 0:
                 # this is a novel kmer
                 novel_kmers[kmer] = True
@@ -44,7 +59,7 @@ def has_novel_kmers(kmers, index):
     return False
 
 def is_kmer_novel(kmer, index):
-    count = count_server.get_kmer_count(kmer, index, True)
+    count = get_kmer_count(kmer, index, True)
     return count == 0
 
 def has_unique_novel_kmers(track, candidate, kmers, index):

@@ -1,0 +1,10 @@
+#!/share/hormozdiarilab/Codes/NebulousSerendipity/venv2/bin/python
+# EASY-INSTALL-ENTRY-SCRIPT: 'Cython==0.28.1','console_scripts','cython'
+__requires__ = 'Cython==0.28.1'
+import sys
+from pkg_resources import load_entry_point
+
+if __name__ == '__main__':
+    sys.exit(
+        load_entry_point('Cython==0.28.1', 'console_scripts', 'cython')()
+    )

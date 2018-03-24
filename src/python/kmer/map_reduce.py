@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import io
 import gc
 import os
@@ -5,13 +7,13 @@ import re
 import pwd
 import sys
 import copy
+import json
 import math
 import time
 import atexit
 import psutil
 import argparse
 import traceback
-import tracemalloc
 
 from shutil import copyfile
 
@@ -21,17 +23,13 @@ from kmer import (
 
 from kmer.kmers import *
 from kmer.commons import *
-from kmer.commons import pretty_print as print
+print = pretty_print
 
-import colorama
-import memory_profiler
-
-import rapidjson as json
+#import rapidjson as json
 
 def on_exit(job):
-    print(colorama.Fore.GREEN + 'job', job.index, 'exiting', colorama.Fore.WHITE)
+    print(green('job', job.index, 'exiting'))
 
-print('importing map_reduce.py')
 # ============================================================================================================================ #
 # Job class, describes a MapReducer job
 # Will apply a transformation to a library of structural variation:
@@ -111,7 +109,7 @@ class Job(object):
                 # main process
                 self.children[pid] = index
                 print('spawned child', '{:2d}'.format(index), ':', pid)
-        print(colorama.Fore.CYAN + 'done distributing workload')
+        print(cyan('done distributing workload'))
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -258,7 +256,7 @@ class RecursiveMergeCountsJob(Job):
                 # main process
                 self.children[pid] = index
                 print('spawned child', '{:2d}'.format(index), ':', pid)
-        print(colorama.Fore.CYAN + 'done distributing workload')
+        print(cyan('done distributing workload'))
 
     def transform(self):
         c = config.Configuration()
@@ -406,7 +404,7 @@ class BaseExactCountingJob(Job):
             print('adding batch', i)
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
             if not os.path.isfile(path):
-                print(colorama.Fore.RED + 'couldn\'t find batch', i, ' results will be unreliable')
+                print(red('couldn\'t find batch'), i, red('results will be unreliable'))
                 continue
             with open (path, 'r') as json_file:
                 batch = json.load(json_file)

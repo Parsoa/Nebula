@@ -1,10 +1,12 @@
+from __future__ import print_function
+
 import io
 import os
 import re
 import pwd
 import sys
 import copy
-#import json
+import json
 import math
 import time
 import argparse
@@ -18,19 +20,16 @@ from kmer import (
     counttable,
     map_reduce,
     statistics,
-    count_server,
 )
 
 from kmer.sv import StructuralVariation, Inversion, Deletion, SNP
 from kmer.kmers import *
 from kmer.commons import *
-from kmer.commons import pretty_print as print
+print = pretty_print
 
-import khmer
-import colorama
 import pybedtools
 
-import rapidjson as json
+#import rapidjson as json
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
@@ -56,7 +55,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = BreakPointJob(job_name = 'ExtractBreakPointsJob_', previous_job_name = '', **kwargs)
+        job = ExtractBreakPointsJob(job_name = 'ExtractBreakPointsJob_', previous_job_name = '', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -76,25 +75,27 @@ class ExtractBreakPointsJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
+        self.counts_provider = counttable.JellyfishCountsProvider()
         self.bedtools = pybedtools.BedTool(c.bed_file)
         self.radius = 50
         self.snps = {}
-        # SNPs are indexed by their position
-        for track in bed.parse_bed_file(open(c.snp, 'r')):
-            self.snps[track[2]] = SNP(chrom = track[1], begin = track[2], end = track[3], variants = track[9])
+        # SNPs are indexed by their positioni
+        if c.snp:
+            for track in bed.parse_bed_file(open(c.snp, 'r')):
+                self.snps[track[2]] = SNP(chrom = track[1], begin = track[2], end = track[3], variants = track[9])
         # split events into batches
         n = 0
         for track in self.bedtools:
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
             # too large, skip
             if track.end - track.start > 1000000:
-                print(colorama.Fore.RED + 'skipping ', name, ', too large')
+                pretty_print(red('skipping ', name, ', too large'))
                 continue
             index = n % c.max_threads 
             if not index in self.batch:
                 self.batch[index] = []
             self.batch[index].append(track)
-            print(colorama.Fore.BLUE + 'assigned ', name, ' to ', index)
+            print(blue('assigned ', name, ' to ', index))
             n = n + 1
             self.num_threads = max(self.num_threads, index + 1)
 
@@ -126,7 +127,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
             return None
         for break_point in break_points:
             for kmer in break_points[break_point]['kmers']:
-                break_points[break_point]['kmers'][kmer] = count_server.get_kmer_count(kmer, self.index, False)
+                break_points[break_point]['kmers'][kmer] = self.counts_provider.get_kmer_count(kmer)
             self.calc_break_point_score(break_points[break_point])
         return break_points
 
@@ -187,7 +188,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
                                 'boundary': boundary,
                                 'kmers': kmers,
                             }
-        print(len(break_points), 'break points found')
+        #print(len(break_points), 'break points found')
         return break_points if break_points else None
 
     # prunes a break points if not all its kmers appear in the counttable
@@ -212,7 +213,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'CountKmersExactJob_', **kwargs)
+        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'NovelKmerJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -232,6 +233,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
+        print(green('importing jellyfish index'))
+        self.counts_provider = counttable.JellyfishCountsProvider()
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             paths = json.load(json_file)
@@ -266,22 +269,19 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                         'likelihood': 0,
                         'novel_kmers': {} # we are also interested in knowing the kmer with for each one
                     }
-        # in case no breakpoints with adequate score existed for this track
-        if len(likelihood['break_points']) == 0:
-            return None
         print(track_name, ': ', len(likelihood['break_points']), ' break points')
         # calculate likelihoods
         m = None
         novel_kmers = track['novel_kmers']
         for kmer in novel_kmers:
-            r_1_1 = self.distribution['(1, 1)'].log_pmf(novel_kmers[kmer]['actual_count'])
-            r_0_0 = self.distribution['(0, 0)'].log_pmf(novel_kmers[kmer]['actual_count'])
+            count = self.counts_provider.get_kmer_count(kmer)
+            r_1_1 = self.distribution['(1, 1)'].log_pmf(count)
+            r_0_0 = self.distribution['(0, 0)'].log_pmf(count)
             for break_point in likelihood['break_points']:
                 if break_point in novel_kmers[kmer]['break_points']:
                     likelihood['break_points'][break_point]['novel_kmers'][kmer] = {
-                        'count': novel_kmers[kmer]['count'],
+                        'count': count,
                         'likelihood': r_1_1,
-                        'actual_count': novel_kmers[kmer]['actual_count']
                     }
                     likelihood['break_points'][break_point]['likelihood'] += r_1_1
                 else:
@@ -330,7 +330,7 @@ class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
     def find_thread_count(self):
         c = config.Configuration()
         self.num_threads = c.max_threads
-        print('threads:', colorama.Fore.GREEN, self.num_threads)
+        print('threads:', green(self.num_threads))
 
     def load_inputs(self):
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
@@ -403,7 +403,6 @@ class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
         plotly.plot(data, filename = path, auto_open = False)
 
     def reduce(self):
-        print(colorama.Fore.CYAN + 'reduce')
         exit()
         # no need to merge anything
 
@@ -422,6 +421,6 @@ if __name__ == '__main__':
     config.init()
     c = config.Configuration()
     if c.job == 'ExtractBreakPointsJob':
-        BreakPointJob.launch(resume_from_reduce = c.resume_from_reduce)
+        ExtractBreakPointsJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'MostLikelyBreakPointsJob':
         MostLikelyBreakPointsJob.launch(resume_from_reduce = c.resume_from_reduce)

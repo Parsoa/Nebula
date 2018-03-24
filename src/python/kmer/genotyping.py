@@ -153,7 +153,7 @@ class GenotypingJob(BaseGenotypingJob):
 
     @staticmethod
     def launch():
-        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'SampleExactKmerCountJob_')
+        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'SampleExactKmerCountingJob_')
         job.execute()
 
     # ============================================================================================================================ #
@@ -171,12 +171,9 @@ class GenotypingJob(BaseGenotypingJob):
     def load_inputs(self):
         # each event is a structural variation with its most likely breakpoints
         self.tracks = {}
-        path = os.path.join(self.get_previous_job_directory(), 'break_points.json')
+        path = os.path.join(self.get_previous_job_directory(), 'most_likely.json')
         with open(path, 'r') as json_file:
             self.tracks = json.load(json_file)
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as json_file:
-            self.kmers = json.load(json_file)
         for index in range(0, self.num_threads):
             self.batch[index] = {}
         # round-robin events between available processes
@@ -196,7 +193,8 @@ class GenotypingJob(BaseGenotypingJob):
             '(0, 0)': statistics.ErrorDistribution(p = 1.0 / 100),
         }
         # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
-        break_points = track['break_points']
+        with open(track, 'r') as track_file:
+            break_points = json.load(track_file)
         novel_kmers = {}
         for break_point in break_points:
             likelihood[break_point] = {}
@@ -206,11 +204,12 @@ class GenotypingJob(BaseGenotypingJob):
             for zyg in distribution:
                 likelihood[break_point]['zyg'][zyg] = 0
             for kmer in break_points[break_point]['novel_kmers']:
+                c = get_kmer_count(kmer, self.index, False) 
                 # remember we are genotyping, we need the counts in the sample not in the origin of event
                 for zyg in distribution:
-                    likelihood[break_point]['zyg'][zyg] += distribution[zyg].log_pmf(self.kmers[kmer])
+                    likelihood[break_point]['zyg'][zyg] += distribution[zyg].log_pmf(count)
 
-                if abs(self.kmers[kmer] - c.coverage) < 2 * c.std:
+                if abs(count - c.coverage) < 2 * c.std:
                     likelihood[break_point]['2std'] += 1
         # now find the maximum, for each zygosity find the maximum value, then compare
         for break_point in break_points:

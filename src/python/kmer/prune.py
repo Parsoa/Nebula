@@ -1,9 +1,12 @@
+from __future__ import print_function
+
 import io
 import os
 import re
 import pwd
 import sys
 import copy
+import json
 import math
 import time
 import random
@@ -15,17 +18,14 @@ from kmer import (
     bed,
     sets,
     config,
-    commons,
     map_reduce,
     statistics,
-    count_server,
 )
-from kmer.sv import StructuralVariation, Inversion, Deletion
 from kmer.kmers import *
+from kmer.commons import *
+print = pretty_print
 
-import colorama
-
-import rapidjson as json
+#import rapidjson as json
 #import plotly.offline as plotly
 #import plotly.graph_objs as graph_objs
 
@@ -44,8 +44,8 @@ class NovelKmerJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     @staticmethod
-    def launch():
-        job = NovelKmerJob(job_name = 'NovelKmerJob_', previous_job_name = 'ExtractBreakPointsJob_')
+    def launch(**kwargs):
+        job = NovelKmerJob(job_name = 'NovelKmerJob_', previous_job_name = 'ExtractBreakPointsJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -96,6 +96,9 @@ class NovelKmerJob(map_reduce.Job):
         return self.output_novel_kmers(track_name, novel_kmers)
 
     def output_novel_kmers(self, track_name, novel_kmers):
+        if not novel_kmers:
+            print(red('no novel kmers found for'), white(track_name), 'skipping')
+            return None
         path = os.path.join(self.get_current_job_directory(), 'novel_kmers_' + track_name  + '.json') 
         with open(path, 'w') as json_file:
             json.dump({'novel_kmers': novel_kmers}, json_file, sort_keys = True, indent = 4)
@@ -498,8 +501,8 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    if c.job == 'NovelKmersJob':
-        NovelKmersJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'NovelKmerJob':
+        NovelKmerJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'CountKmersExactJob':
         CountKmersExactJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'DepthOfCoverageEstimationJob':

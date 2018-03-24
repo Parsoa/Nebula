@@ -3,9 +3,6 @@ import pwd
 import sys
 import argparse
 
-import colorama
-
-print('importing config.py')
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -50,6 +47,8 @@ def parse_args():
     parser.add_argument("--snp")
     # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
     parser.add_argument("--std", type = int)
+    # the path to a previously generated khmer counttable without the .ct extension
+    parser.add_argument("--khmer")
     # specifies that this counttable should return dummy values
     parser.add_argument("--dummy", action='store_true')
     # path to a FASTQ files, for jobs that need one as input
@@ -62,10 +61,10 @@ def parse_args():
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = int)
+    # the path to a jellyfish generated kmer count index
+    parser.add_argument("--jellyfish")
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
-    # a FASTA/FASTQ/SAM/BAM file that should be used as the source for creating a counttable
-    parser.add_argument("--counttable", default = '/share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio/HG00732.fq')
     args = parser.parse_args()
     #
     return args
@@ -82,23 +81,21 @@ def configure(args):
         job = args.job,
         snp = args.snp,
         std = args.std,
+        khmer = args.khmer,
         ksize = 31,
         bed_file = os.path.abspath(args.bed),
         coverage = args.coverage,
         is_dummy = args.dummy,
-        counttable = os.path.abspath(args.counttable),
+        jellyfish = args.jellyfish, 
         fastq_file = os.path.abspath(args.fastq),
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
-        max_threads = max_threads, 
+        max_threads = max_threads,
         reference_genome = reference_genome,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output')),
         resume_from_reduce = args.reduce,
-        sample_count_server_port = 6985,
-        reference_count_server_port = 8569
+        count_server_port = 6985,
     )
-    colorama.init()
- 
