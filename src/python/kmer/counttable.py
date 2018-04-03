@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import io
 import os
 import pwd
@@ -5,9 +7,11 @@ import sys
 import json
 import time
 
-from . import (
+from kmer import (
     config,
 )
+
+from kmer.kmers import *
 
 #import khmer
 import jellyfish
@@ -102,10 +106,12 @@ class JellyfishCountsProvider(KmerCountsProvider):
     def import_counts(self):
         c = config.Configuration()
         self.qf = jellyfish.QueryMerFile(c.jellyfish)
-        self.num_requests = 
 
     def get_kmer_count(self, kmer):
         canon = jellyfish.MerDNA(str(kmer))
         canon.canonicalize()
-        return self.qf[canon]
+        #return self.qf[canon]
+        a = jellyfish.MerDNA(str(kmer))
+        b = jellyfish.MerDNA(reverse_complement_sequence(str(kmer)))
+        return self.qf[a] + self.qf[b]
 

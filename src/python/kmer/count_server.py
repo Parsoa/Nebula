@@ -15,11 +15,9 @@ from kmer import (
     counttable,
 )
 
-#import pylru
 import socket
 import struct
 
-print('importing count_server.py')
 # ================================================================================================= #
 # 
 # ================================================================================================= #
@@ -31,7 +29,6 @@ def get_kmer_count(kmer, index, ref):
     c = config.Configuration()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     port = c.count_server_port
-    # port = c.reference_count_server_port if ref else c.sample_count_server_port
     s.connect(('localhost', port + index))
     s.send(bytearray(kmer, 'ascii'))
     response = s.recv(4) # integer size

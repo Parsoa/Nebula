@@ -19,6 +19,7 @@ from shutil import copyfile
 
 from kmer import (
     config,
+    counttable,
 )
 
 from kmer.kmers import *
@@ -193,6 +194,15 @@ class Job(object):
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             os.remove(path)
+
+    def get_kmer_count(self, kmer, *args):
+        #start = time.time()
+        if not self.counts_provider:
+            print(green('importing jellyfish index'))
+            self.counts_provider = counttable.JellyfishCountsProvider()
+        #end = time.time()
+        #print(end - start)
+        return self.counts_provider.get_kmer_count(kmer)
 
     # ============================================================================================================================ #
     # filesystem helpers

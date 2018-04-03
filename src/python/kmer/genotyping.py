@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import io
 import os
 import re
@@ -10,20 +12,16 @@ import argparse
 import operator
 import traceback
 
-from multiprocessing import Process
-
 from kmer import (
     bed,
-    sets,
     config,
-    commons,
-    counttable,
     map_reduce,
     statistics,
-    count_server,
 )
 
 from kmer.kmers import *
+from kmer.commons import *
+print = pretty_print
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -31,7 +29,7 @@ from kmer.kmers import *
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseGenotypingJob(map_reduce.BaseExactCountingJob):
+class BaseGenotypingJob(map_reduce.Job):
 
     def get_output_directory(self):
         c = config.Configuration()
@@ -152,8 +150,8 @@ class GenotypingJob(BaseGenotypingJob):
     # ============================================================================================================================ #
 
     @staticmethod
-    def launch():
-        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'SampleExactKmerCountingJob_')
+    def launch(**kwargs):
+        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPointsJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -171,7 +169,8 @@ class GenotypingJob(BaseGenotypingJob):
     def load_inputs(self):
         # each event is a structural variation with its most likely breakpoints
         self.tracks = {}
-        path = os.path.join(self.get_previous_job_directory(), 'most_likely.json')
+        self.counts_provider = None
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             self.tracks = json.load(json_file)
         for index in range(0, self.num_threads):
@@ -190,21 +189,24 @@ class GenotypingJob(BaseGenotypingJob):
         distribution = {
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = c.std),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
-            '(0, 0)': statistics.ErrorDistribution(p = 1.0 / 100),
+            #'(0, 0)': statistics.ErrorDistribution(p = 1.0 / 100),
+            '(0, 0)': statistics.NormalDistribution(mean = 0, std = 5)
         }
         # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
         with open(track, 'r') as track_file:
+            print(track)
             break_points = json.load(track_file)
         novel_kmers = {}
         for break_point in break_points:
             likelihood[break_point] = {}
-            likelihood[break_point]['kmers'] = len(break_points[break_point]['novel_kmers'])
+            likelihood[break_point]['kmers'] = {}
             likelihood[break_point]['2std'] = 0
             likelihood[break_point]['zyg'] = {}
             for zyg in distribution:
                 likelihood[break_point]['zyg'][zyg] = 0
             for kmer in break_points[break_point]['novel_kmers']:
-                c = get_kmer_count(kmer, self.index, False) 
+                count = self.get_kmer_count(kmer, self.index, False)
+                likelihood[break_point]['kmers'][kmer] = count
                 # remember we are genotyping, we need the counts in the sample not in the origin of event
                 for zyg in distribution:
                     likelihood[break_point]['zyg'][zyg] += distribution[zyg].log_pmf(count)
@@ -214,8 +216,11 @@ class GenotypingJob(BaseGenotypingJob):
         # now find the maximum, for each zygosity find the maximum value, then compare
         for break_point in break_points:
             choice = max(likelihood[break_point]['zyg'].items(), key = operator.itemgetter(1))[0]
-            likelihood[break_point]['max'] = choice#, 'novel_kmers': novel_kmers[break_point]}
-        return likelihood
+            likelihood[break_point]['genotype'] = choice#, 'novel_kmers': novel_kmers[break_point]}
+        path = os.path.join(self.get_current_job_directory(), 'genotype_' + track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(likelihood, json_file, sort_keys = True, indent = 4)
+        return path
 
     def reduce(self):
         c = config.Configuration()
@@ -230,17 +235,25 @@ class GenotypingJob(BaseGenotypingJob):
             json.dump(output, json_file, sort_keys = True, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in output:
-                chrom = track.split('_')[0]
-                begin = track.split('_')[1]
-                end = track.split('_')[2]
-                for break_point in output[track]:
-                    kmers = output[track][break_point]['kmers']
-                    std2 = output[track][break_point]['2std']
-                    choice = output[track][break_point]['max']
-                    zyg00 = output[track][break_point]['zyg']['(0, 0)']
-                    zyg10 = output[track][break_point]['zyg']['(1, 0)']
-                    zyg11 = output[track][break_point]['zyg']['(1, 1)']
-                    bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(kmers) + '\t' + str(std2) + '\t' + choice + '\t' + str(zyg00) + '\t' + str(zyg10) + '\t' + str(zyg11) + '\n')
+                with open(output[track], 'r') as track_file:
+                    break_points = json.load(track_file)
+                    chrom = track.split('_')[0]
+                    begin = track.split('_')[1]
+                    end = track.split('_')[2]
+                    for break_point in break_points:
+                        std2 = break_points[break_point]['2std']
+                        kmers = len(break_points[break_point]['kmers'])
+                        zyg00 = break_points[break_point]['zyg']['(0, 0)']
+                        zyg10 = break_points[break_point]['zyg']['(1, 0)']
+                        zyg11 = break_points[break_point]['zyg']['(1, 1)']
+                        genotype = break_points[break_point]['genotype']
+                        bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(kmers) + '\t' + str(std2) + '\t' + genotype + '\t' + str(zyg00) + '\t' + str(zyg10) + '\t' + str(zyg11) + '\n')
+
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/', self.previous_job_name[:-1]))
 
 # ============================================================================================================================ #
 # Main

@@ -10,12 +10,12 @@ class NormalDistribution():
         return 0.5 * (1 + math.erf((x - self.mean) / math.sqrt(2 * self.std ** 2)))
 
     def pmf(self, x):
-        #return self.cdf(x + 1) - self.cdf(x)
-        return (1 / math.sqrt(2 * math.pi * self.var)) * math.exp(-1 * ((x - self.mean) ** 2) / (2 * self.var))
+        return self.cdf(x + 1) - self.cdf(x)
+        #return (1 / math.sqrt(2 * math.pi * self.var)) * math.exp(-1 * ((x - self.mean) ** 2) / (2 * self.var))
 
     def log_pmf(self, x):
-        #return math.log(self.pmf(x))
-        return math.log(1 / math.sqrt(2 * math.pi * self.var)) - (((x - self.mean) ** 2) / (2 * self.var))
+        return math.log(self.pmf(x))
+        #return math.log(1 / math.sqrt(2 * math.pi * self.var)) - (((x - self.mean) ** 2) / (2 * self.var))
 
 
 class ErrorDistribution():

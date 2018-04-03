@@ -18,6 +18,7 @@ from kmer import (
     bed,
     sets,
     config,
+    counttable,
     map_reduce,
     statistics,
 )
@@ -37,7 +38,7 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class NovelKmerJob(map_reduce.Job):
+class NovelKmersJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # Launcher
@@ -45,7 +46,7 @@ class NovelKmerJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = NovelKmerJob(job_name = 'NovelKmerJob_', previous_job_name = 'ExtractBreakPointsJob_', **kwargs)
+        job = NovelKmersJob(job_name = 'NovelKmersJob_', previous_job_name = 'ExtractBreakPointsJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -62,6 +63,7 @@ class NovelKmerJob(map_reduce.Job):
     # and export each of its tracks to a separate file in parallel.
     def load_inputs(self):
         self.batch = {}
+        self.counts_provider = counttable.JellyfishCountsProvider()
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             tracks = json.load(json_file)
@@ -86,7 +88,7 @@ class NovelKmerJob(map_reduce.Job):
                 continue
             kmers = track[break_point]['kmers']
             for kmer in kmers:
-                if is_kmer_novel(kmer, self.index):
+                if self.get_kmer_count(kmer, self.index, False) == 0:
                     if not kmer in novel_kmers:
                         novel_kmers[kmer] = {
                             'count': kmers[kmer],
@@ -97,7 +99,7 @@ class NovelKmerJob(map_reduce.Job):
 
     def output_novel_kmers(self, track_name, novel_kmers):
         if not novel_kmers:
-            print(red('no novel kmers found for'), white(track_name), 'skipping')
+            print(red('no novel kmers found for'), white(track_name), red('skipping'))
             return None
         path = os.path.join(self.get_current_job_directory(), 'novel_kmers_' + track_name  + '.json') 
         with open(path, 'w') as json_file:
@@ -321,8 +323,9 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
     class ExtractExonicKmersJob(map_reduce.Job):
 
         def parse_track_file(self, path):
+            c = config.Configuration()
             tracks = {}
-            with open(path) as bed_file:
+            with open(c.bed_file) as bed_file:
                 line = bed_file.readline()
                 while line:
                     tokens = line.split()
@@ -361,7 +364,7 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
                     return
             # self.load_genes()
             # load exonic regions
-            tracks = self.parse_track_file(c.bed_file)
+            tracks = self.parse_track_file()
             for index in range(0, self.num_threads):
                 self.batch[index] = {}
             # split exonic regions into several batches
@@ -501,8 +504,8 @@ class DepthOfCoverageEstimationJob(map_reduce.BaseExactCountingJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    if c.job == 'NovelKmerJob':
-        NovelKmerJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'NovelKmersJob':
+        NovelKmersJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'CountKmersExactJob':
         CountKmersExactJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'DepthOfCoverageEstimationJob':

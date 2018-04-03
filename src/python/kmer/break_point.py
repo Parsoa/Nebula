@@ -29,7 +29,6 @@ print = pretty_print
 
 import pybedtools
 
-#import rapidjson as json
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
 
@@ -164,7 +163,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
             return Deletion
         if sv_type == 'INV':
             return Inversion
-        return StructuralVariation
+        return Deletion
 
     def extract_boundary_kmers(self, sv):
         c = config.Configuration()
@@ -213,7 +212,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'NovelKmerJob_', **kwargs)
+        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'NovelKmersJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -233,8 +232,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        print(green('importing jellyfish index'))
-        self.counts_provider = counttable.JellyfishCountsProvider()
+        self.counts_provider = None
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             paths = json.load(json_file)
@@ -274,7 +272,9 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         m = None
         novel_kmers = track['novel_kmers']
         for kmer in novel_kmers:
-            count = self.counts_provider.get_kmer_count(kmer)
+            count = self.get_kmer_count(kmer, self.index, False)
+            if count > 2 * c.coverage:
+                continue
             r_1_1 = self.distribution['(1, 1)'].log_pmf(count)
             r_0_0 = self.distribution['(0, 0)'].log_pmf(count)
             for break_point in likelihood['break_points']:
@@ -287,12 +287,15 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                 else:
                     likelihood['break_points'][break_point]['likelihood'] += r_0_0
                 m = break_point if not m or likelihood['break_points'][break_point]['likelihood'] > likelihood['break_points'][m]['likelihood'] else m
+        if not m:
+            print(red(track_name), 'no viable kmers available')
+            return None
         # find the maximum one and keep it easily accessible in the output
         # l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
         # m = max(l, key = operator.itemgetter(1))[0]
-        path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
-        with open(path, 'w') as json_file:
-            json.dump(likelihood, json_file, sort_keys = True, indent = 4)
+        #path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
+        #with open(path, 'w') as json_file:
+        #    json.dump(likelihood, json_file, sort_keys = True, indent = 4)
         path = os.path.join(self.get_current_job_directory(), 'most_likely_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump({m: likelihood['break_points'][m]}, json_file, sort_keys = True, indent = 4)

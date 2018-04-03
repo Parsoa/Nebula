@@ -92,7 +92,7 @@ def extract_kmers(k, *args):
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = s[i : i + k]
-            canon = get_canonical_kmer_representation(kmer)
+            canon = kmer#get_canonical_kmer_representation(kmer)
             if not canon in kmers:
                 kmers[canon] = 0
             kmers[canon] += 1
