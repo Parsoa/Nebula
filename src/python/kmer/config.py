@@ -40,21 +40,25 @@ def init():
 def parse_args():
     parser = argparse.ArgumentParser()
     # path to a BED files, for jobs that need one as input
-    parser.add_argument("--bed", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/CHM1_Lumpy.Del.100bp.DEL.bed')
+    parser.add_argument("--bed", default = None)
     # the job to execute from this file
     parser.add_argument("--job")
     # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
     parser.add_argument("--snp")
     # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
     parser.add_argument("--std", type = int)
+    # the seed to use for random number generation 
+    parser.add_argument("--seed", type = int)
     # the path to a previously generated khmer counttable without the .ct extension
     parser.add_argument("--khmer")
     # specifies that this counttable should return dummy values
     parser.add_argument("--dummy", action='store_true')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
-        # path to a FASTQ files, for jobs that need one as input
+    # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
+    # whether to generate random events during simulation or not
+    parser.add_argument("--random", action = 'store_true')
     # whether to resume this job from reduce or not
     parser.add_argument("--reduce", action = 'store_true')
     # maximum number of cpu cores to use
@@ -65,6 +69,8 @@ def parse_args():
     parser.add_argument("--jellyfish")
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
+    # whether the simulation should be heterozygous
+    parser.add_argument("--heterozygous", action = 'store_true')
     args = parser.parse_args()
     #
     return args
@@ -81,9 +87,11 @@ def configure(args):
         job = args.job,
         snp = args.snp,
         std = args.std,
+        seed = args.seed,
         khmer = args.khmer,
         ksize = 31,
-        bed_file = os.path.abspath(args.bed),
+        random = args.random,
+        bed_file = args.bed,
         coverage = args.coverage,
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
@@ -91,6 +99,7 @@ def configure(args):
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         max_threads = max_threads,
+        heterozygous = args.heterozygous,
         reference_genome = reference_genome,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,

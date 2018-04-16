@@ -34,6 +34,7 @@ class StructuralVariation(object):
 
     # the begin position itself is not included in the sequence
     # the end position is included in the sequence
+    # the origin will be -1, -1
     def extract_base_sequence(self):
         c = config.Configuration()
         track = copy.deepcopy(self.track)

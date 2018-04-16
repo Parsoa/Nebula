@@ -23,6 +23,11 @@ from kmer.kmers import *
 from kmer.commons import *
 print = pretty_print
 
+import plotly.offline as plotly
+import plotly.graph_objs as graph_objs
+
+import numpy
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # base class for all genotyping jobs
@@ -190,7 +195,7 @@ class GenotypingJob(BaseGenotypingJob):
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = c.std),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
             #'(0, 0)': statistics.ErrorDistribution(p = 1.0 / 100),
-            '(0, 0)': statistics.NormalDistribution(mean = 0, std = 5)
+            '(0, 0)': statistics.NormalDistribution(mean = 0, std = c.std)
         }
         # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
         with open(track, 'r') as track_file:
@@ -233,7 +238,21 @@ class GenotypingJob(BaseGenotypingJob):
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
+        if c.resume_from_reduce:
+            true_positive = bed.read_tracks(os.path.join(self.get_current_job_directory(), 'true_positive.bed'))
+            true_negative = bed.read_tracks(os.path.join(self.get_current_job_directory(), 'true_negative.bed'))
+            false_positive = bed.read_tracks(os.path.join(self.get_current_job_directory(), 'false_positive.bed'))
+            false_negative = bed.read_tracks(os.path.join(self.get_current_job_directory(), 'false_negative.bed'))
+            true = {}
+            true.update(true_positive)
+            true.update(true_negative)
+            false = {}
+            false.update(false_positive)
+            false.update(false_negative)
+            b = []
+            ratios = []
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
+            bed_file.write('chrom\tstart\tend\tkmers\tkmers_within_2std\tgenotype\t0,0\t1,0\t1,1\tcorrect\n')
             for track in output:
                 with open(output[track], 'r') as track_file:
                     break_points = json.load(track_file)
@@ -247,7 +266,34 @@ class GenotypingJob(BaseGenotypingJob):
                         zyg10 = break_points[break_point]['zyg']['(1, 0)']
                         zyg11 = break_points[break_point]['zyg']['(1, 1)']
                         genotype = break_points[break_point]['genotype']
-                        bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(kmers) + '\t' + str(std2) + '\t' + genotype + '\t' + str(zyg00) + '\t' + str(zyg10) + '\t' + str(zyg11) + '\n')
+                        s = ''
+                        if c.resume_from_reduce and genotype != '(0, 0)':
+                            correct = track in true
+                            ratios.append(break_points[break_point]['zyg'][genotype] / zyg00)
+                            b.append(1 if correct else 0)
+                            s = 'True' if correct else 'False'
+                        bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(kmers) + '\t' + str(std2) + '\t' + genotype + '\t' + str(zyg00) + '\t' + str(zyg10) + '\t' + str(zyg11) + '\t' + s + '\n')
+        #self.plot(b)
+        if c.resume_from_reduce:
+            p = numpy.corrcoef(b, ratios)
+            print(p)
+
+    def plot(self, b):
+        zyg11_t = list(map(lambda x: x[1], list(filter(lambda l: l[0] == '(1, 1)' and l[2], b))))
+        zyg11_f = list(map(lambda x: x[1], list(filter(lambda l: l[0] == '(1, 1)' and not l[2], b))))
+        zyg10_t = list(map(lambda x: x[1], list(filter(lambda l: l[0] == '(1, 0)' and l[2], b))))
+        zyg10_f = list(map(lambda x: x[1], list(filter(lambda l: l[0] == '(1, 0)' and not l[2], b))))
+        zyg00_t = list(map(lambda x: x[1], list(filter(lambda l: l[0] == '(0, 0)' and l[2], b))))
+        zyg00_f = list(map(lambda x: x[1], list(filter(lambda l: l[0] == '(0, 0)' and not l[2], b))))
+        trace0_t = graph_objs.Scatter(x = zyg11_t, y = [1] * len(zyg11_t), mode = 'markers', marker = dict(color = 'rgb(66, 134, 244)'))
+        trace0_f = graph_objs.Scatter(x = zyg11_f, y = [1] * len(zyg11_f), mode = 'markers', marker = dict(color = 'rgb(244, 65, 65)'))
+        trace1_t = graph_objs.Scatter(x = zyg10_t, y = [2] * len(zyg10_t), mode = 'markers', marker = dict(color = 'rgb(66, 134, 244)'))
+        trace1_f = graph_objs.Scatter(x = zyg10_f, y = [2] * len(zyg10_f), mode = 'markers', marker = dict(color = 'rgb(244, 65, 65)'))
+        trace2_t = graph_objs.Scatter(x = zyg00_t, y = [3] * len(zyg00_t), mode = 'markers', marker = dict(color = 'rgb(66, 134, 244)'))
+        trace2_f = graph_objs.Scatter(x = zyg00_f, y = [3] * len(zyg00_f), mode = 'markers', marker = dict(color = 'rgb(244, 65, 65)'))
+        data = [trace0_t, trace0_f, trace1_t, trace1_f, trace2_t, trace2_f]
+        path = os.path.join(self.get_current_job_directory(), 'scatter')
+        plotly.plot(data, filename = path)
 
     def get_previous_job_directory(self):
         c = config.Configuration()

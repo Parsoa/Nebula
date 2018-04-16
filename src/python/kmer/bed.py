@@ -39,12 +39,7 @@ class BedTrack:
 def read_tracks(path):
     c = config.Configuration()
     bedtools = pybedtools.BedTool(path)
-    tracks = {}
-    for track in bedtools:
-        bed_track = BedTrack(chrom = track.chrom, start = track.start, end = track.end)
-        if bed_track not in tracks:
-            tracks[bed_track] = True
-    return tracks
+    return {str(track.chrom) + '_' + str(track.start) + '_' + str(track.end): track for track in bedtools}
 
 def extract_sequence(track):
     c = config.Configuration()

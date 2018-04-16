@@ -9,9 +9,11 @@ import copy
 import json
 import math
 import time
+import random
 import argparse
 import operator
 import traceback
+import subprocess
 
 from kmer import (
     bed,
@@ -53,6 +55,22 @@ def import_reference_genome():
     print("Completed. There are {} bases in chromosome {}.".format(len(sequence), c.chrom))
     return sequence
 
+def generate_random_intervals(ref, n):
+    c = config.Configuration()
+    random.seed(c.seed)
+    print('generating', n, 'random events')
+    l = len(ref)
+    SVs = []
+    offset = 100000
+    for i in range(0, n):
+        start = random.randint(offset, l - offset)
+        end = start + random.randint(100, 2000)
+        event = pybedtools.Interval(chrom = 'chr1', start = start, end = end)
+        SVs.append(event)
+    SVs = sorted(SVs, key = lambda x: x.start)
+    SVs = filter_overlapping_intervals(SVs)
+    return SVs
+
 def load_structural_variations():
     c = config.Configuration()
     bedtools = pybedtools.BedTool(c.bed_file)
@@ -78,7 +96,7 @@ def filter_overlapping_intervals(intervals):
     while i < len(intervals):
         for j in range(i + 1, len(intervals)):
             # j is contained inside i
-            if intervals[j].end < intervals[i].end:
+            if intervals[j].start >= intervals[i].start and intervals[j].start <= intervals[i].end:
                 remove.append(j)
                 print(red(str(intervals[j])), 'overlaps', blue(str(intervals[i])))
                 continue
@@ -96,84 +114,113 @@ def filter_overlapping_intervals(intervals):
 def generate_fasta(ref, SVs):
     c = config.Configuration()
     print('Total number of SVs:', blue(len(SVs)))
-    # sample from these SVs
-    #n = len(SVs) / 5
-    #print('Sampling', blue(n), 'events')
-    #SVs = [ SVs[i] for i in sorted(random.sample(xrange(len(SVs)), n)) ]
     # select a set of commons SVs to be applied to both
     n = len(SVs) / 2
-    print('Shared events:', blue(n))
+    print('Present SVs:', blue(n))
     common = [ SVs[i] for i in sorted(random.sample(xrange(len(SVs)), n)) ]
     # sort (just in case)
     SVs = sorted(SVs, key = lambda x: x.start)
     common = sorted(common, key = lambda x: x.start)
-    test = ''
-    control = ''
-    ref_size = len(ref)
-    # apply all events to control sequence
+    test = apply_events_to_ref(ref, common)
+    control = apply_events_to_ref(ref, SVs)
+    return control, test, SVs, common
+
+def generate_homozygous_fasta(ref, SVs):
+    c = config.Configuration()
+    print('Total number of SVs:', blue(len(SVs)))
+    # sort (just in case)
+    SVs = sorted(SVs, key = lambda x: x.start)
+    sequence = apply_events_to_ref(ref, SVs)
+    return sequence
+
+def generate_heterozygous_fasta(ref, SVs):
+    c = config.Configuration()
+    print('Present SVs:', blue(len(SVs)))
+    # select a set of commons SVs to be applied to both strands
+    n = len(SVs) / 2
+    print('Homozygous SVs:', blue(n))
+    homozygous = [ SVs[i] for i in sorted(random.sample(xrange(len(SVs)), n)) ]
+    heterozygous = []
+    for sv in SVs:
+        if not sv in homozygous:
+            heterozygous.append(sv)
+    # sort
+    SVs = sorted(SVs, key = lambda x: x.start)
+    homozygous = sorted(homozygous, key = lambda x: x.start)
+    strand_1 = apply_events_to_ref(ref, SVs)
+    strand_2 = apply_events_to_ref(ref, homozygous)
+    return strand_1, strand_2, homozygous, heterozygous
+
+def export_fasta(sequence, name):
+    print('Exporting FASTA file:', green(name + '.fa')) 
+    c = config.Configuration()
+    with open(os.path.join(get_output_directory(), name + '.fa'), 'w') as fasta_file:
+        fasta_file.write('>' + c.chrom + '\n')
+        l = len(sequence)
+        num_lines = l / 50
+        for i in range(0, num_lines):
+            fasta_file.write(sequence[i * 50 : (i + 1) * 50] + '\n')
+        if l % 50 != 0:
+            fasta_file.write(sequence[num_lines * 50 :] + '\n')
+    print('Done!')
+
+def get_sv_type():
+    c = config.Configuration()
+    bed_file_name = c.bed_file.split('/')[-1]
+    sv_type = bed_file_name.split('.')[-2]
+    return sv_type
+
+def apply_events_to_ref(ref, SVs):
+    seq = ''
     previous = 0
     for i, sv in enumerate(SVs):
         right = sv.end
         left = sv.start
-        control += ref[previous:left]
+        seq += ref[previous:left]
+        if get_sv_type() == 'INV':
+            seq += reverse_complement_sequence(ref[left:right])
         previous = right
-    # only apply commons SVs to test sequence
-    previous = 0
-    for i, sv in enumerate(common):
-        right = sv.end
-        left = sv.start
-        test += ref[previous:left]
-        previous = right
-    return control, test, SVs, common
-
-def export_fasta(sequence, name):
-    print('Exporting FASTQ file:', green(name)) 
-    c = config.Configuration()
-    for i in range(0, 2):
-        with open(os.path.join(get_output_directory(), name + '.fa'), 'w') as fasta_file:
-            fasta_file.write('>' + c.chrom + '_' + str(i) + '\n')
-            l = len(sequence)
-            num_lines = l / 50
-            for i in range(0, num_lines):
-                fasta_file.write(sequence[i * 50 : (i + 1) * 50] + '\n')
-            if l % 50 != 0:
-                fasta_file.write(sequence[num_lines * 50 :] + '\n')
-    print('Done!')
+    return seq
 
 def export_bam(name):
-    print('Exporting BAM file:', green(name + '.bam'))
     c = config.Configuration()
-    # gerenate fq files
-    print('Generating FASTQ file ...')
+    print('Generating FASTQ files ...')
     num_reads = 1000000 * c.coverage
     fasta = os.path.join(get_output_directory(), name + '.fa')
     fastq_1 = os.path.join(get_output_directory(), name + '.1.fq')
     fastq_2 = os.path.join(get_output_directory(), name + '.2.fq')
     command =  "wgsim -d400 -N{} -1100 -2100 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
-    os.system(command)
+    output = subprocess.call(command, shell = True)
     # generate sam file
     print('Generating SAM file ...')
     sam_file = os.path.join(get_output_directory(), name + '.sam')
     command = "bwa mem -M -t 20 -R \"@RG\\tID:1\\tPL:ILLUMINA\\tSM:cnv_1000_ref\" {} {} {} > {}".format(c.reference_genome, fastq_1, fastq_2, sam_file)
-    os.system(command)
+    subprocess.call(command, shell = True)
     # generate bam file
-    prina('Generating unsorted BAM file ...')
+    print('Generating unsorted BAM file ...')
     unsorted_bam = os.path.join(get_output_directory(), name + '.unsorted.bam')
     command = "samtools view -S -b {} > {}".format(sam_file, unsorted_bam)  
-    os.system(command)
+    subprocess.call(command, shell = True)
     print('Sorting ...')
-    bam = os.path.join(get_output_directory(), name + '.bam')
+    bam = os.path.join(get_output_directory(), name)
     command = "samtools sort {} {}".format(unsorted_bam, bam)
-    os.system(command)
+    subprocess.call(command, shell = True)
     print('Indexing ...')
     bam_index = os.path.join(get_output_directory(), name + '.bai')
-    command = "samtools index {}".format(bam_index)
-    os.system(command)
+    command = "samtools index {} {}".format(bam + '.bam', bam_index)
+    subprocess.call(command, shell = True)
     print('Done!')
 
 def get_output_directory():
+    c = config.Configuration()
+    bed_file_name = c.bed_file.split('/')[-1]
     return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-        '../../../output/simulation/'))
+        '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/Simulation'))
+
+def create_output_directories():
+    dir = get_output_directory()
+    if not os.path.exists(dir):
+        os.makedirs(dir)
 
 def export_bed(intervals, name):
     print('Exporting BED file:', green(name + '.bed'))
@@ -185,14 +232,43 @@ def simulate():
     c = config.Configuration()
     c.chrom = 'chr1'
     ref = import_reference_genome()
-    SVs = load_structural_variations()
-    control, test, SVs, present = generate_fasta(ref, SVs)
-    export_bed(SVs, 'all')
-    export_bed(present, 'present')
-    export_fasta(control, 'control')
-    export_fasta(test, 'test')
-    export_bam('control')
-    export_bam('test')
+    if c.seed:
+        random.seed(c.seed)
+    if c.random:
+        SVs = generate_random_intervals(ref, 1000)
+    else:
+        SVs = load_structural_variations()
+    if c.heterozygous:
+        pid = os.fork()
+        # export control genome
+        if pid == 0:
+            export_bed(SVs, 'all')
+            control = generate_homozygous_fasta(ref, SVs)
+            export_fasta(control, 'control')
+            export_bam('control')
+        # use a second thread to export the test sample
+        else:
+            n = len(SVs) / 2
+            present = [ SVs[i] for i in sorted(random.sample(xrange(len(SVs)), n)) ]
+            export_bed(present, 'present')
+            strand_1, strand_2, homozygous_SVs = generate_heterozygous_fasta(ref, present)
+            export_bed(homozygous_SVs, 'homozygous')
+            export_fasta(strand_1, 'test_strand_1')
+            export_fasta(strand_2, 'test_strand_2')
+            # export a couple of fastq files for each strand, will this work?
+            export_bam('test_strand_1')
+            export_bam('test_strand_2')
+    else:
+        control, test, SVs, present = generate_fasta(ref, SVs)
+        pid = os.fork()
+        if pid == 0:
+            export_bed(present, 'present')
+            export_fasta(test, 'test')
+            export_bam('test')
+        else:
+            export_bed(SVs, 'all')
+            export_fasta(control, 'control')
+            export_bam('control')
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
