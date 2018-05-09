@@ -15,6 +15,7 @@ import traceback
 from kmer import (
     bed,
     config,
+    counttable,
     map_reduce,
     statistics,
 )
@@ -55,7 +56,7 @@ class BaseGenotypingJob(map_reduce.Job):
         return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1], bed_file_name))
 
 # ============================================================================================================================ #
-# MapReduce job for exact counting the signature kmers of the sv library in a sample genomew
+# MapReduce job for exact counting the signature kmers of the sv library in a sample genome
 # ============================================================================================================================ #
 
 class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
@@ -174,7 +175,7 @@ class GenotypingJob(BaseGenotypingJob):
     def load_inputs(self):
         # each event is a structural variation with its most likely breakpoints
         self.tracks = {}
-        self.counts_provider = None
+        self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             self.tracks = json.load(json_file)
@@ -194,34 +195,90 @@ class GenotypingJob(BaseGenotypingJob):
         distribution = {
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = c.std),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
-            #'(0, 0)': statistics.ErrorDistribution(p = 1.0 / 100),
             '(0, 0)': statistics.NormalDistribution(mean = 0, std = c.std)
+        }
+        inner_distribution = {
+            '(0, 0)': statistics.NormalDistribution(mean = c.coverage, std = c.std),
+            '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
+            '(1, 1)': statistics.NormalDistribution(mean = 0, std = c.std)
         }
         # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
         with open(track, 'r') as track_file:
-            print(track)
             break_points = json.load(track_file)
-        novel_kmers = {}
         for break_point in break_points:
             likelihood[break_point] = {}
-            likelihood[break_point]['kmers'] = {}
+            likelihood[break_point]['novel_kmers'] = {}
+            likelihood[break_point]['inner_kmers'] = {}
             likelihood[break_point]['2std'] = 0
-            likelihood[break_point]['zyg'] = {}
+            likelihood[break_point]['likelihood'] = {}
+            likelihood[break_point]['likelihood']['novel'] = {}
+            likelihood[break_point]['likelihood']['inner'] = {}
             for zyg in distribution:
-                likelihood[break_point]['zyg'][zyg] = 0
+                likelihood[break_point]['likelihood']['inner'][zyg] = 0
+                likelihood[break_point]['likelihood']['novel'][zyg] = 0
             for kmer in break_points[break_point]['novel_kmers']:
-                count = self.get_kmer_count(kmer, self.index, False)
-                likelihood[break_point]['kmers'][kmer] = count
-                # remember we are genotyping, we need the counts in the sample not in the origin of event
+                count = self.counts_provider.get_kmer_count(kmer)
+                if count > c.coverage + 3 * c.std:
+                    continue
+                likelihood[break_point]['novel_kmers'][kmer] = count
                 for zyg in distribution:
-                    likelihood[break_point]['zyg'][zyg] += distribution[zyg].log_pmf(count)
-
-                if abs(count - c.coverage) < 2 * c.std:
-                    likelihood[break_point]['2std'] += 1
-        # now find the maximum, for each zygosity find the maximum value, then compare
-        for break_point in break_points:
-            choice = max(likelihood[break_point]['zyg'].items(), key = operator.itemgetter(1))[0]
-            likelihood[break_point]['genotype'] = choice#, 'novel_kmers': novel_kmers[break_point]}
+                    likelihood[break_point]['likelihood']['novel'][zyg] += distribution[zyg].log_pmf(count)
+            for kmer in break_points[break_point]['inner_kmers']:
+                count = self.counts_provider.get_kmer_count(kmer)
+                if count > c.coverage + 3 * c.std:
+                    continue
+                likelihood[break_point]['inner_kmers'][kmer] = count
+                for zyg in distribution:
+                    likelihood[break_point]['likelihood']['inner'][zyg] += inner_distribution[zyg].log_pmf(count)
+            for zyg in distribution:
+                likelihood[break_point]['likelihood']['inner'][zyg] -= len(likelihood[break_point]['inner_kmers']) * distribution[zyg].log_pmf(distribution[zyg].mean)
+                likelihood[break_point]['likelihood']['novel'][zyg] -= len(likelihood[break_point]['novel_kmers']) * distribution[zyg].log_pmf(distribution[zyg].mean)
+                likelihood[break_point]['likelihood']['inner'][zyg] = abs(likelihood[break_point]['likelihood']['inner'][zyg])
+                likelihood[break_point]['likelihood']['novel'][zyg] = abs(likelihood[break_point]['likelihood']['novel'][zyg])
+            inner_choice = min(likelihood[break_point]['likelihood']['inner'].items(), key = operator.itemgetter(1))[0]
+            novel_choice = min(likelihood[break_point]['likelihood']['novel'].items(), key = operator.itemgetter(1))[0]
+            likelihood[break_point]['genotype'] = {}
+            if len(likelihood[break_point]['inner_kmers']) > 5:
+                if inner_choice == '(0, 0)' or len(likelihood[break_point]['novel_kmers']) < 3:
+                    likelihood[break_point]['genotype']['inner'] = inner_choice
+                    likelihood[break_point]['genotype']['novel'] = novel_choice
+                    likelihood[break_point]['genotype']['consensus'] = inner_choice
+                    continue
+                # how to decide between these?
+                if novel_choice == '(0, 0)':
+                    if likelihood[break_point]['likelihood']['novel'][novel_choice] >  likelihood[break_point]['likelihood']['inner'][inner_choice]:
+                        choice = novel_choice
+                    else:
+                        choice = inner_choice
+                    likelihood[break_point]['genotype']['inner'] = inner_choice
+                    likelihood[break_point]['genotype']['novel'] = novel_choice
+                    likelihood[break_point]['genotype']['consensus'] = choice
+                    continue
+                # it is present, doesn't matter what zygosity
+                likelihood[break_point]['genotype']['inner'] = inner_choice
+                likelihood[break_point]['genotype']['novel'] = novel_choice
+                likelihood[break_point]['genotype']['consensus'] = novel_choice
+                continue
+            # very limited signal, ignore
+            if len(likelihood[break_point]['novel_kmers']) < 3:
+                choice = '(2, 2)'
+                likelihood[break_point]['genotype']['inner'] = inner_choice
+                likelihood[break_point]['genotype']['novel'] = novel_choice
+                likelihood[break_point]['genotype']['consensus'] = choice
+                continue
+            # signal only from novel kmers
+            likelihood[break_point]['genotype']['inner'] = inner_choice
+            likelihood[break_point]['genotype']['novel'] = novel_choice
+            likelihood[break_point]['genotype']['consensus'] = novel_choice
+            #if choice != '(0, 0)':
+                #k = len(break_points[break_point]['novel_kmers'])
+                #m = len(break_points[break_point]['inner_kmers'])
+                #d = k * distribution[choice].log_pmf(distribution[choice].mean) + m * inner_distribution[choice].log_pmf(inner_distribution[choice].mean)
+                #z = k * distribution['(0, 0)'].log_pmf(distribution[choice].mean) + m * inner_distribution['(0, 0)'].log_pmf(inner_distribution[choice].mean)
+                #r = likelihood[break_point]['zyg']['(0, 0)'] - likelihood[break_point]['zyg'][choice]
+                #likelihood[break_point]['threshold'] = z / d
+                #if r > 1.70 * likelihood[break_point]['zyg']['(0, 0)'] 
+                    #choice = '(0, 0)'
         path = os.path.join(self.get_current_job_directory(), 'genotype_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(likelihood, json_file, sort_keys = True, indent = 4)
@@ -238,6 +295,15 @@ class GenotypingJob(BaseGenotypingJob):
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
+        #threshold = []
+        #for track in output:
+            #with open(output[track], 'r') as json_file:
+                #break_points = json.load(json_file)
+                #for break_point in break_points:
+                    #if 'threshold' in break_points[break_point]:
+                        #threshold.append(break_points[break_point]['threshold'])
+        #data = [graph_objs.Histogram(x = threshold, xbins = dict(start = 0, size = 5))]
+        #plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), 'threshold.html'))
         if c.resume_from_reduce:
             true_positive = bed.read_tracks(os.path.join(self.get_current_job_directory(), 'true_positive.bed'))
             true_negative = bed.read_tracks(os.path.join(self.get_current_job_directory(), 'true_negative.bed'))
@@ -252,7 +318,7 @@ class GenotypingJob(BaseGenotypingJob):
             b = []
             ratios = []
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
-            bed_file.write('chrom\tstart\tend\tkmers\tkmers_within_2std\tgenotype\t0,0\t1,0\t1,1\tcorrect\n')
+            bed_file.write('chrom\tstart\tend\tkmers\tgenotype\t0,0\t1,0\t1,1\tcorrect\n')
             for track in output:
                 with open(output[track], 'r') as track_file:
                     break_points = json.load(track_file)
@@ -260,20 +326,24 @@ class GenotypingJob(BaseGenotypingJob):
                     begin = track.split('_')[1]
                     end = track.split('_')[2]
                     for break_point in break_points:
-                        std2 = break_points[break_point]['2std']
-                        kmers = len(break_points[break_point]['kmers'])
-                        zyg00 = break_points[break_point]['zyg']['(0, 0)']
-                        zyg10 = break_points[break_point]['zyg']['(1, 0)']
-                        zyg11 = break_points[break_point]['zyg']['(1, 1)']
-                        genotype = break_points[break_point]['genotype']
-                        s = ''
-                        if c.resume_from_reduce and genotype != '(0, 0)':
-                            correct = track in true
-                            ratios.append(break_points[break_point]['zyg'][genotype] / zyg00)
-                            b.append(1 if correct else 0)
-                            s = 'True' if correct else 'False'
-                        bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(kmers) + '\t' + str(std2) + '\t' + genotype + '\t' + str(zyg00) + '\t' + str(zyg10) + '\t' + str(zyg11) + '\t' + s + '\n')
-        #self.plot(b)
+                        inner_kmers = len(break_points[break_point]['inner_kmers'])
+                        novel_kmers = len(break_points[break_point]['novel_kmers'])
+                        inner_zyg00 = break_points[break_point]['likelihood']['inner']['(0, 0)']
+                        inner_zyg10 = break_points[break_point]['likelihood']['inner']['(1, 0)']
+                        inner_zyg11 = break_points[break_point]['likelihood']['inner']['(1, 1)']
+                        novel_zyg00 = break_points[break_point]['likelihood']['novel']['(0, 0)']
+                        novel_zyg10 = break_points[break_point]['likelihood']['novel']['(1, 0)']
+                        novel_zyg11 = break_points[break_point]['likelihood']['novel']['(1, 1)']
+                        inner = break_points[break_point]['genotype']['inner']
+                        novel = break_points[break_point]['genotype']['novel']
+                        consensus = break_points[break_point]['genotype']['consensus']
+                        bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(novel_kmers) + '\t' + str(inner_kmers) + '\t' +
+                                str(inner_zyg00 + novel_zyg00) + '\t' +
+                                str(inner_zyg10 + novel_zyg10) + '\t' +
+                                str(inner_zyg11 + novel_zyg11) + '\t' +
+                                str(consensus) + '\t' +
+                                inner + '\t' +
+                                novel + '\n')
         if c.resume_from_reduce:
             p = numpy.corrcoef(b, ratios)
             print(p)

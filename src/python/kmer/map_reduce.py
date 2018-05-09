@@ -164,9 +164,9 @@ class Job(object):
             index = self.children[pid]
             self.children.pop(pid, None)
             if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
-                print(red('pid', '{:5d}'.format(pid), ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
+                print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
             else:
-                print(red('pid', '{:5d}'.format(pid), ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
+                print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
         print(cyan('all forks done, merging output ...'))
 
     def plot(self, outputs):
@@ -194,15 +194,6 @@ class Job(object):
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             os.remove(path)
-
-    def get_kmer_count(self, kmer, *args):
-        #start = time.time()
-        if not self.counts_provider:
-            print(green('importing jellyfish index'))
-            self.counts_provider = counttable.JellyfishCountsProvider()
-        #end = time.time()
-        #print(end - start)
-        return self.counts_provider.get_kmer_count(kmer)
 
     # ============================================================================================================================ #
     # filesystem helpers

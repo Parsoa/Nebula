@@ -26,6 +26,7 @@ class StructuralVariation(object):
     def __init__(self, track, radius):
         self.track = track
         self.radius = radius
+        self.inner_kmers = None
         self.extract_base_sequence()
 
     def find_snps_within_boundaries(self, snps):
@@ -59,6 +60,9 @@ class StructuralVariation(object):
         kmers = extract_kmers(self.ref_head, self.ref_tail)
         return kmers
 
+    def get_inner_kmers(self):
+        return []
+
 class Inversion(StructuralVariation):
 
     def get_signature_kmers(self, begin, end):
@@ -70,7 +74,7 @@ class Inversion(StructuralVariation):
         if begin >  end:
             return None, None
         #
-        seq = seq[:c.ksize] + bed.complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
+        seq = seq[:c.ksize] + complement_sequence((seq[c.ksize : -c.ksize])[::-1]) + seq[-c.ksize:]
         head = seq[0:2 * c.ksize]
         tail = seq[-2 * c.ksize:]
         # ends will overlap
@@ -79,8 +83,8 @@ class Inversion(StructuralVariation):
         #
         self.head = head
         self.tail = tail
-        kmers = extract_kmers(head, tail)
-        return kmers, {'head': head, 'tail': tail}
+        kmers = extract_kmers(c.ksize, head, tail)
+        return kmers, head + tail
 
     def get_boundaries():
         return 
@@ -135,7 +139,29 @@ class Deletion(StructuralVariation):
         if begin > end:
             return None, None
         #
+        inner_seq = seq[c.ksize:-c.ksize]
         seq = seq[:c.ksize] + seq[-c.ksize:]
         kmers = extract_kmers(c.ksize, seq)
         return kmers, seq
+
+    # will return the same set of inner kmers for every breakpoint 
+    def get_inner_kmers(self, begin, end):
+        if self.inner_kmers:
+            return self.inner_kmers
+        c = config.Configuration()
+        begin = self.radius
+        end = -self.radius
+        begin = (self.radius + c.ksize) + begin - c.ksize
+        end = (len(self.sequence) - self.radius - c.ksize) + end + c.ksize
+        seq = self.sequence[begin : end]
+        if begin > end:
+            return {}
+        #
+        inner_seq = seq[c.ksize:-c.ksize]
+        self.inner_kmers = extract_kmers(c.ksize, inner_seq)
+        if len(self.inner_kmers) < 1000:
+            return self.inner_kmers
+        keys = random.sample(list(self.inner_kmers.keys()), 1000)
+        self.inner_kmers = {kmer: self.inner_kmers[kmer] for kmer in keys}
+        return self.inner_kmers
 

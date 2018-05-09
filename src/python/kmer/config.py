@@ -66,7 +66,7 @@ def parse_args():
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = int)
     # the path to a jellyfish generated kmer count index
-    parser.add_argument("--jellyfish")
+    parser.add_argument("--jellyfish", nargs = '*')
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
     # whether the simulation should be heterozygous

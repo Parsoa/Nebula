@@ -80,30 +80,36 @@ class NovelKmersJob(map_reduce.Job):
         # load each job's input separately to reduce memory footprint
         with open(path, 'r') as json_file:
             track = json.load(json_file)['break_points']
-        remove = {}
-        novel_kmers = {}
+        break_points = {}
+        n = 0
         for break_point in track:
             # ignore weak break_points
             if float(track[break_point]['score']) < 0.49:
                 continue
+            break_points[break_point] = {}
+            break_points[break_point]['novel_kmers'] = {}
+            break_points[break_point]['singular_kmers'] = {}
+            break_points[break_point]['inner_kmers'] = {}
             kmers = track[break_point]['kmers']
             for kmer in kmers:
-                if self.get_kmer_count(kmer, self.index, False) == 0:
-                    if not kmer in novel_kmers:
-                        novel_kmers[kmer] = {
-                            'count': kmers[kmer],
-                            'break_points': []
-                        }
-                    novel_kmers[kmer]['break_points'].append(break_point)
-        return self.output_novel_kmers(track_name, novel_kmers)
-
-    def output_novel_kmers(self, track_name, novel_kmers):
-        if not novel_kmers:
-            print(red('no novel kmers found for'), white(track_name), red('skipping'))
+                count = self.get_kmer_count(kmer, self.index, False)
+                if count == 0:
+                    break_points[break_point]['novel_kmers'][kmer] = kmers[kmer]
+                    n += 1
+                # TODO: when to use singular kmers?
+                #if count == 1:
+                #    break_points[break_point]['singular_kmers'][kmer] = kmers[kmer]
+            inner_kmers = track[break_point]['inner_kmers']
+            for kmer in inner_kmers:
+                count = self.get_kmer_count(kmer, self.index, False)
+                if count == 1:
+                    break_points[break_point]['inner_kmers'][kmer] = kmers[kmer]
+        if n == 0:
+            print(red('no novel kmers found for'), white(track_name))
             return None
         path = os.path.join(self.get_current_job_directory(), 'novel_kmers_' + track_name  + '.json') 
         with open(path, 'w') as json_file:
-            json.dump({'novel_kmers': novel_kmers}, json_file, sort_keys = True, indent = 4)
+            json.dump({'break_points': break_points}, json_file, sort_keys = True, indent = 4)
         return path
 
 # ============================================================================================================================ #

@@ -74,7 +74,8 @@ class ExtractBreakPointsJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.counts_provider = counttable.JellyfishCountsProvider()
+        self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
+        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
         self.bedtools = pybedtools.BedTool(c.bed_file)
         self.radius = 50
         self.snps = {}
@@ -110,7 +111,8 @@ class ExtractBreakPointsJob(map_reduce.Job):
             try:
                 sv = sv_type(track = track, radius = self.radius)
                 break_points = self.transform(sv)
-                self.output_break_points(name, break_points)
+                if break_points:
+                    self.output_break_points(name, break_points)
             except pybedtools.helpers.BEDToolsError as e:
                 print(e)
             n = n + 1
@@ -121,14 +123,8 @@ class ExtractBreakPointsJob(map_reduce.Job):
 
     def transform(self, sv):
         c = config.Configuration()
-        break_points = self.extract_boundary_kmers(sv)
-        if not break_points:
-            return None
-        for break_point in break_points:
-            for kmer in break_points[break_point]['kmers']:
-                break_points[break_point]['kmers'][kmer] = self.counts_provider.get_kmer_count(kmer)
-            self.calc_break_point_score(break_points[break_point])
-        return break_points
+        break_points = self.extract_break_points(sv)
+        return break_points if break_points else None
 
     def reduce(self):
         c = config.Configuration()
@@ -141,8 +137,6 @@ class ExtractBreakPointsJob(map_reduce.Job):
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
-        self.sort(output)
-        self.plot(output)
 
     def output_break_points(self, track_name, break_points):
         path = os.path.join(self.get_current_job_directory(), 'break_points_' + track_name  + '.json') 
@@ -158,28 +152,51 @@ class ExtractBreakPointsJob(map_reduce.Job):
     def get_sv_type(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
-        sv_type = bed_file_name.split('.')[-2]
-        if sv_type == 'DEL':
+        if bed_file_name.find('DEL') != -1:
             return Deletion
-        if sv_type == 'INV':
+        if bed_file_name.find('INV') != -1:
             return Inversion
         return Deletion
 
-    def extract_boundary_kmers(self, sv):
+    def extract_break_points(self, sv):
         c = config.Configuration()
         break_points = {}
         if c.snp:
             events = sv.find_snps_within_boundaries(self.snps)
             print(len(events), 'events found')
-        for begin in range(-self.radius, self.radius + 1) :
-            for end in range(-self.radius, self.radius + 1) :
+        for begin in range(-self.radius, self.radius + 1):
+            for end in range(-self.radius, self.radius + 1):
                 kmers, boundary = sv.get_signature_kmers(begin, end)
+                inner_kmers = sv.get_inner_kmers(begin, end)
                 if not kmers:
                     continue
-                break_points['(' + str(begin) + ',' + str(end) + ')'] = {
+                name = '(' + str(begin) + ',' + str(end) + ')'
+                break_points[name] = {
                     'boundary': boundary,
-                    'kmers': kmers,
                 }
+                break_points[name]['inner_kmers'] = {}
+                break_points[name]['novel_kmers'] = {}
+                break_points[name]['singular_kmers'] = {}
+                n = 0
+                for kmer in kmers:
+                    count = self.reference_counts_provider.get_kmer_count(kmer)
+                    if count == 0:
+                        count = self.counts_provider.get_kmer_count(kmer)
+                        # only add kmer if it exists in sample
+                        if count != 0:
+                            break_points[name]['novel_kmers'][kmer] = count
+                            n += 1
+                    elif count == 1:
+                        break_points[name]['singular_kmers'][kmer] = self.counts_provider.get_kmer_count(kmer)
+                # no novel kmers found
+                if n == 0:
+                    break_points.pop(name, None)
+                    continue
+                for kmer in inner_kmers:
+                    count = self.reference_counts_provider.get_kmer_count(kmer)
+                    if count == 1:
+                        break_points[name]['inner_kmers'][kmer] = self.counts_provider.get_kmer_count(kmer)
+                """
                 if c.snp:
                     for event in events:
                         for kmers, boundary, variant in sv.get_signature_kmers_with_variation(events[event], begin, end):
@@ -187,14 +204,13 @@ class ExtractBreakPointsJob(map_reduce.Job):
                                 'boundary': boundary,
                                 'kmers': kmers,
                             }
-        #print(len(break_points), 'break points found')
+                """
+                score = float(len(break_points[name]['novel_kmers'])) / len(kmers)
+                #if score < 0.49:
+                #    break_points.pop(name, None)
+                #    continue
+                break_points[name]['score'] = score
         return break_points if break_points else None
-
-    # prunes a break points if not all its kmers appear in the counttable
-    def calc_break_point_score(self, break_point):
-        c = config.Configuration()
-        n = len(list(filter(lambda kmer: break_point['kmers'][kmer] != 0, break_point['kmers'])))
-        break_point['score'] = float(n) / float(len(break_point['kmers']))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -212,7 +228,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'NovelKmersJob_', **kwargs)
+        job = MostLikelyBreakPointsJob(job_name = 'MostLikelyBreakPointsJob_', previous_job_name = 'ExtractBreakPointsJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -232,7 +248,6 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.counts_provider = None
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
             paths = json.load(json_file)
@@ -247,55 +262,58 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         self.coverage = c.coverage
         self.std = c.std
         self.distribution = {
+            'singular': statistics.NormalDistribution(mean = 2 * self.coverage, std = self.std),
             '(1, 1)': statistics.NormalDistribution(mean = self.coverage, std = self.std),
             '(1, 0)': statistics.NormalDistribution(mean = self.coverage / 2, std = self.std),
-            '(0, 0)': statistics.ErrorDistribution(1.0 / 1000)
+            '(0, 0)': statistics.ErrorDistribution(1.0 / 1000),
+            'inner': statistics.ErrorDistribution(1.0 / 1000)
         }
 
     def transform(self, track, track_name):
         c = config.Configuration()
         with open(track, 'r') as track_file:
-            track = json.load(track_file)
+            break_points = json.load(track_file)['break_points']
         # find all the break points
         likelihood = {
             'break_points': {}
         }
-        for kmer in track['novel_kmers']:
-            for break_point in track['novel_kmers'][kmer]['break_points']:
-                if not break_point in likelihood['break_points']:
-                    likelihood['break_points'][break_point] = {
-                        'likelihood': 0,
-                        'novel_kmers': {} # we are also interested in knowing the kmer with for each one
-                    }
-        print(track_name, ': ', len(likelihood['break_points']), ' break points')
+        # accumulate all kmers in one dictionary
+        kmers = {}
+        for break_point in break_points:
+            for kmer in break_points[break_point]['novel_kmers']:
+                count = break_points[break_point]['novel_kmers'][kmer]
+                if count:
+                    kmers[kmer] = count
+            #for kmer in break_points[break_point]['singular_kmers']:
+                #kmers[kmer] = break_points[break_point]['singular_kmers'][kmer]
         # calculate likelihoods
         m = None
-        novel_kmers = track['novel_kmers']
-        for kmer in novel_kmers:
-            count = self.get_kmer_count(kmer, self.index, False)
-            if count > 2 * c.coverage:
-                continue
-            r_1_1 = self.distribution['(1, 1)'].log_pmf(count)
-            r_0_0 = self.distribution['(0, 0)'].log_pmf(count)
-            for break_point in likelihood['break_points']:
-                if break_point in novel_kmers[kmer]['break_points']:
-                    likelihood['break_points'][break_point]['novel_kmers'][kmer] = {
-                        'count': count,
-                        'likelihood': r_1_1,
-                    }
+        for break_point in break_points:
+            likelihood['break_points'][break_point] = {}
+            likelihood['break_points'][break_point]['likelihood'] = 0
+            likelihood['break_points'][break_point]['novel_kmers'] = break_points[break_point]['novel_kmers']
+            likelihood['break_points'][break_point]['inner_kmers'] = break_points[break_point]['inner_kmers']
+            #likelihood['break_points'][break_point]['singular_kmers'] = break_points[break_point]['singular_kmers']
+            for kmer in kmers:
+                count = kmers[kmer]
+                #r_s = self.distribution['singular'].log_pmf(count)
+                # need to find a way to choose the correct breakpoint
+                r_1_1 = self.distribution['(1, 1)'].log_pmf(count)
+                r_1_0 = self.distribution['(1, 0)'].log_pmf(count)
+                r_0_0 = self.distribution['(0, 0)'].log_pmf(count)
+                if kmer in break_points[break_point]['novel_kmers']:
                     likelihood['break_points'][break_point]['likelihood'] += r_1_1
+                #elif kmer in break_points[break_point]['singular_kmers']:
+                    #likelihood['break_points'][break_point]['likelihood'] += r_s
                 else:
                     likelihood['break_points'][break_point]['likelihood'] += r_0_0
-                m = break_point if not m or likelihood['break_points'][break_point]['likelihood'] > likelihood['break_points'][m]['likelihood'] else m
+            m = break_point if not m or likelihood['break_points'][break_point]['likelihood'] > likelihood['break_points'][m]['likelihood'] else m
         if not m:
-            print(red(track_name), 'no viable kmers available')
+            print(red(track_name), 'no novel kmers found for track', red(track_name))
             return None
-        # find the maximum one and keep it easily accessible in the output
-        # l = list(map(lambda x: (x, likelihood['break_points'][x]['likelihood']), likelihood['break_points']))
-        # m = max(l, key = operator.itemgetter(1))[0]
-        #path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
-        #with open(path, 'w') as json_file:
-        #    json.dump(likelihood, json_file, sort_keys = True, indent = 4)
+        path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(likelihood, json_file, sort_keys = True, indent = 4)
         path = os.path.join(self.get_current_job_directory(), 'most_likely_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump({m: likelihood['break_points'][m]}, json_file, sort_keys = True, indent = 4)

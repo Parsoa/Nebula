@@ -147,6 +147,7 @@ def generate_heterozygous_fasta(ref, SVs):
     # sort
     SVs = sorted(SVs, key = lambda x: x.start)
     homozygous = sorted(homozygous, key = lambda x: x.start)
+    heterozygous = sorted(heterozygous, key = lambda x: x.start)
     strand_1 = apply_events_to_ref(ref, SVs)
     strand_2 = apply_events_to_ref(ref, homozygous)
     return strand_1, strand_2, homozygous, heterozygous
@@ -162,7 +163,6 @@ def export_fasta(sequence, name):
             fasta_file.write(sequence[i * 50 : (i + 1) * 50] + '\n')
         if l % 50 != 0:
             fasta_file.write(sequence[num_lines * 50 :] + '\n')
-    print('Done!')
 
 def get_sv_type():
     c = config.Configuration()
@@ -183,32 +183,33 @@ def apply_events_to_ref(ref, SVs):
     return seq
 
 def export_bam(name):
+    FNULL = open(os.devnull, 'w')
     c = config.Configuration()
-    print('Generating FASTQ files ...')
+    print('Generating FASTQ files:', green(name + '.1.fq'), green(name + '.2.fq'))
     num_reads = 1000000 * c.coverage
     fasta = os.path.join(get_output_directory(), name + '.fa')
     fastq_1 = os.path.join(get_output_directory(), name + '.1.fq')
     fastq_2 = os.path.join(get_output_directory(), name + '.2.fq')
     command =  "wgsim -d400 -N{} -1100 -2100 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
-    output = subprocess.call(command, shell = True)
+    output = subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
     # generate sam file
-    print('Generating SAM file ...')
+    print('Generating SAM file:', green(name + '.sam'))
     sam_file = os.path.join(get_output_directory(), name + '.sam')
     command = "bwa mem -M -t 20 -R \"@RG\\tID:1\\tPL:ILLUMINA\\tSM:cnv_1000_ref\" {} {} {} > {}".format(c.reference_genome, fastq_1, fastq_2, sam_file)
-    subprocess.call(command, shell = True)
+    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
     # generate bam file
-    print('Generating unsorted BAM file ...')
+    print('Generating unsorted BAM file:', green(name + '.unsorted.bam'))
     unsorted_bam = os.path.join(get_output_directory(), name + '.unsorted.bam')
     command = "samtools view -S -b {} > {}".format(sam_file, unsorted_bam)  
-    subprocess.call(command, shell = True)
+    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
     print('Sorting ...')
     bam = os.path.join(get_output_directory(), name)
-    command = "samtools sort {} {}".format(unsorted_bam, bam)
-    subprocess.call(command, shell = True)
+    command = "samtools sort {} -o {}".format(unsorted_bam, bam)
+    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
     print('Indexing ...')
     bam_index = os.path.join(get_output_directory(), name + '.bai')
     command = "samtools index {} {}".format(bam + '.bam', bam_index)
-    subprocess.call(command, shell = True)
+    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
     print('Done!')
 
 def get_output_directory():
@@ -240,7 +241,7 @@ def simulate():
         SVs = load_structural_variations()
     if c.heterozygous:
         pid = os.fork()
-        # export control genome
+        # export homozygous control genome
         if pid == 0:
             export_bed(SVs, 'all')
             control = generate_homozygous_fasta(ref, SVs)
@@ -251,8 +252,9 @@ def simulate():
             n = len(SVs) / 2
             present = [ SVs[i] for i in sorted(random.sample(xrange(len(SVs)), n)) ]
             export_bed(present, 'present')
-            strand_1, strand_2, homozygous_SVs = generate_heterozygous_fasta(ref, present)
+            strand_1, strand_2, homozygous_SVs, heterozygous_SVs = generate_heterozygous_fasta(ref, present)
             export_bed(homozygous_SVs, 'homozygous')
+            export_bed(heterozygous_SVs, 'heterozygous')
             export_fasta(strand_1, 'test_strand_1')
             export_fasta(strand_2, 'test_strand_2')
             # export a couple of fastq files for each strand, will this work?

@@ -20,6 +20,7 @@ class NormalDistribution():
 class ErrorDistribution():
     def __init__(self, p):
         self.p = p
+        self.mean = 0
 
     def pmf(self, x):
         return self.p ** x

@@ -19,6 +19,7 @@ import jellyfish
 # ============================================================================================================================ #
 # Caching
 # ============================================================================================================================ #
+
 """
 def cache(f):
     cache = pylru.lrucache(config.Configuration.kmer_cache_size)
@@ -58,6 +59,7 @@ class DummyCountsProvider(KmerCountsProvider):
 # ============================================================================================================================ #
 # Khmer
 # ============================================================================================================================ #
+
 """
 class KhmerCountsProvider(KmerCountsProvider):
 
@@ -97,21 +99,23 @@ class KhmerCountsProvider(KmerCountsProvider):
         print(colorama.Fore.MAGENTA + 'done')
         return counttable
 """
+
 # ============================================================================================================================ #
 # Jellyfish
 # ============================================================================================================================ #
 
 class JellyfishCountsProvider(KmerCountsProvider):
 
+    def __init__(self, path):
+        self.path = path
+        self.import_counts()
+
     def import_counts(self):
-        c = config.Configuration()
-        self.qf = jellyfish.QueryMerFile(c.jellyfish)
+        print('importing jellyfish table')
+        self.qf = jellyfish.QueryMerFile(self.path)
+        print('table loaded')
 
     def get_kmer_count(self, kmer):
         canon = jellyfish.MerDNA(str(kmer))
         canon.canonicalize()
-        #return self.qf[canon]
-        a = jellyfish.MerDNA(str(kmer))
-        b = jellyfish.MerDNA(reverse_complement_sequence(str(kmer)))
-        return self.qf[a] + self.qf[b]
-
+        return self.qf[canon]
