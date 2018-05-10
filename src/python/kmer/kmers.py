@@ -85,7 +85,17 @@ def has_unique_novel_kmers(track, candidate, kmers, index):
 def get_canonical_kmer_representation(kmer):
     kmer = kmer.upper()
     reverse_complement = reverse_complement_sequence(kmer)
-    return kmer if kmer < reverse_complement else reverse_complement 
+    return kmer if kmer < reverse_complement else reverse_complement
+
+def extract_canonical_kmers(k, *args):
+    kmers = {}
+    for s in args:
+        for i in range(0, len(s) - k + 1):
+            kmer = get_canonical_kmer_representation(s[i : i + k])
+            if not kmer in kmers:
+                kmers[kmer] = 0
+            kmers[kmer] += 1
+    return kmers
 
 def extract_kmers(k, *args):
     kmers = {}

@@ -30,6 +30,26 @@ import pybedtools
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+def extract_chromosome(chrom):
+    c = config.Configuration()
+    sequence = ''
+    ref = open(c.reference_genome)
+    count = 0
+    while True:
+        count += 1
+        line = ref.readline().strip()
+        if line == '>' + c.chrom or line == '':
+            break
+    if len(line) == 0:
+        return []
+    while True:
+        count += 1
+        line = ref.readline().upper().strip()
+        if line.startswith('>') or line == '':
+            break
+        sequence += line
+    return sequence
+
 def import_reference_genome():
     c = config.Configuration()
     sequence = ''

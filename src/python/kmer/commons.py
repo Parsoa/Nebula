@@ -19,6 +19,16 @@ def measure_time(f):
         return result
     return wrapper
 
+class Memoize:
+    def __init__(self, f):
+        self.f = f
+        self.cache = {}
+
+    def __call__(self, *args):
+        if not args in self.memo:
+            self.cache[args] = self.f(*args)
+        return self.cache[args]
+
 # ============================================================================================================================ #
 # STDIO Wrappers/Helpers
 # ============================================================================================================================ #

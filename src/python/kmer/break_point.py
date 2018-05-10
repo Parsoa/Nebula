@@ -262,7 +262,6 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         self.coverage = c.coverage
         self.std = c.std
         self.distribution = {
-            'singular': statistics.NormalDistribution(mean = 2 * self.coverage, std = self.std),
             '(1, 1)': statistics.NormalDistribution(mean = self.coverage, std = self.std),
             '(1, 0)': statistics.NormalDistribution(mean = self.coverage / 2, std = self.std),
             '(0, 0)': statistics.ErrorDistribution(1.0 / 1000),
