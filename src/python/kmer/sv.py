@@ -43,11 +43,11 @@ class StructuralVariation(object):
         # <- k bp -><- R bp -><-actual sequence-><- R bp -><- k bp ->
         track.start = track.start - self.radius - c.ksize
         track.end   = track.end   + self.radius + c.ksize
-        self.sequence = bed.extract_sequence(track)
-        #print(track.start, track.end, len(self.sequence), track.end - track.start + 1)
-        #print(self.sequence)
-        #exit()
-        #print(len(self.sequence), track.end - track.start + 1)
+        #self.sequence = bed.extract_sequence(track)
+        #print(green(self.sequence))
+        chromosome = extract_chromosome(track.chrom)
+        self.sequence = chromosome[track.start - 1 : track.end - 1]
+        #print(blue(self.sequence))
 
     def get_reference_signature_kmers(self, begin, end):
         c = config.Configuration()
@@ -121,9 +121,9 @@ class Deletion(StructuralVariation):
         #
         inner_seq = seq[c.ksize:-c.ksize]
         self.inner_kmers = extract_kmers(c.ksize, inner_seq)
-        if len(self.inner_kmers) < 1000:
+        if len(self.inner_kmers) < 100:
             return self.inner_kmers
-        keys = random.sample(list(self.inner_kmers.keys()), 1000)
+        keys = random.sample(list(self.inner_kmers.keys()), 100)
         self.inner_kmers = {kmer: self.inner_kmers[kmer] for kmer in keys}
         return self.inner_kmers
 

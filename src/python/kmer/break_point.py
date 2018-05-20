@@ -97,7 +97,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
             self.batch[index].append(track)
             print(blue('assigned ', name, ' to ', index))
             n = n + 1
-            self.num_threads = max(self.num_threads, index + 1)
+            self.num_threads = min(c.max_threads, index + 1)
 
     def run_batch(self, batch):
         c = config.Configuration()

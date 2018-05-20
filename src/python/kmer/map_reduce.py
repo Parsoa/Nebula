@@ -279,10 +279,10 @@ class RecursiveMergeCountsJob(Job):
         pass
 
     def get_output_directory(self):
-        return self.previous_job_directory()
+        return self.previous_job_directory
 
     def get_previous_job_directory(self):
-        return self.previous_job_directory()
+        return self.previous_job_directory
 
     def get_current_job_directory(self):
         # get rid of the final _
@@ -299,6 +299,7 @@ class BaseExactCountingJob(Job):
     # ============================================================================================================================ #
     # job-specific stuff
     # ============================================================================================================================ #
+
     def parse_fastq(self):
         name = None
         #tracemalloc.start()

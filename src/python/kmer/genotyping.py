@@ -132,7 +132,6 @@ class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
             '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/', self.previous_job_name[:-1]))
 
 # ============================================================================================================================ #
-# ============================================================================================================================ #
 # MapReduce job to genotype a genome
 # We need to have generated a counttable for the genome we are interested in beforehand
 # How to get this far?

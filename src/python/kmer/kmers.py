@@ -25,8 +25,63 @@ import socket
 import struct
 
 # ============================================================================================================================ #
+# FASTQ helpers
+# ============================================================================================================================ #
+
+def parse_fastq(path):
+    name = None
+    #tracemalloc.start()
+    HEADER_LINE = 0
+    SEQUENCE_LINE = 1
+    THIRD_LINE = 2
+    QUALITY_LINE = 3
+    state = HEADER_LINE
+    # need to skip invalid lines
+    fastq_file = open(path)
+    line = fastq_file.readline().strip()
+    ahead = fastq_file.readline().strip()
+    n = 0
+    m = 0
+    t = time.time()
+    while ahead:
+        if state == HEADER_LINE:
+            if line[0] == '@' and ahead[0] != '@':
+                name = line[:-1] # ignore the EOL character
+                state = SEQUENCE_LINE
+        elif state == SEQUENCE_LINE:
+            state = THIRD_LINE
+            seq = line[:-1] # ignore the EOL character
+            yield seq, name
+        elif state == THIRD_LINE:
+            state = QUALITY_LINE
+        elif state == QUALITY_LINE:
+            state = HEADER_LINE
+        line = ahead
+        ahead = fastq_file.readline()
+
+# ============================================================================================================================ #
 # kmer helpers
 # ============================================================================================================================ #
+
+def extract_chromosome(chrom):
+    c = config.Configuration()
+    sequence = ''
+    ref = open(c.reference_genome)
+    count = 0
+    while True:
+        count += 1
+        line = ref.readline().strip()
+        if line == '>' + chrom or line == '':
+            break
+    if len(line) == 0:
+        return []
+    while True:
+        count += 1
+        line = ref.readline().upper().strip()
+        if line.startswith('>') or line == '':
+            break
+        sequence += line
+    return sequence
 
 def get_kmer_count(kmer, index, ref):
     start = time.time()
