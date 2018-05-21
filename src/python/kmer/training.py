@@ -36,6 +36,7 @@ import plotly.graph_objs as graph_objs
 
 from sklearn import svm
 from sklearn import tree
+from sklearn.linear_model import Perceptron
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -43,36 +44,7 @@ from sklearn import tree
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseDecisionTreeJob(map_reduce.Job):
-
-    def get_output_directory(self):
-        c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../training/' + bed_file_name + '/'))
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class DecisionTreeTrainingJob(BaseDecisionTreeJob):
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        job = DecisionTreeTrainingJob(job_name = 'DecisionTreeTrainingJob_', previous_job_name = '', **kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def find_thread_count(self):
-        c = config.Configuration()
-        self.num_threads = c.max_threads
+class BaseTrainingJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
@@ -84,12 +56,12 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
             start = int(tokens[1])
             end = int(tokens[2])
             chrom = tokens[0]
-            #if chrom != 'chr22':
-                #continue
-            #if start != 20950622:
-                #continue
-            #if end != 20953839:
-                #continue
+            if chrom != 'chr22':
+                continue
+            if start != 20950622:
+                continue
+            if end != 20953839:
+                continue
             index = n % c.max_threads 
             if not index in self.batch:
                 self.batch[index] = {}
@@ -98,23 +70,24 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
             n = n + 1
             self.num_threads = min(n, c.max_threads)
 
-    def transform(self, track, track_name):
-        start = time.time()
-        c = config.Configuration()
-        # load kmers and chosen breakpoint
-        self.inner_kmers = {}
-        self.novel_kmers = {}
+    def extract_kmers(self, track, track_name):
+        inner_kmers = {}
+        novel_kmers = {}
         with open(track) as json_file:
             break_points = json.load(json_file)
             for break_point in break_points:
                 for kmer in break_points[break_point]['inner_kmers']:
                     canon = get_canonical_kmer_representation(kmer)
-                    self.inner_kmers[canon] = 0
+                    inner_kmers[canon] = 0
                 for kmer in break_points[break_point]['novel_kmers']:
                     canon = get_canonical_kmer_representation(kmer)
-                    self.novel_kmers[canon] = 0
+                    novel_kmers[canon] = 0
                 start_offset = int(break_point.replace('(', '').replace(')', '').split(',')[0])
                 end_offset = int(break_point.replace('(', '').replace(')', '').split(',')[1])
+        return novel_kmers, inner_kmers
+
+    def simulate_kmer_counts(self, track, track_name, iterations):
+        c = config.Configuration()
         # extract sequence and apply event
         tokens = track_name.split('_')
         start = int(tokens[1]) + start_offset
@@ -126,20 +99,11 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
         random.seed(c.seed)
         X = []
         Y = []
-        path = os.path.join(self.get_current_job_directory(), track_name)
-        if len(self.novel_kmers) + len(self.inner_kmers) < 5:
-            print(red('skipping'), track_name)
-            return None
-        print(track_name, len(self.novel_kmers) + len(self.inner_kmers), 'kmers')
-        if not os.path.exists(path):
-            os.makedirs(path)
-        path = os.path.join(self.get_current_job_directory(), track_name)
-        with open(os.path.join(path, 'kmers.json'), 'w') as json_file:
-            json.dump({'inner_kmers': self.inner_kmers, 'novel_kmers': self.novel_kmers}, json_file, sort_keys = True, indent = 4)
-        for i in range(0, 20):
-            self.kmers = {}
-            self.kmers.update({'inner': {get_canonical_kmer_representation(kmer): 0 for kmer in self.inner_kmers}})
-            self.kmers.update({'novel': {get_canonical_kmer_representation(kmer): 0 for kmer in self.novel_kmers}})
+        novel_kmers, inner_kmers = self.extract_kmers(track, track_name)
+        for i in range(0, iterations):
+            kmers = {}
+            kmers.update({'inner': {get_canonical_kmer_representation(kmer): 0 for kmer in inner_kmers}})
+            kmers.update({'novel': {get_canonical_kmer_representation(kmer): 0 for kmer in novel_kmers}})
             coverage = random.randint(7, 50)
             zygosity = random.randint(0, 2)
             #print('iteration', blue(i), 'coverage', green(coverage), 'zygosity', cyan(zygosity))
@@ -154,34 +118,17 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
                 base_path = os.path.join(self.get_current_job_directory(), track_name, base_name)
                 self.export_fasta(strands[s], base_path, track_name)
                 self.export_fastq(strands[s], base_path, track_name, coverage)
-                self.count_kmers_in_fastq(base_path)
-                # cleanup
+                self.count_kmers_in_fastq(base_path, kmers)
+                # clean up
                 os.remove(base_path + '.fa')
                 os.remove(base_path + '.0.fq')
                 os.remove(base_path + '.1.fq')
-            # normalize kmer counts
-            #print(blue('======================================================================'))
-            #print(zygosity, coverage)
-            #json_print(self.kmers)
-            # update training date
             features = []
             features += list(map(lambda t: t[1] / (2.0 * coverage), sorted(list(map(lambda kmer: (kmer, self.kmers['inner'][kmer]), self.kmers['inner'])), key = operator.itemgetter(0))))
             features += list(map(lambda t: t[1] / (2.0 * coverage), sorted(list(map(lambda kmer: (kmer, self.kmers['novel'][kmer]), self.kmers['novel'])), key = operator.itemgetter(0))))
             X.append(features)
-            #print(len(features), 'festures')
             Y.append(zygosity)
-        #clf = tree.DecisionTreeClassifier()
-        clf = svm.SVC()
-        clf.fit(X, Y)
-        #dot_data = tree.export_graphviz(clf, out_file = os.path.join(path, 'tree.dot'))
-        with open(os.path.join(path, 'decision_tree.pkl'), 'wb') as pickle_file:
-            cPickle.dump(clf, pickle_file)
-        #rules, n = self.export_decision_tree_rules(clf)
-        #with open(os.path.join(path, 'decision_tree.txt'), 'w') as rules_file:
-            #rules_file.write(rules)
-        # export kmers
-        print('took', blue(time.time() - start))
-        return path
+        return X, Y
 
     def export_fasta(self, sequence, path, track):
         c = config.Configuration()
@@ -207,16 +154,72 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
         command = "wgsim -d400 -N{} -1100 -2100 {} {} {}".format(num_reads, fasta, fastq_0, fastq_1)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
-    def count_kmers_in_fastq(self, path):
+    def count_kmers_in_fastq(self, path, kmers):
         c = config.Configuration()
         for i in range(0, 2):
             for seq, name in parse_fastq(path + '.' + str(i) + '.fq'):
-                kmers = extract_canonical_kmers(31, seq)
-                for kmer in kmers:
-                    if kmer in self.kmers['inner']:
-                        self.kmers['inner'][kmer] += kmers[kmer]
-                    if kmer in self.kmers['novel']:
-                        self.kmers['novel'][kmer] += kmers[kmer]
+                counts = extract_canonical_kmers(31, seq)
+                for kmer in counts:
+                    if kmer in kmers['inner']:
+                        kmers['inner'][kmer] += counts[kmer]
+                    if kmer in kmers['novel']:
+                        kmers['novel'][kmer] += counts[kmer]
+        return kmers
+
+    def get_output_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../training/' + bed_file_name + '/'))
+
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/' + bed_file_name + '/31/MostLikelyBreakPointsJob/'))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class DecisionTreeTrainingJob(BaseTrainingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = DecisionTreeTrainingJob(job_name = 'DecisionTreeTrainingJob_', previous_job_name = '', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def transform(self, track, track_name):
+        start = time.time()
+        c = config.Configuration()
+        path = os.path.join(self.get_current_job_directory(), track_name)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        novel_kmers, inner_kmers = self.extract_kmers(track, track_name)
+        if len(novel_kmers) + len(inner_kmers) < 5:
+            return None
+        X, Y = self.simulate_kmer_counts(track, track_name, 20)
+        #clf = tree.DecisionTreeClassifier()
+        #clf = svm.SVC()
+        clf = Perceptron()
+        clf.fit(X, Y)
+        #dot_data = tree.export_graphviz(clf, out_file = os.path.join(path, 'tree.dot'))
+        with open(os.path.join(path, 'decision_tree.pkl'), 'wb') as pickle_file:
+            cPickle.dump(clf, pickle_file)
+        #rules, n = self.export_decision_tree_rules(clf)
+        #with open(os.path.join(path, 'decision_tree.txt'), 'w') as rules_file:
+            #rules_file.write(rules)
+        # export kmers
+        print('took', blue(time.time() - start))
+        return path
 
     def export_decision_tree_rules(self, clf):
         tree_ = clf.tree_
@@ -245,11 +248,6 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
         print('using', green(len(clf.feature_importances_)), 'features')
         return rules, m
 
-    def get_previous_job_directory(self):
-        c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/' + bed_file_name + '/31/MostLikelyBreakPointsJob/'))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -257,7 +255,7 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
+class DecisionTreeGenotypingJob(BaseTrainingJob):
 
     # ============================================================================================================================ #
     # Launcher

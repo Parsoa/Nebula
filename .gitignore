@@ -16,3 +16,4 @@ venv2/
 output/*
 data/*
 training/*
+learning/*
