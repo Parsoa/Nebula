@@ -40,7 +40,7 @@ from sklearn.linear_model import Perceptron
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# base class for all genotyping jobs
+# base class for training all sorts of classifiers
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -56,12 +56,12 @@ class BaseTrainingJob(map_reduce.Job):
             start = int(tokens[1])
             end = int(tokens[2])
             chrom = tokens[0]
-            if chrom != 'chr22':
-                continue
-            if start != 20950622:
-                continue
-            if end != 20953839:
-                continue
+            #if chrom != 'chr22':
+                #continue
+            #if start != 20950622:
+                #continue
+            #if end != 20953839:
+                #continue
             index = n % c.max_threads 
             if not index in self.batch:
                 self.batch[index] = {}
@@ -69,6 +69,9 @@ class BaseTrainingJob(map_reduce.Job):
             print(blue('assigned', track, 'to', index))
             n = n + 1
             self.num_threads = min(n, c.max_threads)
+            break
+            #if n == 100:
+                #break
 
     def extract_kmers(self, track, track_name):
         inner_kmers = {}
@@ -84,11 +87,12 @@ class BaseTrainingJob(map_reduce.Job):
                     novel_kmers[canon] = 0
                 start_offset = int(break_point.replace('(', '').replace(')', '').split(',')[0])
                 end_offset = int(break_point.replace('(', '').replace(')', '').split(',')[1])
-        return novel_kmers, inner_kmers
+            return novel_kmers, inner_kmers, start_offset, end_offset
 
     def simulate_kmer_counts(self, track, track_name, iterations):
         c = config.Configuration()
         # extract sequence and apply event
+        novel_kmers, inner_kmers, start_offset, end_offset = self.extract_kmers(track, track_name)
         tokens = track_name.split('_')
         start = int(tokens[1]) + start_offset
         end = int(tokens[2]) + end_offset
@@ -99,11 +103,10 @@ class BaseTrainingJob(map_reduce.Job):
         random.seed(c.seed)
         X = []
         Y = []
-        novel_kmers, inner_kmers = self.extract_kmers(track, track_name)
         for i in range(0, iterations):
             kmers = {}
-            kmers.update({'inner': {get_canonical_kmer_representation(kmer): 0 for kmer in inner_kmers}})
-            kmers.update({'novel': {get_canonical_kmer_representation(kmer): 0 for kmer in novel_kmers}})
+            kmers.update({'inner': inner_kmers})
+            kmers.update({'novel': novel_kmers})
             coverage = random.randint(7, 50)
             zygosity = random.randint(0, 2)
             #print('iteration', blue(i), 'coverage', green(coverage), 'zygosity', cyan(zygosity))
@@ -124,10 +127,11 @@ class BaseTrainingJob(map_reduce.Job):
                 os.remove(base_path + '.0.fq')
                 os.remove(base_path + '.1.fq')
             features = []
-            features += list(map(lambda t: t[1] / (2.0 * coverage), sorted(list(map(lambda kmer: (kmer, self.kmers['inner'][kmer]), self.kmers['inner'])), key = operator.itemgetter(0))))
-            features += list(map(lambda t: t[1] / (2.0 * coverage), sorted(list(map(lambda kmer: (kmer, self.kmers['novel'][kmer]), self.kmers['novel'])), key = operator.itemgetter(0))))
+            features += list(map(lambda t: t[1] / (2.0 * coverage), sorted(list(map(lambda kmer: (kmer, kmers['inner'][kmer]), kmers['inner'])), key = operator.itemgetter(0))))
+            features += list(map(lambda t: t[1] / (2.0 * coverage), sorted(list(map(lambda kmer: (kmer, kmers['novel'][kmer]), kmers['novel'])), key = operator.itemgetter(0))))
             X.append(features)
             Y.append(zygosity)
+        print(cyan(track_name), green(len(features), 'features'))
         return X, Y
 
     def export_fasta(self, sequence, path, track):
@@ -172,17 +176,27 @@ class BaseTrainingJob(map_reduce.Job):
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../training/' + bed_file_name + '/'))
 
-    def get_previous_job_directory(self):
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# base class for all Decision Tree jobs
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class BaseDecisionTreeJob(BaseTrainingJob):
+
+    def get_output_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/' + bed_file_name + '/31/MostLikelyBreakPointsJob/'))
+            '../../../training/' + bed_file_name + '/Tensorflow/'))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 
-class DecisionTreeTrainingJob(BaseTrainingJob):
+class DecisionTreeTrainingJob(BaseDecisionTreeJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -209,7 +223,6 @@ class DecisionTreeTrainingJob(BaseTrainingJob):
         X, Y = self.simulate_kmer_counts(track, track_name, 20)
         #clf = tree.DecisionTreeClassifier()
         #clf = svm.SVC()
-        clf = Perceptron()
         clf.fit(X, Y)
         #dot_data = tree.export_graphviz(clf, out_file = os.path.join(path, 'tree.dot'))
         with open(os.path.join(path, 'decision_tree.pkl'), 'wb') as pickle_file:
@@ -248,6 +261,11 @@ class DecisionTreeTrainingJob(BaseTrainingJob):
         print('using', green(len(clf.feature_importances_)), 'features')
         return rules, m
 
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/' + bed_file_name + '/31/MostLikelyBreakPointsJob/'))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -255,7 +273,7 @@ class DecisionTreeTrainingJob(BaseTrainingJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class DecisionTreeGenotypingJob(BaseTrainingJob):
+class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -369,6 +387,20 @@ class DecisionTreeGenotypingJob(BaseTrainingJob):
         plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), '10.html'), auto_open = False)
         data = [graph_objs.Scatter(y = d_11, x = list(range(0, len(d_11))))]
         plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), '11.html'), auto_open = False)
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# base class for all Decision Tree jobs
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class BaseSvmTreeJob(BaseTrainingJob):
+
+    def get_output_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../training/' + bed_file_name + '/Tensorflow/'))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
