@@ -182,35 +182,46 @@ def apply_events_to_ref(ref, SVs):
         previous = right
     return seq
 
-def export_bam(name):
-    FNULL = open(os.devnull, 'w')
+def export_bam(name, ref):
     c = config.Configuration()
+    FNULL = open(os.devnull, 'w')
     print('Generating FASTQ files:', green(name + '.1.fq'), green(name + '.2.fq'))
-    num_reads = 1000000 * c.coverage
+    num_reads = len(ref) * c.coverage / 100
     fasta = os.path.join(get_output_directory(), name + '.fa')
     fastq_1 = os.path.join(get_output_directory(), name + '.1.fq')
     fastq_2 = os.path.join(get_output_directory(), name + '.2.fq')
     command =  "wgsim -d400 -N{} -1100 -2100 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
-    output = subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+    output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
     # generate sam file
-    print('Generating SAM file:', green(name + '.sam'))
-    sam_file = os.path.join(get_output_directory(), name + '.sam')
-    command = "bwa mem -M -t 20 -R \"@RG\\tID:1\\tPL:ILLUMINA\\tSM:cnv_1000_ref\" {} {} {} > {}".format(c.reference_genome, fastq_1, fastq_2, sam_file)
-    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-    # generate bam file
-    print('Generating unsorted BAM file:', green(name + '.unsorted.bam'))
-    unsorted_bam = os.path.join(get_output_directory(), name + '.unsorted.bam')
-    command = "samtools view -S -b {} > {}".format(sam_file, unsorted_bam)  
-    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-    print('Sorting ...')
-    bam = os.path.join(get_output_directory(), name)
-    command = "samtools sort {} -o {}".format(unsorted_bam, bam)
-    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-    print('Indexing ...')
-    bam_index = os.path.join(get_output_directory(), name + '.bai')
-    command = "samtools index {} {}".format(bam + '.bam', bam_index)
-    subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+    #print('Generating SAM file:', green(name + '.sam'))
+    #sam_file = os.path.join(get_output_directory(), name + '.sam')
+    #command = "bwa mem -M -t 20 -R \"@RG\\tID:1\\tPL:ILLUMINA\\tSM:cnv_1000_ref\" {} {} {} > {}".format(c.reference_genome, fastq_1, fastq_2, sam_file)
+    #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+    ## generate bam file
+    #print('Generating unsorted BAM file:', green(name + '.unsorted.bam'))
+    #unsorted_bam = os.path.join(get_output_directory(), name + '.unsorted.bam')
+    #command = "samtools view -S -b {} > {}".format(sam_file, unsorted_bam)  
+    #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+    #print('Sorting ...')
+    #bam = os.path.join(get_output_directory(), name)
+    #command = "samtools sort {} -o {}".format(unsorted_bam, bam)
+    #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+    #print('Indexing ...')
+    #bam_index = os.path.join(get_output_directory(), name + '.bai')
+    #command = "samtools index {} {}".format(bam + '.bam', bam_index)
+    #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
     print('Done!')
+
+def export_jellyfish_table(channel, *args):
+    c = config.Configuration()
+    FNULL = open(os.devnull, 'w')
+    print('Generating Jellyfish table')
+    command = "jellyfish count -m 31 -s 1000000000 -t 24 --canonical "
+    for name in args:
+        command += ' ' + os.path.join(get_output_directory(), name + '.1.fq') + ' ' + os.path.join(get_output_directory() + name + '.2.fq')
+    command += ' -o ' + os.path.join(get_output_directory(), channel + '.jf')
+    print(command)
+    output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
 def get_output_directory():
     c = config.Configuration()
@@ -246,7 +257,8 @@ def simulate():
             export_bed(SVs, 'all')
             control = generate_homozygous_fasta(ref, SVs)
             export_fasta(control, 'control')
-            export_bam('control')
+            export_bam('control', ref)
+            export_jellyfish_table('control', 'control')
         # use a second thread to export the test sample
         else:
             n = len(SVs) / 2
@@ -258,8 +270,9 @@ def simulate():
             export_fasta(strand_1, 'test_strand_1')
             export_fasta(strand_2, 'test_strand_2')
             # export a couple of fastq files for each strand, will this work?
-            export_bam('test_strand_1')
-            export_bam('test_strand_2')
+            export_bam('test_strand_1', ref)
+            export_bam('test_strand_2', ref)
+            export_jellyfish_table('test', 'test_strand_1', 'test_strand_2')
     else:
         control, test, SVs, present = generate_fasta(ref, SVs)
         pid = os.fork()

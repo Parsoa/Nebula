@@ -162,6 +162,12 @@ def extract_kmers(k, *args):
             kmers[kmer] += 1
     return kmers
 
+def gen_extract_kmers(k, *args):
+    for s in args:
+        for i in range(0, len(s) - k + 1):
+            kmer = s[i : i + k]
+            yield kmer
+
 def reverse_complement_sequence(seq):
     return complement_sequence(seq[::-1])
 

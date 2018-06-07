@@ -57,6 +57,8 @@ def parse_args():
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
+    # the name of the genome being genotyped or whatver 
+    parser.add_argument("--genome")
     # whether to generate random events during simulation or not
     parser.add_argument("--random", action = 'store_true')
     # whether to resume this job from reduce or not
@@ -69,6 +71,10 @@ def parse_args():
     parser.add_argument("--jellyfish", nargs = '*')
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
+    # the outer insert size of the paired end reads 
+    parser.add_argument("--insertsize", type = int, default = 500)
+    # the size of the reads in the FASTQ file 
+    parser.add_argument("--readlength", type = int, default = 100)
     # whether the simulation should be heterozygous
     parser.add_argument("--heterozygous", action = 'store_true')
     args = parser.parse_args()
@@ -90,6 +96,7 @@ def configure(args):
         seed = args.seed,
         khmer = args.khmer,
         ksize = 31,
+        genome = args.genome,
         random = args.random,
         bed_file = args.bed,
         coverage = args.coverage,
@@ -99,6 +106,8 @@ def configure(args):
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         max_threads = max_threads,
+        insert_size = args.insertsize,
+        read_length = args.readlength,
         heterozygous = args.heterozygous,
         reference_genome = reference_genome,
         khmer_num_tables = khmer_num_tables,

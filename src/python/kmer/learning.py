@@ -32,6 +32,8 @@ print = pretty_print
 
 import pybedtools
 
+import keras
+import numpy as np
 import tensorflow as tf
 import plotly.offline as plotly
 import plotly.graph_objs as graph_objs
@@ -91,14 +93,15 @@ class TensorflowTrainingJob(BaseTensorflowJob):
         model = self.create_network(num_features, 3, 1, x)
         #model = tf.Print(model, [model])
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = model, labels = y))
-        optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate).minimize(loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
+        trainer = optimizer.minimize(loss)
         init = tf.global_variables_initializer()
         saver = tf.train.Saver()
         with tf.Session() as session:
             session.run(init)
             # how many?
             for epoch in range(10):
-                o, c = session.run([optimizer, loss], feed_dict = {x: X, y: Y})
+                o, c = session.run([trainer, loss], feed_dict = {x: X, y: Y})
             r = model.eval({x: X, y: Y})
             print(r)
             #correct_prediction = tf.equal(tf.argmax(model, 1), tf.argmax(Y, 1))
@@ -261,6 +264,174 @@ class TensorflowGenotypingJob(BaseTensorflowJob):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# base class for all Keras jobs
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class BaseKerasJob(training.BaseTrainingJob):
+
+    def get_output_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../training/' + bed_file_name + '/Keras/'))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+KERAS_MODEL_REVISON = 0
+
+class KerasTrainingJob(BaseKerasJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = KerasTrainingJob(job_name = 'KerasTrainingJob_', previous_job_name = '', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def transform_class_labels(self, Y):
+        return list(map(lambda y: [1.0, 0.0, 0.0] if y == 0 else [0.0, 1.0, 0.0] if y == 1 else [0.0, 0.0, 1.0], Y))
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        path = os.path.join(self.get_current_job_directory(), track_name)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        learning_rate = 0.1
+        num_samples = 1000
+        batch_size = 25
+        inner_kmers, novel_kmers, _1, _2 = self.extract_kmers(track, track_name)
+        num_features = len(inner_kmers) + len(novel_kmers)
+        X, Y = self.simulate_kmer_counts(track, track_name, num_samples)
+        X = np.array([np.array(x) for x in X])
+        Y = self.transform_class_labels(Y)
+        Y = np.array([np.array(y) for y in Y])
+        model.add(keras.layers.Dense(units = 16, activation = 'relu', input_dim = num_features))
+        model.add(keras.layers.Dense(units = 32, activation = 'relu', input_dim = num_features))
+        model.add(keras.layers.Dense(units = 16, activation = 'relu', input_dim = num_features))
+        #model.add(keras.layers.Dense(units = num_features, activation = 'sigmoid', input_dim = num_features))
+        #model.add(keras.layers.Dense(units = num_features, activation = 'sigmoid', input_dim = num_features))
+        #model.add(keras.layers.Dense(units = num_features, activation = 'relu', input_dim = num_features))
+        model.add(keras.layers.Dense(units = 3, activation = 'softmax')) 
+        model.compile(loss = 'categorical_crossentropy', optimizer = 'sgd', metrics = ['accuracy'])
+        model.fit(X, Y, epochs = 5, batch_size = batch_size)
+        accuracy = model.evaluate(X, Y, batch_size = batch_size)
+        print(accuracy)
+        with open(os.path.join(path, 'model.json'), 'w') as json_file:
+            json_file.write(model.to_json())
+        model.save_weights(os.path.join(path, 'model.h5'))
+        return path
+
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/' + bed_file_name + '/31/MostLikelyBreakPointsJob/'))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class KerasGenotypingJob(BaseKerasJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = KerasGenotypingJob(job_name = 'KerasGenotypingJob_', previous_job_name = 'KerasTrainingJob_', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            tracks = json.load(json_file)
+        # round-robin events between available processes
+        n = 0
+        for track in tracks:
+            index = n % c.max_threads 
+            if not index in self.batch:
+                self.batch[index] = {}
+            self.batch[index][track] = tracks[track]
+            n = n + 1
+            self.num_threads = min(n, c.max_threads)
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        with open(os.path.join(track, 'model.json'), 'r') as json_file:
+            model = keras.models.model_from_json(json_file.read())
+        model.load_weights(os.path.join(track, 'model.h5'))
+        model.compile(loss = 'categorical_crossentropy', optimizer = 'sgd', metrics = ['accuracy'])
+        inner_kmers, novel_kmers, num_features = self.count_kmers_in_sample(track)
+        features = []
+        features += list(map(lambda t: t[1] / (1.0 * c.coverage), sorted(list(map(lambda kmer: (kmer, inner_kmers[kmer]), inner_kmers)), key = operator.itemgetter(0))))
+        features += list(map(lambda t: t[1] / (1.0 * c.coverage), sorted(list(map(lambda kmer: (kmer, novel_kmers[kmer]), novel_kmers)), key = operator.itemgetter(0))))
+        y = model.predict([features])
+        with open(path, 'w') as json_file:
+            json.dump({'genotype': genotype, 'inner_kmers': inner_kmers, 'novel_kmers': novel_kmers}, json_file, indent = 4) 
+        return path
+
+    def get_current_job_directory(self):
+        c = config.Configuration()
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], c.genome))
+
+    def count_kmers_in_sample(self, path):
+        with open(os.path.join(path, 'kmers.json'), 'r') as json_file:
+            k = json.load(json_file)
+            inner_kmers = k['inner_kmers']
+            novel_kmers = k['novel_kmers']
+            for kmer in novel_kmers:
+                count = self.counts_provider.get_kmer_count(kmer)
+                novel_kmers[kmer] = count / float(c.coverage)
+            for kmer in inner_kmers:
+                count = self.counts_provider.get_kmer_count(kmer)
+                inner_kmers[kmer] = count / float(c.coverage)
+            return inner_kmers, novel_kmers, k['features']
+
+    def reduce(self):
+        c = config.Configuration()
+        output = {}
+        for i in range(0, self.num_threads):
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
+            if os.path.isfile(path):
+                with open(path, 'r') as json_file:
+                    batch = json.load(json_file)
+                    output.update(batch)
+        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+            json.dump(output, json_file, sort_keys = True, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
+            for track in output:
+                with open(output[track], 'r') as json_file:
+                    print(track)
+                    payload = json.load(json_file) 
+                    chrom = track.split('_')[0]
+                    begin = track.split('_')[1]
+                    end = track.split('_')[2]
+                    inner_kmers = len(payload['inner_kmers'])
+                    novel_kmers = len(payload['novel_kmers'])
+                    genotype = payload['genotype']
+                    bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(novel_kmers) + '\t' + str(inner_kmers) + '\t' +
+                            genotype + '\n')
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 # Main
 # ============================================================================================================================ #
@@ -274,3 +445,7 @@ if __name__ == '__main__':
         TensorflowTrainingJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'TensorflowGenotypingJob':
         TensorflowGenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'KerasTrainingJob':
+        KerasTrainingJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'KerasGenotypingJob':
+        KerasGenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)

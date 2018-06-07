@@ -1,0 +1,5 @@
+#!/bin/bash
+cd /share/hormozdiarilab/Codes/NebulousSerendipity
+source venv2/bin/activate
+cd scripts
+python insert_size.py

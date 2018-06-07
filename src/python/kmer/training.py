@@ -51,6 +51,7 @@ class BaseTrainingJob(map_reduce.Job):
         with open(os.path.join(self.get_previous_job_directory(), 'merge.json'), 'r') as json_file:
             tracks = json.load(json_file)
         n = 0
+        print(len(tracks))
         for track in tracks:
             tokens = track.split('_')
             start = int(tokens[1])
@@ -69,7 +70,6 @@ class BaseTrainingJob(map_reduce.Job):
             print(blue('assigned', track, 'to', index))
             n = n + 1
             self.num_threads = min(n, c.max_threads)
-            break
             #if n == 100:
                 #break
 
@@ -91,6 +91,17 @@ class BaseTrainingJob(map_reduce.Job):
 
     def simulate_kmer_counts(self, track, track_name, iterations):
         c = config.Configuration()
+        cache_path = os.path.join(self.get_current_job_directory(), track_name, 'simulation_n' + str(iterations) + '_s' + str(c.seed) + '.json')
+        print(cache_path)
+        if os.path.exists(cache_path):
+            print(green('Simulation results cached, loading ...'))
+            with open(cache_path, 'r') as json_file:
+                payload = json.load(json_file)
+                tmp_X = payload['X']
+                X = list(map(lambda i: tmp_X[str(i)], range(iterations)))
+                Y = payload['Y']
+                return X, Y
+        print(yellow('No simulation cache found, simulating ...'))
         # extract sequence and apply event
         novel_kmers, inner_kmers, start_offset, end_offset = self.extract_kmers(track, track_name)
         tokens = track_name.split('_')
@@ -132,6 +143,8 @@ class BaseTrainingJob(map_reduce.Job):
             X.append(features)
             Y.append(zygosity)
         print(cyan(track_name), green(len(features), 'features'))
+        with open(cache_path, 'w') as json_file:
+            payload = json.dump({'X': {str(i): X[i] for i in range(iterations)},'Y': Y}, json_file, sort_keys = True)
         return X, Y
 
     def export_fasta(self, sequence, path, track):
@@ -178,17 +191,17 @@ class BaseTrainingJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# base class for all Decision Tree jobs
+# base class for all Support Vector Machine jobs
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseDecisionTreeJob(BaseTrainingJob):
+class BaseSvmJob(BaseTrainingJob):
 
     def get_output_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../training/' + bed_file_name + '/Tensorflow/'))
+            '../../../training/' + bed_file_name + '/SVM/'))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -196,7 +209,7 @@ class BaseDecisionTreeJob(BaseTrainingJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class DecisionTreeTrainingJob(BaseDecisionTreeJob):
+class SvmTrainingJob(BaseSvmJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -204,7 +217,7 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = DecisionTreeTrainingJob(job_name = 'DecisionTreeTrainingJob_', previous_job_name = '', **kwargs)
+        job = SvmTrainingJob(job_name = 'SvmTrainingJob_', previous_job_name = '', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -212,54 +225,21 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
     # ============================================================================================================================ #
 
     def transform(self, track, track_name):
-        start = time.time()
         c = config.Configuration()
         path = os.path.join(self.get_current_job_directory(), track_name)
         if not os.path.exists(path):
             os.makedirs(path)
-        novel_kmers, inner_kmers = self.extract_kmers(track, track_name)
+        novel_kmers, inner_kmers, _1, _2 = self.extract_kmers(track, track_name)
         if len(novel_kmers) + len(inner_kmers) < 5:
             return None
-        X, Y = self.simulate_kmer_counts(track, track_name, 20)
-        #clf = tree.DecisionTreeClassifier()
-        #clf = svm.SVC()
-        clf.fit(X, Y)
-        #dot_data = tree.export_graphviz(clf, out_file = os.path.join(path, 'tree.dot'))
-        with open(os.path.join(path, 'decision_tree.pkl'), 'wb') as pickle_file:
+        X, Y = self.simulate_kmer_counts(track, track_name, 100)
+        clf = svm.SVC(C = 0.1, kernel = 'poly', degree = 3)
+        clf.fit(X, list(map(lambda y: 0 if y == 0 else 1, Y)))
+        with open(os.path.join(path, 'classifier.pkl'), 'wb') as pickle_file:
             cPickle.dump(clf, pickle_file)
-        #rules, n = self.export_decision_tree_rules(clf)
-        #with open(os.path.join(path, 'decision_tree.txt'), 'w') as rules_file:
-            #rules_file.write(rules)
-        # export kmers
-        print('took', blue(time.time() - start))
+        with open(os.path.join(path, 'kmers.json'), 'w') as json_file:
+            json.dump({'inner_kmers': inner_kmers, 'novel_kmers': novel_kmers}, json_file, sort_keys = True, indent = 4)
         return path
-
-    def export_decision_tree_rules(self, clf):
-        tree_ = clf.tree_
-        feature_names = []
-        feature_names += list(map(lambda t: t[0], sorted(list(map(lambda kmer: (kmer, self.kmers['inner'][kmer]), self.kmers['inner'])), key = operator.itemgetter(0))))
-        feature_names += list(map(lambda t: t[0], sorted(list(map(lambda kmer: (kmer, self.kmers['novel'][kmer]), self.kmers['novel'])), key = operator.itemgetter(0))))
-        feature_names = [
-            feature_names[i] if i != tree._tree.TREE_UNDEFINED else "undefined!"
-            for i in tree_.feature
-        ]
-        def recurse(node, depth, rules):
-            print('depth:', depth)
-            indent = "  " * depth
-            if tree_.feature[node] != tree._tree.TREE_UNDEFINED:
-                name = feature_names[node]
-                threshold = tree_.threshold[node]
-                rules += "{}if {} <= {}:\n".format(indent, name, threshold)
-                rules, r = recurse(tree_.children_left[node], depth + 1, rules)
-                rules += "{}else:  # if {} > {}\n".format(indent, name, threshold)
-                rules, l = recurse(tree_.children_right[node], depth + 1, rules)
-                return rules, r + l
-            else:
-                rules += "{}return {}\n".format(indent, tree_.value[node])
-                return rules, 1
-        rules, m = recurse(0, 1, '')
-        print('using', green(len(clf.feature_importances_)), 'features')
-        return rules, m
 
     def get_previous_job_directory(self):
         c = config.Configuration()
@@ -273,7 +253,7 @@ class DecisionTreeTrainingJob(BaseDecisionTreeJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
+class SvmGenotypingJob(BaseSvmJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -281,7 +261,7 @@ class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = DecisionTreeGenotypingJob(job_name = 'DecisionTreeGenotypingJob_', previous_job_name = 'DecisionTreeTrainingJob_', **kwargs)
+        job = SvmGenotypingJob(job_name = 'SvmGenotypingJob_', previous_job_name = 'SvmTrainingJob_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -332,16 +312,17 @@ class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
         features = []
         features += list(map(lambda t: t[1], sorted(list(map(lambda kmer: (kmer, kmers['inner'][kmer]), kmers['inner'])), key = operator.itemgetter(0))))
         features += list(map(lambda t: t[1], sorted(list(map(lambda kmer: (kmer, kmers['novel'][kmer]), kmers['novel'])), key = operator.itemgetter(0))))
-        with open(os.path.join(track, 'decision_tree.pkl'), 'r') as tree_file:
-            decision_tree = cPickle.load(tree_file)
-        distance = decision_tree.decision_function([features])
+        with open(os.path.join(track, 'classifier.pkl'), 'r') as tree_file:
+            classifier = cPickle.load(tree_file)
+        distance = classifier.decision_function([features])
         print(distance)
-        prediction = decision_tree.predict([features])
+        prediction = classifier.predict([features])
         print(prediction)
         genotype = '(0, 0)' if prediction == 0 else '(1, 0)' if prediction == 1 else '(1, 1)'
         path = os.path.join(self.get_current_job_directory(), 'genotype_' + track_name + '.json')
         with open(path, 'w') as json_file:
-            json.dump({'genotype': genotype, 'inner_kmers': inner_kmers, 'novel_kmers': novel_kmers, 'distance': {'(0, 0)': distance[0][0], '(1, 0)': distance[0][1], '(1, 1)': distance[0][2]}}, json_file, sort_keys = True, indent = 4)
+            json.dump({'genotype': genotype, 'inner_kmers': inner_kmers, 'novel_kmers': novel_kmers, 'distance': distance[0]}, json_file, sort_keys = True, indent = 4)
+            #'distance': {'(0, 0)': distance[0][0], '(1, 0)': distance[0][1], '(1, 1)': distance[0][1]}}, json_file, sort_keys = True, indent = 4)
         return path
 
     def reduce(self):
@@ -369,17 +350,17 @@ class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
                     inner_kmers = len(payload['inner_kmers'])
                     novel_kmers = len(payload['novel_kmers'])
                     genotype = payload['genotype']
-                    distance_00 = payload['distance']['(0, 0)']
-                    if genotype == '(0, 0)':
-                        d_00.append(distance_00)
-                    distance_10 = payload['distance']['(1, 0)']
-                    if genotype == '(1, 0)':
-                        d_10.append(distance_10)
-                    distance_11 = payload['distance']['(1, 1)']
-                    if genotype == '(1, 1)':
-                        d_11.append(distance_11)
+                    #distance_00 = payload['distance']['(0, 0)']
+                    #if genotype == '(0, 0)':
+                        #d_00.append(distance_00)
+                    #distance_10 = payload['distance']['(1, 0)']
+                    #if genotype == '(1, 0)':
+                        #d_10.append(distance_10)
+                    #distance_11 = payload['distance']['(1, 1)']
+                    #if genotype == '(1, 1)':
+                        #d_11.append(distance_11)
                     bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(novel_kmers) + '\t' + str(inner_kmers) + '\t' +
-                            str(distance_00) + '\t' + str(distance_10) + '\t' + str(distance_11) + '\t' +
+                            #str(distance_00) + '\t' + str(distance_10) + '\t' + str(distance_11) + '\t' +
                             genotype + '\n')
         data = [graph_objs.Scatter(y = d_00, x = list(range(0, len(d_00))))]
         plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), '00.html'), auto_open = False)
@@ -388,19 +369,9 @@ class DecisionTreeGenotypingJob(BaseDecisionTreeJob):
         data = [graph_objs.Scatter(y = d_11, x = list(range(0, len(d_11))))]
         plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), '11.html'), auto_open = False)
 
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# base class for all Decision Tree jobs
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class BaseSvmTreeJob(BaseTrainingJob):
-
-    def get_output_directory(self):
+    def get_current_job_directory(self):
         c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../training/' + bed_file_name + '/Tensorflow/'))
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], c.genome))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -417,3 +388,7 @@ if __name__ == '__main__':
         DecisionTreeTrainingJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'DecisionTreeGenotypingJob':
         DecisionTreeGenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'SvmTrainingJob':
+        SvmTrainingJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'SvmGenotypingJob':
+        SvmGenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)

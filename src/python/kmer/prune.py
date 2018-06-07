@@ -340,7 +340,7 @@ class DepthOfCoverageEstimationJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.counts_provider = counttable.JellyfishCountsProvider()
+        self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         # check if we already have the kmers
         if os.path.isfile(os.path.join(self.get_current_job_directory(), 'kmers.json')):
             with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'r') as kmers_file:
@@ -363,12 +363,12 @@ class DepthOfCoverageEstimationJob(map_reduce.Job):
                 index = 0
 
     def transform(self, track, track_name):
-        self.kmers[track_name] = {}
         c = config.Configuration()
+        self.kmers[track_name] = {}
         seq = bed.extract_sequence(track)
         for kmer in extract_kmers(c.ksize, seq):
             if not kmer in self.kmers[track_name]:
-                count = self.get_kmer_count(kmer, self.index, False)
+                count = self.counts_provider.get_kmer_count(kmer)
                 self.kmers[track_name][kmer] = count
         return True
 

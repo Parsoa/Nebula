@@ -177,16 +177,16 @@ class GenotypingJob(BaseGenotypingJob):
         self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
         with open(path, 'r') as json_file:
-            self.tracks = json.load(json_file)
-        for index in range(0, self.num_threads):
-            self.batch[index] = {}
+            tracks = json.load(json_file)
         # round-robin events between available processes
-        index = 0
-        for track in self.tracks:
-            self.batch[index][track] = self.tracks[track]
-            index = index + 1
-            if index == self.num_threads:
-                index = 0
+        n = 0
+        for track in tracks:
+            index = n % c.max_threads 
+            if not index in self.batch:
+                self.batch[index] = {}
+            self.batch[index][track] = tracks[track]
+            n = n + 1
+            self.num_threads = min(n, c.max_threads)
 
     def transform(self, track, track_name):
         c = config.Configuration()
@@ -234,50 +234,27 @@ class GenotypingJob(BaseGenotypingJob):
                 likelihood[break_point]['likelihood']['novel'][zyg] -= len(likelihood[break_point]['novel_kmers']) * distribution[zyg].log_pmf(distribution[zyg].mean)
                 likelihood[break_point]['likelihood']['inner'][zyg] = abs(likelihood[break_point]['likelihood']['inner'][zyg])
                 likelihood[break_point]['likelihood']['novel'][zyg] = abs(likelihood[break_point]['likelihood']['novel'][zyg])
-            inner_choice = min(likelihood[break_point]['likelihood']['inner'].items(), key = operator.itemgetter(1))[0]
-            novel_choice = min(likelihood[break_point]['likelihood']['novel'].items(), key = operator.itemgetter(1))[0]
+            inner_choice, inner_cost = min(likelihood[break_point]['likelihood']['inner'].items(), key = operator.itemgetter(1))
+            novel_choice, novel_cost = min(likelihood[break_point]['likelihood']['novel'].items(), key = operator.itemgetter(1))
             likelihood[break_point]['genotype'] = {}
-            if len(likelihood[break_point]['inner_kmers']) > 5:
-                if inner_choice == '(0, 0)' or len(likelihood[break_point]['novel_kmers']) < 3:
-                    likelihood[break_point]['genotype']['inner'] = inner_choice
-                    likelihood[break_point]['genotype']['novel'] = novel_choice
-                    likelihood[break_point]['genotype']['consensus'] = inner_choice
-                    continue
-                # how to decide between these?
-                if novel_choice == '(0, 0)':
-                    if likelihood[break_point]['likelihood']['novel'][novel_choice] >  likelihood[break_point]['likelihood']['inner'][inner_choice]:
-                        choice = novel_choice
-                    else:
-                        choice = inner_choice
-                    likelihood[break_point]['genotype']['inner'] = inner_choice
-                    likelihood[break_point]['genotype']['novel'] = novel_choice
-                    likelihood[break_point]['genotype']['consensus'] = choice
-                    continue
-                # it is present, doesn't matter what zygosity
-                likelihood[break_point]['genotype']['inner'] = inner_choice
-                likelihood[break_point]['genotype']['novel'] = novel_choice
-                likelihood[break_point]['genotype']['consensus'] = novel_choice
-                continue
-            # very limited signal, ignore
-            if len(likelihood[break_point]['novel_kmers']) < 3:
+            # too few kmers in to do anything useful
+            if len(likelihood[break_point]['inner_kmers']) <= 5 and len(likelihood[break_point]['novel_kmers']) <= 5:
                 choice = '(2, 2)'
-                likelihood[break_point]['genotype']['inner'] = inner_choice
-                likelihood[break_point]['genotype']['novel'] = novel_choice
-                likelihood[break_point]['genotype']['consensus'] = choice
-                continue
-            # signal only from novel kmers
+            # enough novel kmers but not enough inner kmers
+            elif len(likelihood[break_point]['inner_kmers']) <= 5:
+                inner_choice = '(3, 3)'
+                choice = novel_choice
+            # enough inner kmers but not enough novel kmers
+            elif len(likelihood[break_point]['novel_kmers']) <= 5:
+                novel_choice = '(4, 4)'
+                choice = inner_choice
+            else:
+                inner_cost = inner_cost / len(likelihood[break_point]['inner_kmers'])
+                novel_cost = novel_cost / len(likelihood[break_point]['novel_kmers'])
+                choice = inner_choice if inner_cost < novel_cost else novel_choice
             likelihood[break_point]['genotype']['inner'] = inner_choice
             likelihood[break_point]['genotype']['novel'] = novel_choice
-            likelihood[break_point]['genotype']['consensus'] = novel_choice
-            #if choice != '(0, 0)':
-                #k = len(break_points[break_point]['novel_kmers'])
-                #m = len(break_points[break_point]['inner_kmers'])
-                #d = k * distribution[choice].log_pmf(distribution[choice].mean) + m * inner_distribution[choice].log_pmf(inner_distribution[choice].mean)
-                #z = k * distribution['(0, 0)'].log_pmf(distribution[choice].mean) + m * inner_distribution['(0, 0)'].log_pmf(inner_distribution[choice].mean)
-                #r = likelihood[break_point]['zyg']['(0, 0)'] - likelihood[break_point]['zyg'][choice]
-                #likelihood[break_point]['threshold'] = z / d
-                #if r > 1.70 * likelihood[break_point]['zyg']['(0, 0)'] 
-                    #choice = '(0, 0)'
+            likelihood[break_point]['genotype']['consensus'] = choice
         path = os.path.join(self.get_current_job_directory(), 'genotype_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(likelihood, json_file, sort_keys = True, indent = 4)
@@ -341,8 +318,7 @@ class GenotypingJob(BaseGenotypingJob):
                                 str(inner_zyg10 + novel_zyg10) + '\t' +
                                 str(inner_zyg11 + novel_zyg11) + '\t' +
                                 str(consensus) + '\t' +
-                                inner + '\t' +
-                                novel + '\n')
+                                '\n')
         if c.resume_from_reduce:
             p = numpy.corrcoef(b, ratios)
             print(p)
@@ -371,6 +347,72 @@ class GenotypingJob(BaseGenotypingJob):
             '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/', self.previous_job_name[:-1]))
 
 # ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class GenotypingAnalysisJob(BaseGenotypingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = GenotypingAnalysisJob(job_name = 'Genotyping_', previous_job_name = 'Genotyping_', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def find_thread_count(self):
+        c = config.Configuration()
+        self.num_threads = 1
+
+    def load_inputs(self):
+        self.true_positive = {}
+        self.true_negative = {}
+        self.false_positive = {}
+        self.false_negative = {}
+        classes = ['true_positive', 'true_negative', 'false_positive', 'false_negative']
+        for c in classes:
+            setattr(self, c, {})
+            with open(os.path.join(self.get_current_job_directory(), c + '.bed'), 'r') as bed_file:
+                for track in bed.parse_bed_file(bed_file):
+                    track_name = track[0] + '_' + track[1] + '_' + track[2]
+                    getattr(self, c)[track_name] = track
+        for c in classes:
+            self.plot_kmer_count_variation(c, getattr(self, c))
+        exit()
+
+    def plot_kmer_count_variation(self, batch_name, batch):
+        variance = {'inner': [], 'novel': []}
+        for track_name in batch:
+            path = os.path.join(self.get_current_job_directory(), 'genotype_' + track_name + '.json')
+            if not os.path.exists(path):
+                print(red('not found:', path))
+                continue
+            with open(path, 'r') as json_file:
+                break_points = json.load(json_file)
+                for break_point in break_points:
+                    inner_kmers = list(map(lambda x: x[1], break_points[break_point]['inner_kmers'].items()))
+                    novel_kmers = list(map(lambda x: x[1], break_points[break_point]['novel_kmers'].items()))
+                    if len(inner_kmers):
+                        variance['inner'].append(statistics.variance(inner_kmers))
+                    if len(novel_kmers):
+                        variance['novel'].append(statistics.variance(novel_kmers))
+        v = statistics.variance(variance['inner'])
+        m = statistics.mean(variance['inner'])
+        data = [graph_objs.Histogram(x = variance['inner'], xbins = dict(start = 0, size = 5, end = 1000), text = 'Mean:' + str(m) + ' STD: ' + str(math.sqrt(v)))]
+        plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), batch_name + '_inner.html'), auto_open = False)
+        v = statistics.variance(variance['novel'])
+        m = statistics.mean(variance['novel'])
+        data = [graph_objs.Histogram(x = variance['novel'], xbins = dict(start = 5, size = 5, end = 1000), text = 'Mean:' + str(m) + ' STD: ' + str(math.sqrt(v)))]
+        plotly.plot(data, filename = os.path.join(self.get_current_job_directory(), batch_name + '_novel.html'), auto_open = False)
+
+# ============================================================================================================================ #
 # Main
 # ============================================================================================================================ #
 
@@ -379,5 +421,7 @@ if __name__ == '__main__':
     c = config.Configuration()
     if c.job == 'GenotypingJob':
         GenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)
+    if c.job == 'GenotypingAnalysisJob':
+        GenotypingAnalysisJob.launch(resume_from_reduce = c.resume_from_reduce)
     if c.job == 'SampleExactKmerCountingJob':
         SampleExactKmerCountJob.launch(resume_from_reduce = c.resume_from_reduce)

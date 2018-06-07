@@ -27,3 +27,12 @@ class ErrorDistribution():
 
     def log_pmf(self, x):
         return x * math.log(self.p)
+
+def variance(data):
+    m = sum(data) / len(data)
+    variance = sum((x - m) ** 2 for x in data) / len(data)
+    return variance
+
+def mean(data):
+    m = sum(data) / len(data)
+    return m

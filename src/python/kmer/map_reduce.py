@@ -47,6 +47,7 @@ class Job(object):
         self.previous_job_name = previous_job_name
         self.index = -1
         self.batch = {}
+        self.batch_file_prefix = 'batch'
         self.children = {}
         self.run_for_certain_batches_only = False
         self.resume_from_reduce = False

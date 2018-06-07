@@ -53,6 +53,9 @@ def white(*args):
 def green(*args):
     return colorize(colorama.Fore.GREEN, *args)
 
+def yellow(*args):
+    return colorize(colorama.Fore.YELLOW, *args)
+
 def magenta(*args):
     return colorize(colorama.Fore.MAGENTA, *args)
 
