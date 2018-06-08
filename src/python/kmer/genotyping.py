@@ -56,7 +56,11 @@ class BaseGenotypingJob(map_reduce.Job):
         return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1], bed_file_name))
 
 # ============================================================================================================================ #
-# MapReduce job for exact counting the signature kmers of the sv library in a sample genome
+# ============================================================================================================================ #
+# Here is what we have to do:
+# 1. We have a set of locally unique kmers for each events, first let's see how many of these are really unique in this sample
+# For that we need to count them.
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 
 class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
@@ -66,12 +70,6 @@ class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
         job = SampleExactKmerCountJob(job_name = 'SampleExactKmerCountingJob_', previous_job_name = 'MostLikelyBreakPoints_', **kwargs)
         job.execute()
 
-    def check_cli_arguments(self, args):
-        # --bed: to specify the set of structural variations we are interested in
-        # --fastq: the sample genome we are trying to genotype
-        # --threads: the number of processes to fork
-        pass
-
     def load_inputs(self):
         # load the kmers for this set of structural variations
         path = os.path.join(self.get_previous_job_directory(), 'merge.json')
@@ -80,17 +78,25 @@ class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
         with open(path, 'r') as tracks_file:
             paths = json.load(tracks_file)
             for track in paths:
-                self.tracks[track] = {}
                 with open(paths[track], 'r') as json_file:
                     break_points = json.load(json_file)
-                    self.tracks[track]['break_points'] = break_points
                     for break_point in break_points:
-                        for kmer in break_points[break_point]['novel_kmers']:
-                            self.kmers[kmer] = 0
-        print('counting signature kmers for', len(self.tracks), 'tracks totalling', len(self.kmers), 'kmers')
+                        self.tracks[track] = break_points[break_point]
+                        if len(self.tracks[track]['inner_kmers'] < 10):
+                            for kmer in break_points[break_point]['local_unique_kmers']:
+                                if not kmer in self.kmers:
+                                    self.kmers[kmer] = {'tracks': {}, 'count': 0}
+                                    self.kmers[kmer][track] = self.tracks[track]
         # dummy, avoid overrding extra methods
         for index in range(0, self.num_threads):
             self.batch[index] = {}
+
+    def transform(self, track, track_name):
+        for right, left in self.parse_paird_end_fastq:
+            for kmer in extract_kmers(c.ksize, right):
+                if kmer in self.kmers:
+                    self.kmers[kmer]['count'] += 1
+
 
     def reduce(self):
         c = config.Configuration()
@@ -162,13 +168,6 @@ class GenotypingJob(BaseGenotypingJob):
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
-
-    def check_cli_arguments(self, args):
-        # --coverage option to specify the read depth
-        # --std option to specify the coverage standard deviation
-        # --fastq to specify the sample being genotyped (this job only needs the name)
-        # --bed to indicate the set of structural variations being considered (only needs the name)
-        pass
 
     # needs to know the most likely breakpoint and its kmers, MostLikelyBreakPointsJob includes that information
     def load_inputs(self):
@@ -303,6 +302,100 @@ class GenotypingJob(BaseGenotypingJob):
         bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
             '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/', self.previous_job_name[:-1]))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class ExperimentalGenotypingJob(BaseGenotypingJob):
+
+    def parse_paired_end_fastq(self):
+        name = None
+        #tracemalloc.start()
+        HEADER_LINE = 0
+        SEQUENCE_LINE = 1
+        THIRD_LINE = 2
+        QUALITY_LINE = 3
+        state = HEADER_LINE
+        # need to skip invalid lines
+        line = self.fastq_file.readline().strip()
+        # for the very rare occasion that the first byte in a segment is a line feed
+        if len(line) == 0:
+            line = self.fastq_file.readline().strip()
+        ahead = self.fastq_file.readline().strip()
+        n = 0
+        m = 0
+        t = time.time()
+        while ahead:
+            #print(state, line)
+            if state == HEADER_LINE:
+                if line[0] == '@' and ahead[0] != '@':
+                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                        print(self.index, 'reached segment boundary')
+                        break
+                    name = line[:-1] # ignore the EOL character
+                    state = SEQUENCE_LINE
+            elif state == SEQUENCE_LINE:
+                state = THIRD_LINE
+                seq = line[:-1] # ignore the EOL character
+                n += 1
+                if n == 100000:
+                    n = 0
+                    m += 1
+                    c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
+                    s = time.time()
+                    p = c / float(self.fastq_file_chunk_size)
+                    e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                    print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+                yield seq, name
+            elif state == THIRD_LINE:
+                state = QUALITY_LINE
+            elif state == QUALITY_LINE:
+                state = HEADER_LINE
+            line = ahead
+            ahead = self.fastq_file.readline()
+        print(self.index, ' end of input')
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPointsJob_', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    # needs to know the most likely breakpoint and its kmers, MostLikelyBreakPointsJob includes that information
+    def load_inputs(self):
+        # each event is a structural variation with its most likely breakpoints
+        local_unique_kmers = {}
+        self.tracks = {}
+        self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            tracks = json.load(json_file)
+        # round-robin events between available processes
+        for track in tracks:
+            break_points = json.load(tracks[track])
+            for break_point in break_points:
+                self.tracks[track] = break_points[break_point]
+        for track in self.tracks:
+            if len(self.tracks[track]['local_unique_kmers'] != 0: # there were not enough inner kmers
+                for kmer in self.tracks[track]['local_unique_kmers']:
+                    self.local_unique_kmers[kmer] = {
+                        'count': 0,
+                        ''
+                    }
+
+    def transform(self):
+        for left, right in self.parse_paird_end_fastq():
+            for kmer in extract_kmers(c.ksize, left):
+            
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

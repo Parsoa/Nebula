@@ -95,6 +95,25 @@ class Job(object):
             with open(path, 'r') as json_file:
                 self.batch[index] = json.load(json_file)
 
+    def load_previous_job_results(self):
+        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        with open(path, 'r') as json_file:
+            return json.load(json_file)
+
+    def round_robin(self, tracks, name_func = lambda x: x, filter_func = lambda x: False):
+        n = 0
+        for track in tracks:
+            track_name = name_func(track)
+            if filter_func(track):
+                continue
+            index = n % c.max_threads 
+            if not index in self.batch:
+                self.batch[index] = {}
+            self.batch[index][track_name] = track
+            print(blue('assigned ', track_name, ' to ', index))
+            n = n + 1
+            self.num_threads = min(c.max_threads, index + 1)
+
     def distribute_workload(self):
         for index in range(0, self.num_threads):
             if self.run_for_certain_batches_only:
@@ -119,9 +138,12 @@ class Job(object):
         n = 0
         start = time.time()
         for track in batch:
-            batch[track] = self.transform(batch[track], track)
-            if batch[track] == None:
-                remove[track] = True
+            try:
+                batch[track] = self.transform(batch[track], track)
+                if batch[track] == None:
+                    remove[track] = True
+            except Exception as e:
+                print(e)
             n = n + 1
             t = time.time()
             p = float(n) / len(batch)
@@ -170,12 +192,6 @@ class Job(object):
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
         print(cyan('all forks done, merging output ...'))
 
-    def plot(self, outputs):
-        pass
-
-    def sort(self, outputs):
-        pass
-
     def reduce(self):
         c = config.Configuration()
         output = {}
@@ -187,8 +203,12 @@ class Job(object):
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
-        self.sort(output)
-        self.plot(output)
+
+    def plot(self, outputs):
+        pass
+
+    def sort(self, outputs):
+        pass
 
     def clean_up(self):
         c = config.Configuration()
@@ -352,12 +372,6 @@ class BaseExactCountingJob(Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def check_cli_arguments(self, args):
-        #tracemalloc.start()
-        # --bed to specify the set of structural variations
-        # --fastq: the genome from which we are getting the kmer counts
-        pass
-
     def find_thread_count(self):
         c = config.Configuration()
         self.num_threads = c.max_threads
@@ -387,9 +401,6 @@ class BaseExactCountingJob(Job):
         c = config.Configuration()
         print('merging kmer counts ...')
         kmers = {}
-        #p = psutil.Process(os.getpid())
-        #mem = p.memory_info()[0] / float(2 ** 20)
-        #print('kmers:', len(kmers), 'memory usage:', sys.getsizeof(kmers), 'virtual:', mem)
         index = 0
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
@@ -397,10 +408,6 @@ class BaseExactCountingJob(Job):
                 kmers = json.load(json_file)
                 index = i
                 break
-        #p = psutil.Process(os.getpid())
-        #mem = p.memory_info()[0] / float(2 ** 20)
-        #print('kmers:', len(kmers), 'memory usage:', sys.getsizeof(kmers), 'virtual:', mem)
-        #print('total kmers:', len(kmers))
         for i in range(0, self.num_threads):
             if i == index:
                 continue
@@ -413,11 +420,5 @@ class BaseExactCountingJob(Job):
                 batch = json.load(json_file)
                 for kmer in batch:
                     kmers[kmer] += batch[kmer]
-                #batch = None
-                #del batch
-                #gc.collect()
-                #p = psutil.Process(os.getpid())
-                #mem = p.memory_info()[0] / float(2 ** 20)
-                #print('kmers:', len(kmers), 'memory usage:', sys.getsizeof(kmers), 'virtual:', mem)
         return kmers
 

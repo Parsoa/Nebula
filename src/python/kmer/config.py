@@ -96,6 +96,7 @@ def configure(args):
         seed = args.seed,
         khmer = args.khmer,
         ksize = 31,
+        radius = 10,
         genome = args.genome,
         random = args.random,
         bed_file = args.bed,

@@ -70,61 +70,14 @@ class ExtractBreakPointsJob(map_reduce.Job):
         self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
         self.bedtools = pybedtools.BedTool(c.bed_file)
-        self.radius = 50
-        n = 0
-        for track in self.bedtools:
-            name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            if track.end - track.start > 1000000:
-                pretty_print(red('skipping ', name, ', too large'))
-                continue
-            index = n % c.max_threads 
-            if not index in self.batch:
-                self.batch[index] = []
-            self.batch[index].append(track)
-            print(blue('assigned ', name, ' to ', index))
-            n = n + 1
-            self.num_threads = min(c.max_threads, index + 1)
+        round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
 
-    def run_batch(self, batch):
+    def transform(self, track, track_name):
+        sv = sv_type(track = track)
         c = config.Configuration()
-        sv_type = self.get_sv_type()
-        self.tracks = {}
-        n = 0
-        start = time.time()
-        for track in batch:
-            name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            # track coordinates might exceed boundaries of the chromosome
-            try:
-                sv = sv_type(track = track, radius = self.radius)
-                break_points = self.transform(sv)
-                if break_points:
-                    self.tracks[name] = self.output_break_points(name, break_points)
-            except pybedtools.helpers.BEDToolsError as e:
-                print(e)
-            n = n + 1
-            t = time.time()
-            c = float(n) / len(batch)
-            print('index:', self.index, 'completion:', c, 'ETA:', ((1.0 - c) * (t - start) / c) / 3600, 'hours')
-        self.output_batch(self.tracks)
-
-    def transform(self, sv):
-        c = config.Configuration()
-        break_points = self.extract_break_points(sv)
-        return break_points if break_points else None
-
-    def reduce(self):
-        c = config.Configuration()
-        output = {}
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
-            if os.path.isfile(path):
-                with open(path, 'r') as json_file:
-                    batch = json.load(json_file)
-                    output.update(batch)
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4)
-
-    def output_break_points(self, track_name, break_points):
+        break_points = self.extract_break_points(sv, track_name)
+        if not break_points:
+            return None
         path = os.path.join(self.get_current_job_directory(), 'break_points_' + track_name  + '.json') 
         json_file = open(path, 'w')
         json.dump({'break_points': break_points}, json_file, sort_keys = True, indent = 4)
@@ -148,22 +101,25 @@ class ExtractBreakPointsJob(map_reduce.Job):
         c = config.Configuration()
         break_points = {}
         inner_kmers = {}
+        local_unique_kmers = {}
         for kmer in sv.get_inner_kmers(self.reference_counts_provider.get_kmer_count):
             inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
-        local_novel_kmers = sv.get_local_novel_kmers(self.reference_counts_provider.get_kmer_count)
-        print(len(local_novel_kmers))
-        return None
-        if len(inner_kmers) > 100:
-            print(purple('FUCK THIS'))
-        for begin in range(-self.radius, self.radius + 1):
-            for end in range(-self.radius, self.radius + 1):
+        if len(inner_kmers) == 0:
+            local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count, c = 5, n = 1000)
+            if len(local_unique_kmers) == 0:
+                print(red(tr
+            for kmer in sv.get_near_boundary_inner_kmers():
+                inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
+        for begin in range(-c.radius, c.radius + 1):
+            for end in range(-c.radius, c.radius + 1):
                 boundary_kmers, boundary = sv.get_signature_kmers(begin, end)
                 if len(boundary_kmers) == 0:
                     continue
                 name = '(' + str(begin) + ',' + str(end) + ')'
                 break_points[name] = {
                     'boundary': boundary,
-                    'inner_kmers': inner_kmers
+                    'inner_kmers': inner_kmers,
+                    'local_unique_kmers': local_unique_kmers
                 }
                 novel_kmers = list(filter(lambda kmer: self.reference_counts_provider.get_kmer_count(kmer) == 0, boundary_kmers)) 
                 break_points[name]['novel_kmers'] = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in novel_kmers}
