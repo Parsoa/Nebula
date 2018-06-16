@@ -47,7 +47,8 @@ class Job(object):
         self.previous_job_name = previous_job_name
         self.index = -1
         self.batch = {}
-        self.batch_file_prefix = 'batch'
+        self.batch_file_prefix = 'batch_'
+        self.previous_job_batch_file_prefix = 'batch_'
         self.children = {}
         self.run_for_certain_batches_only = False
         self.resume_from_reduce = False
@@ -55,9 +56,11 @@ class Job(object):
             setattr(self, k, v)
 
     def prepare(self):
+        # Declare and initialize needed variables here
         pass
 
     def check_cli_arguments(self, args):
+        # Check if every needed argument is passed and in good form
         pass
 
     def execute(self):
@@ -75,44 +78,42 @@ class Job(object):
             print('resuming from reduce')
         self.reduce()
 
-    # this for when you need to make small adjustments to the output after the job has finished but don't want to run it all over again
     def post_process(self):
+        # this is for when you need to make small adjustments to the output after the job has finished but don't want to run it all over again
         pass
 
-    # this is upperbounded by --threads cli argument
     def find_thread_count(self):
         c = config.Configuration()
         max_index = 0
         for index in range(0, c.max_threads):
-            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
+            path = os.path.join(self.get_previous_job_directory(), self.batch_file_prefix + str(index) + '.json')
             if os.path.isfile(path):
                 max_index = index + 1
         self.num_threads = max_index
 
     def load_inputs(self):
-        for index in range(0, self.num_threads):
-            path = os.path.join(self.get_previous_job_directory(), 'batch_' + str(index) + '.json')
-            with open(path, 'r') as json_file:
-                self.batch[index] = json.load(json_file)
+        tracks = self.load_previous_job_results()
+        self.round_robin(tracks)
 
     def load_previous_job_results(self):
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
+        path = os.path.join(self.get_previous_job_directory(), self.previous_job_batch_file_prefix + 'merge.json')
         with open(path, 'r') as json_file:
             return json.load(json_file)
 
     def round_robin(self, tracks, name_func = lambda x: x, filter_func = lambda x: False):
+        c = config.Configuration()
         n = 0
         for track in tracks:
             track_name = name_func(track)
-            if filter_func(track):
+            if filter_func(tracks[track]):
                 continue
             index = n % c.max_threads 
             if not index in self.batch:
                 self.batch[index] = {}
-            self.batch[index][track_name] = track
+            self.batch[index][track_name] = tracks[track]
             print(blue('assigned ', track_name, ' to ', index))
             n = n + 1
-            self.num_threads = min(c.max_threads, index + 1)
+            self.num_threads = min(c.max_threads, n)
 
     def distribute_workload(self):
         for index in range(0, self.num_threads):
@@ -143,7 +144,9 @@ class Job(object):
                 if batch[track] == None:
                     remove[track] = True
             except Exception as e:
-                print(e)
+                print(red(e))
+                traceback.print_exc()
+                remove[track] = True
             n = n + 1
             t = time.time()
             p = float(n) / len(batch)
@@ -164,17 +167,18 @@ class Job(object):
     def output_batch(self, batch):
         # output manually, io redirection could get entangled with multiple client/servers
         n = 0
-        while False:
-            if self.index == 0:
-                break
-            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index - 1) + '.json')):
-                print('found output for', self.index - 1)
-                break
-            n += 1
-            if n == 100000:
-                print(self.index, 'waiting for', self.index - 1)
-                n = 0 
-        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        # This forces children to output sequenctially
+        #while False:
+        #    if self.index == 0:
+        #        break
+        #    if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index - 1) + '.json')):
+        #        print('found output for', self.index - 1)
+        #        break
+        #    n += 1
+        #    if n == 100000:
+        #        print(self.index, 'waiting for', self.index - 1)
+        #        n = 0 
+        json_file = open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)
         json_file.close()
         exit()
@@ -196,18 +200,26 @@ class Job(object):
         c = config.Configuration()
         output = {}
         for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
+            path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + str(i) + '.json')
             if os.path.isfile(path):
                 with open(path, 'r') as json_file:
                     batch = json.load(json_file)
                     output.update(batch)
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
+        self.plot(output)
+        return output
 
-    def plot(self, outputs):
+    def load_output_batch(self, index):
+        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + str(index) + '.json')
+        with open(path, 'r') as json_file:
+            output = json.load(json_file)
+            return output
+
+    def plot(self, output):
         pass
 
-    def sort(self, outputs):
+    def sort(self, output):
         pass
 
     def clean_up(self):

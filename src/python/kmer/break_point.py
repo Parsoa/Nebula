@@ -20,6 +20,7 @@ from kmer import (
     counttable,
     map_reduce,
     statistics,
+    visualizer,
 )
 
 from kmer.sv import StructuralVariation, Inversion, Deletion, SNP
@@ -61,19 +62,16 @@ class ExtractBreakPointsJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def find_thread_count(self):
-        c = config.Configuration()
-        self.num_threads = c.max_threads
-
     def load_inputs(self):
         c = config.Configuration()
         self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
-        self.bedtools = pybedtools.BedTool(c.bed_file)
-        round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
+        self.bedtools = {str(track): track for track in pybedtools.BedTool(c.bed_file)}
+        self.round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
+        self.inner_kmers = {}
 
     def transform(self, track, track_name):
-        sv = sv_type(track = track)
+        sv = self.get_sv_type()(track)
         c = config.Configuration()
         break_points = self.extract_break_points(sv, track_name)
         if not break_points:
@@ -97,21 +95,27 @@ class ExtractBreakPointsJob(map_reduce.Job):
             return Inversion
         return Deletion
 
-    def extract_break_points(self, sv):
+    def extract_break_points(self, sv, track_name):
         c = config.Configuration()
         break_points = {}
         inner_kmers = {}
-        local_unique_kmers = {}
+        left_local_unique_kmers = {}
+        right_local_unique_kmers = {}
         for kmer in sv.get_inner_kmers(self.reference_counts_provider.get_kmer_count):
             inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
+        if len(inner_kmers) > 100:
+            print(red("FUCK THIS", track_name))
         if len(inner_kmers) == 0:
-            local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count, c = 5, n = 1000)
-            if len(local_unique_kmers) == 0:
-                print(red(tr
+            right_local_unique_kmers, left_local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count)
+            if len(right_local_unique_kmers) == 0 or len(left_local_unique_kmers) == 0:
+                print(red(track_name), white('skipped, no local unique kmers'))
+                return None
             for kmer in sv.get_near_boundary_inner_kmers():
-                inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
-        for begin in range(-c.radius, c.radius + 1):
-            for end in range(-c.radius, c.radius + 1):
+                if not kmer in self.inner_kmers:
+                    inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
+                    self.inner_kmers[kmer] = track_name
+        for begin in range(0, 1):#-c.radius, c.radius + 1):
+            for end in range(0, 1):#-c.radius, c.radius + 1):
                 boundary_kmers, boundary = sv.get_signature_kmers(begin, end)
                 if len(boundary_kmers) == 0:
                     continue
@@ -119,7 +123,8 @@ class ExtractBreakPointsJob(map_reduce.Job):
                 break_points[name] = {
                     'boundary': boundary,
                     'inner_kmers': inner_kmers,
-                    'local_unique_kmers': local_unique_kmers
+                    'left_local_unique_kmers': left_local_unique_kmers,
+                    'right_local_unique_kmers': right_local_unique_kmers
                 }
                 novel_kmers = list(filter(lambda kmer: self.reference_counts_provider.get_kmer_count(kmer) == 0, boundary_kmers)) 
                 break_points[name]['novel_kmers'] = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in novel_kmers}
@@ -150,23 +155,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def find_thread_count(self):
+    def prepare(self):
         c = config.Configuration()
-        self.num_threads = c.max_threads
-
-    def load_inputs(self):
-        c = config.Configuration()
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as json_file:
-            paths = json.load(json_file)
-        for index in range(0, self.num_threads):
-            self.batch[index] = {}
-        index = 0
-        for track in paths:
-            self.batch[index][track] = paths[track]
-            index += 1
-            if index == self.num_threads:
-                index = 0
         self.distribution = {
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = c.std),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
@@ -175,7 +165,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
 
     def transform(self, track, track_name):
         c = config.Configuration()
-        print(track_name)
+        print(track)
         with open(track, 'r') as track_file:
             break_points = json.load(track_file)['break_points']
         # find all the break points
@@ -196,6 +186,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
             likelihood['break_points'][break_point]['likelihood'] = 0
             likelihood['break_points'][break_point]['novel_kmers'] = break_points[break_point]['novel_kmers']
             likelihood['break_points'][break_point]['inner_kmers'] = break_points[break_point]['inner_kmers']
+            likelihood['break_points'][break_point]['left_local_unique_kmers'] = break_points[break_point]['left_local_unique_kmers']
+            likelihood['break_points'][break_point]['right_local_unique_kmers'] = break_points[break_point]['right_local_unique_kmers']
             for kmer in kmers:
                 count = kmers[kmer]
                 r_1_1 = self.distribution['(1, 1)'].log_pmf(count)
@@ -209,13 +201,27 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         if not m:
             print(red(track_name), 'no novel kmers found for track', red(track_name))
             return None
-        path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
-        with open(path, 'w') as json_file:
-            json.dump(likelihood, json_file, sort_keys = True, indent = 4)
+        #path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
+        #with open(path, 'w') as json_file:
+            #json.dump(likelihood, json_file, sort_keys = True, indent = 4)
         path = os.path.join(self.get_current_job_directory(), 'most_likely_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump({m: likelihood['break_points'][m]}, json_file, sort_keys = True, indent = 4)
         return path
+
+    def plot(self, tracks):
+        pass
+        x = []
+        target = 'inner_kmers'
+        for track in tracks:
+            with open(tracks[track], 'r') as json_file:
+                break_points = json.load(json_file)
+                for break_point in break_points:
+                    if len(break_points[break_point][target]) != 0:
+                        for kmer in break_points[break_point][target]:
+                            x.append(break_points[break_point][target][kmer])
+                        #x.append(len(break_points[break_point][target]))
+        visualizer.histogram([ x[i] for i in sorted(random.sample(xrange(len(x)), len(x) / 100)) ], name = target, path = self.get_current_job_directory())
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

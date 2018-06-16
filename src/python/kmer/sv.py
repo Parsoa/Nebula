@@ -22,9 +22,13 @@ class SNP(object):
         self.end = end
         self.variants = variants.strip().split('/')
 
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class StructuralVariation(object):
 
-    def __init__(self, track, radius):
+    def __init__(self, track):
         self.track = track
         self.inner_kmers = None
         self.extract_base_sequence()
@@ -85,8 +89,8 @@ class StructuralVariation(object):
         if begin > end:
             return {}
         inner_seq = self.sequence[begin : end]
-        offset = c.insert_size - c.radius - 2 * c.read_length
-        if end - begin < c.insert_size:
+        offset = c.insert_size - 2 * c.radius - c.read_length
+        if end - begin < 2 * offset:
             return extract_kmers(c.ksize, inner_seq)
         else:
             return extract_kmers(c.ksize, inner_seq[: offset], inner_seq[-offset :])
@@ -99,12 +103,21 @@ class StructuralVariation(object):
         right_end = self.sequence[:self.slack + c.read_length]
         left_end = self.sequence[end + c.radius + c.ksize :]
         #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
-        self.local_unique_kmers = {}
-        for kmer in gen_extract_kmers(c.ksize, right_end, left_end):
+        right_local_unique_kmers = {}
+        left_local_unique_kmers = {}
+        for kmer in gen_extract_kmers(c.ksize, right_end):
             if counter(kmer) == 1:
-                if not kmer in self.local_unique_kmers:
-                    self.local_unique_kmers[kmer] = 0
-        return self.local_unique_kmers
+                if not kmer in right_local_unique_kmers:
+                    right_local_unique_kmers[kmer] = 0
+        for kmer in gen_extract_kmers(c.ksize, left_end):
+            if counter(kmer) == 1:
+                if not kmer in left_local_unique_kmers:
+                    left_local_unique_kmers[kmer] = 0
+        return right_local_unique_kmers, left_local_unique_kmers
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 
 class Inversion(StructuralVariation):
 
@@ -129,15 +142,16 @@ class Inversion(StructuralVariation):
         kmers = extract_kmers(c.ksize, head, tail)
         return kmers, head + tail
 
-    def get_boundaries():
-        return 
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 
 class Deletion(StructuralVariation):
 
     def get_signature_kmers(self, begin, end):
         #print('getting signature kmers')
         c = config.Configuration()
-        begin = (c.radius + c.ksize + c.read_length + self.slakc) + begin - c.ksize
+        begin = (c.radius + c.ksize + c.read_length + self.slack) + begin - c.ksize
         end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack) + end + c.ksize
         seq = self.sequence[begin : end]
         # ends will overlap

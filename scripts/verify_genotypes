@@ -13,13 +13,13 @@ DATA="/share/hormozdiarilab/Codes/NebulousSerendipity/data/"
 TARGET=$GENOME.$REF.$EVENT.bed
 echo $TARGET
 ################################################################################
-awk 'BEGIN {FS = "\t"} /^[^(].*\(0, 0\).*/ ' merge.bed > 00.bed
+awk 'BEGIN {FS = "\t"} /^[^(]*\(0, 0\).*/ ' merge.bed > 00.bed
 awk 'BEGIN {FS = "\t"} /^[^(]*(\(1, 1\)|\(1, 0\)).*/ ' merge.bed > present.bed
-awk 'BEGIN {FS = "\t"} /^[^(].*\(1, 1\).*/ ' merge.bed > 11.bed
-awk 'BEGIN {FS = "\t"} /^[^(].*\(1, 0\).*/ ' merge.bed > 10.bed
-awk 'BEGIN {FS = "\t"} /^[^(].*\(2, 2\).*/ ' merge.bed > 22.bed
-awk 'BEGIN {FS = "\t"} /^[^(].*\(3, 3\).*/ ' merge.bed > 33.bed
-awk 'BEGIN {FS = "\t"} /^[^(].*\(4, 4\).*/ ' merge.bed > 44.bed
+awk 'BEGIN {FS = "\t"} /^[^(]*\(1, 1\).*/ ' merge.bed > 11.bed
+awk 'BEGIN {FS = "\t"} /^[^(]*\(1, 0\).*/ ' merge.bed > 10.bed
+awk 'BEGIN {FS = "\t"} /^.*\(2, 2\).*/ ' merge.bed > 22.bed
+awk 'BEGIN {FS = "\t"} /^.*\(3, 3\).*/ ' merge.bed > 33.bed
+awk 'BEGIN {FS = "\t"} /^.*\(4, 4\).*/ ' merge.bed > 44.bed
 ################################################################################
 if [ "$BED_GENOME" == "$GENOME" ]; then
     ################################################################################

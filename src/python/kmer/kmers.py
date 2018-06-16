@@ -152,6 +152,15 @@ def extract_canonical_kmers(k, *args):
             kmers[kmer] += 1
     return kmers
 
+def find_kmer(k, kmers):
+    rc = k.replace('A', 'Z').replace('T', 'A')#.replace('Z', 'T').replace('C', 'Z').replace('G', 'C').replace('Z', 'G')[::-1]
+    #rc = reverse_complement_sequence(k)
+    if k in kmers:
+        return k
+    if rc in kmers:
+        return rc
+    return None
+
 def extract_kmers(k, *args):
     kmers = {}
     for s in args:
@@ -167,6 +176,9 @@ def gen_extract_kmers(k, *args):
         for i in range(0, len(s) - k + 1):
             kmer = s[i : i + k]
             yield kmer
+
+def reverse_complement(seq):
+    return complement_sequence(seq[::-1])
 
 def reverse_complement_sequence(seq):
     return complement_sequence(seq[::-1])

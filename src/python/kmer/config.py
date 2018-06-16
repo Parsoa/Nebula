@@ -72,7 +72,7 @@ def parse_args():
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
     # the outer insert size of the paired end reads 
-    parser.add_argument("--insertsize", type = int, default = 500)
+    parser.add_argument("--insertsize", type = int, default = 1000)
     # the size of the reads in the FASTQ file 
     parser.add_argument("--readlength", type = int, default = 100)
     # whether the simulation should be heterozygous

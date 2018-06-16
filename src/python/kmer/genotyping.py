@@ -18,6 +18,7 @@ from kmer import (
     counttable,
     map_reduce,
     statistics,
+    visualizer,
 )
 
 from kmer.kmers import *
@@ -97,7 +98,6 @@ class SampleExactKmerCountingJob(map_reduce.BaseExactCountingJob):
                 if kmer in self.kmers:
                     self.kmers[kmer]['count'] += 1
 
-
     def reduce(self):
         c = config.Configuration()
         kmers = self.merge_counts()
@@ -169,23 +169,9 @@ class GenotypingJob(BaseGenotypingJob):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    # needs to know the most likely breakpoint and its kmers, MostLikelyBreakPointsJob includes that information
-    def load_inputs(self):
-        # each event is a structural variation with its most likely breakpoints
-        self.tracks = {}
+    def prepare(self):
+        c = config.Configuration()
         self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as json_file:
-            tracks = json.load(json_file)
-        # round-robin events between available processes
-        n = 0
-        for track in tracks:
-            index = n % c.max_threads 
-            if not index in self.batch:
-                self.batch[index] = {}
-            self.batch[index][track] = tracks[track]
-            n = n + 1
-            self.num_threads = min(n, c.max_threads)
 
     def transform(self, track, track_name):
         c = config.Configuration()
@@ -204,6 +190,10 @@ class GenotypingJob(BaseGenotypingJob):
         with open(track, 'r') as track_file:
             break_points = json.load(track_file)
         for break_point in break_points:
+            if len(break_points[break_point]['left_local_unique_kmers']) != 0:
+                return None
+            if len(break_points[break_point]['right_local_unique_kmers']) != 0:
+                return None
             likelihood[break_point] = {}
             likelihood[break_point]['novel_kmers'] = {}
             likelihood[break_point]['inner_kmers'] = {}
@@ -237,12 +227,12 @@ class GenotypingJob(BaseGenotypingJob):
             novel_choice, novel_cost = min(likelihood[break_point]['likelihood']['novel'].items(), key = operator.itemgetter(1))
             likelihood[break_point]['genotype'] = {}
             # too few kmers in to do anything useful
-            if len(likelihood[break_point]['inner_kmers']) <= 5 and len(likelihood[break_point]['novel_kmers']) <= 5:
-                choice = '(2, 2)'
+            #if len(likelihood[break_point]['inner_kmers']) <= 5 and len(likelihood[break_point]['novel_kmers']) <= 5:
+                #choice = '(2, 2)'
             # enough novel kmers but not enough inner kmers
-            elif len(likelihood[break_point]['inner_kmers']) <= 5:
+            if len(likelihood[break_point]['inner_kmers']) <= 5:
                 inner_choice = '(3, 3)'
-                choice = novel_choice
+                choice = inner_choice
             # enough inner kmers but not enough novel kmers
             elif len(likelihood[break_point]['novel_kmers']) <= 5:
                 novel_choice = '(4, 4)'
@@ -250,7 +240,7 @@ class GenotypingJob(BaseGenotypingJob):
             else:
                 inner_cost = inner_cost / len(likelihood[break_point]['inner_kmers'])
                 novel_cost = novel_cost / len(likelihood[break_point]['novel_kmers'])
-                choice = inner_choice if inner_cost < novel_cost else novel_choice
+                choice = inner_choice# if inner_cost < novel_cost else novel_choice
             likelihood[break_point]['genotype']['inner'] = inner_choice
             likelihood[break_point]['genotype']['novel'] = novel_choice
             likelihood[break_point]['genotype']['consensus'] = choice
@@ -261,24 +251,18 @@ class GenotypingJob(BaseGenotypingJob):
 
     def reduce(self):
         c = config.Configuration()
-        output = {}
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
-            if os.path.isfile(path):
-                with open(path, 'r') as json_file:
-                    batch = json.load(json_file)
-                    output.update(batch)
-        with open(os.path.join(self.get_current_job_directory(), 'merge.json'), 'w') as json_file:
-            json.dump(output, json_file, sort_keys = True, indent = 4)
+        output = map_reduce.Job.reduce(self)
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
-            bed_file.write('chrom\tstart\tend\tkmers\tgenotype\t0,0\t1,0\t1,1\tcorrect\n')
+            #bed_file.write('chrom\tstart\tend\tkmers\tgenotype\t0,0\t1,0\t1,1\tcorrect\n')
             for track in output:
                 with open(output[track], 'r') as track_file:
+                    print(output[track])
                     break_points = json.load(track_file)
                     chrom = track.split('_')[0]
                     begin = track.split('_')[1]
                     end = track.split('_')[2]
                     for break_point in break_points:
+                        print(break_points[break_point]['likelihood'])
                         inner_kmers = len(break_points[break_point]['inner_kmers'])
                         novel_kmers = len(break_points[break_point]['novel_kmers'])
                         inner_zyg00 = break_points[break_point]['likelihood']['inner']['(0, 0)']
@@ -295,6 +279,8 @@ class GenotypingJob(BaseGenotypingJob):
                                 str(inner_zyg10 + novel_zyg10) + '\t' +
                                 str(inner_zyg11 + novel_zyg11) + '\t' +
                                 str(consensus) + '\t' +
+                                str(inner) + '\t' +
+                                str(novel) + '\t' +
                                 '\n')
 
     def get_previous_job_directory(self):
@@ -309,61 +295,70 @@ class GenotypingJob(BaseGenotypingJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class ExperimentalGenotypingJob(BaseGenotypingJob):
+class LocalUniqueKmersCountingJob(BaseGenotypingJob):
+
+    def get_next_read(self):
+        name = self.fastq_file.readline().strip()
+        read = self.fastq_file.readline().strip()
+        self.fastq_file.readline().strip()
+        self.fastq_file.readline().strip()
+        return (read, name)
 
     def parse_paired_end_fastq(self):
-        name = None
-        #tracemalloc.start()
-        HEADER_LINE = 0
-        SEQUENCE_LINE = 1
-        THIRD_LINE = 2
-        QUALITY_LINE = 3
-        state = HEADER_LINE
-        # need to skip invalid lines
         line = self.fastq_file.readline().strip()
-        # for the very rare occasion that the first byte in a segment is a line feed
         if len(line) == 0:
             line = self.fastq_file.readline().strip()
-        ahead = self.fastq_file.readline().strip()
+        while True:
+            if line[0] == '@' and line.endswith('/1'):
+                right = (self.fastq_file.readline().strip(), line)
+                break
+            line = self.fastq_file.readline().strip()
+        self.fastq_file.readline().strip()
+        self.fastq_file.readline().strip()
         n = 0
         m = 0
         t = time.time()
-        while ahead:
-            #print(state, line)
-            if state == HEADER_LINE:
-                if line[0] == '@' and ahead[0] != '@':
-                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
-                        print(self.index, 'reached segment boundary')
-                        break
-                    name = line[:-1] # ignore the EOL character
-                    state = SEQUENCE_LINE
-            elif state == SEQUENCE_LINE:
-                state = THIRD_LINE
-                seq = line[:-1] # ignore the EOL character
-                n += 1
-                if n == 100000:
-                    n = 0
-                    m += 1
-                    c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
-                    s = time.time()
-                    p = c / float(self.fastq_file_chunk_size)
-                    e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-                yield seq, name
-            elif state == THIRD_LINE:
-                state = QUALITY_LINE
-            elif state == QUALITY_LINE:
-                state = HEADER_LINE
-            line = ahead
-            ahead = self.fastq_file.readline()
-        print(self.index, ' end of input')
+        LEFT = 1
+        RIGHT = 0
+        state = LEFT
+        while True:
+            read = self.get_next_read()
+            if read[0] == '':
+                break
+            if state == RIGHT:
+                right = read
+                n += 4
+                if right[1].endswith('/1'):
+                    state = LEFT
+            else:
+                left = read
+                n += 4
+                if left[1].endswith('/2'):
+                    if right[1][0: -2] == left[1][0: -2]:
+                        #print('read', left[1], right[1])
+                        yield right[0], left[0]
+                        state = RIGHT
+                        if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
+                            break
+                else:
+                    right = left
+                    state = LEFT
+            if n >= 100000:
+                n = 0
+                m += 1
+                c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
+                s = time.time()
+                p = c / float(self.fastq_file_chunk_size)
+                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
     @staticmethod
     def launch(**kwargs):
-        job = GenotypingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPointsJob_', **kwargs)
+        job = LocalUniqueKmersCountingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPointsJob_', batch_file_prefix = 'experimental_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -373,29 +368,225 @@ class ExperimentalGenotypingJob(BaseGenotypingJob):
     # needs to know the most likely breakpoint and its kmers, MostLikelyBreakPointsJob includes that information
     def load_inputs(self):
         # each event is a structural variation with its most likely breakpoints
-        local_unique_kmers = {}
+        self.left_local_unique_kmers = {}
+        self.right_local_unique_kmers = {}
         self.tracks = {}
-        self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-        path = os.path.join(self.get_previous_job_directory(), 'merge.json')
-        with open(path, 'r') as json_file:
-            tracks = json.load(json_file)
-        # round-robin events between available processes
+        tracks = self.load_previous_job_results()
         for track in tracks:
-            break_points = json.load(tracks[track])
+            break_points = json.load(open(tracks[track], 'r'))
             for break_point in break_points:
-                self.tracks[track] = break_points[break_point]
+                # only run for events that don't have standalone inner kmers
+                if len(break_points[break_point]['left_local_unique_kmers']) != 0:
+                    self.tracks[track] = break_points
+        duplicates = {}
         for track in self.tracks:
-            if len(self.tracks[track]['local_unique_kmers'] != 0: # there were not enough inner kmers
-                for kmer in self.tracks[track]['local_unique_kmers']:
-                    self.local_unique_kmers[kmer] = {
+            for break_point in self.tracks[track]:
+                self.tracks[track][break_point].pop('likelihood', None)
+                self.tracks[track][break_point]['inner_kmers'] = {kmer: 0 for kmer in self.tracks[track][break_point]['inner_kmers']}
+                for kmer in self.tracks[track][break_point]['left_local_unique_kmers']:
+                    if kmer in self.left_local_unique_kmers:
+                        print(red('duplicate'))
+                        duplicates[kmer] = 0
+                    self.left_local_unique_kmers[kmer] = {
                         'count': 0,
-                        ''
+                        'track': track,
+                        'break_point': break_point,
+                        'original': kmer
                     }
+                    self.left_local_unique_kmers[reverse_complement(kmer)] = {
+                        'count': 0,
+                        'track': track,
+                        'break_point': break_point,
+                        'original': kmer
+                    }
+                for kmer in self.tracks[track][break_point]['right_local_unique_kmers']:
+                    if kmer in self.right_local_unique_kmers:
+                        print(red('duplicate'))
+                        duplicates[kmer] = 0
+                    self.right_local_unique_kmers[kmer] = {
+                        'count': 0,
+                        'track': track,
+                        'break_point': break_point,
+                        'original': kmer
+                    }
+                    self.right_local_unique_kmers[reverse_complement(kmer)] = {
+                        'count': 0,
+                        'track': track,
+                        'break_point': break_point,
+                        'original': kmer
+                    }
+            self.num_threads = c.max_threads
+            for i in range(self.num_threads):
+                self.batch[i] = {}
+        print('duplicates:', green(len(duplicates)), 'total:', blue(len(self.left_local_unique_kmers) + len(self.right_local_unique_kmers)))
 
+    def run_batch(self, batch):
+        c = config.Configuration()
+        self.fastq_file = open(c.fastq_file, 'r')
+        self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
+        self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
+        # this forked process will exit at the end of the following function call
+        self.transform()
+        self.output_batch(self.tracks)
+    
     def transform(self):
-        for left, right in self.parse_paird_end_fastq():
-            for kmer in extract_kmers(c.ksize, left):
-            
+        for left, right in self.parse_paired_end_fastq():
+            #print(blue(left), green(right))
+            self.update_counts(right = right, left = left, right_kmers = self.right_local_unique_kmers, left_kmers = self.left_local_unique_kmers)
+            self.update_counts(right = right, left = left, right_kmers = self.left_local_unique_kmers, left_kmers = self.right_local_unique_kmers)
+            self.update_counts(right = left, left = right, right_kmers = self.right_local_unique_kmers, left_kmers = self.left_local_unique_kmers)
+            self.update_counts(right = left, left = right, right_kmers = self.left_local_unique_kmers, left_kmers = self.right_local_unique_kmers)
+
+    def update_counts(self, right, left, right_kmers, left_kmers):
+        found = False
+        for kmer in extract_kmers(c.ksize, left):
+            #kmer = find_kmer(k, left_kmers)
+            if kmer in left_kmers:
+                track = left_kmers[kmer]['track']
+                break_point = left_kmers[kmer]['break_point']
+                original_kmer = left_kmers[kmer]['original']
+                #if original_kmer in self.tracks[track][break_point]['left_local_unique_kmers']:
+                #    self.tracks[track][break_point]['left_local_unique_kmers'][original_kmer] += 1
+                #else:
+                #    self.tracks[track][break_point]['right_local_unique_kmers'][original_kmer] += 1
+                for right_kmer in extract_kmers(c.ksize, right):
+                    if right_kmer in right_kmers:
+                        if right_kmers[right_kmer]['track'] == left_kmers[kmer]['track']:
+                            if original_kmer in self.tracks[track][break_point]['left_local_unique_kmers']:
+                                self.tracks[track][break_point]['left_local_unique_kmers'][original_kmer] += 1
+                            else:
+                                self.tracks[track][break_point]['right_local_unique_kmers'][original_kmer] += 1
+                if not found:
+                    for inner_kmer in extract_kmers(c.ksize, right):
+                        if inner_kmer in self.tracks[track][break_point]['inner_kmers']:
+                            found = True
+                            self.tracks[track][break_point]['inner_kmers'][inner_kmer] += 1
+
+    def reduce(self):
+        c = config.Configuration()
+        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '0.json')
+        with open(path, 'r') as json_file:
+            output = json.load(json_file)
+        for i in range(1, self.num_threads):
+            tracks = self.load_output_batch(i)
+            for track in tracks:
+                for break_point in tracks[track]:
+                    for kmer in tracks[track][break_point]['inner_kmers']:
+                        output[track][break_point]['inner_kmers'][kmer] += tracks[track][break_point]['inner_kmers'][kmer]
+                    for kmer in tracks[track][break_point]['left_local_unique_kmers']:
+                        output[track][break_point]['left_local_unique_kmers'][kmer] += tracks[track][break_point]['left_local_unique_kmers'][kmer]
+                    for kmer in tracks[track][break_point]['right_local_unique_kmers']:
+                        output[track][break_point]['right_local_unique_kmers'][kmer] += tracks[track][break_point]['right_local_unique_kmers'][kmer]
+        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'merge.json'), 'w') as json_file:
+            json.dump(output, json_file, sort_keys = True, indent = 4)
+
+    def count_inner_kmers(self, read):
+        kmers = extract_kmers(c.ksize, read)
+        for kmer in kmers:
+            if kmer in self.inner_kmers: 
+                self.inner_kmers[kmer] += 1
+
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/', self.previous_job_name[:-1]))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class LocalUniqueKmersGenotypingJob(BaseGenotypingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = LocalUniqueKmersGenotypingJob(job_name = 'Genotyping_', previous_job_name = 'Genotyping_', batch_file_prefix = 'outer_', previous_job_batch_file_prefix = 'experimental_', **kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        likelihood = {}
+        #distribution = {
+        #    '(1, 1)': statistics.NormalDistribution(mean = 1, std = c.std),
+        #    '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
+        #    '(0, 0)': statistics.NormalDistribution(mean = 0, std = c.std)
+        #}
+        # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
+        #with open(track, 'r') as track_file:
+        #    break_points = json.load(track_file)
+        break_points = track
+        for break_point in break_points:
+            if len(break_points[break_point]['right_local_unique_kmers']) == 0:
+                return None
+            if len(break_points[break_point]['left_local_unique_kmers']) == 0:
+                return None
+            likelihood[break_point] = break_points[break_point]
+            likelihood[break_point]['likelihood'] = {}
+            likelihood[break_point]['likelihood']['inner'] = {}
+            likelihood[break_point]['likelihood']['outer'] = {}
+            #for zyg in distribution:
+            #    likelihood[break_point]['likelihood']['inner'][zyg] = 0
+            #    likelihood[break_point]['likelihood']['outer'][zyg] = 0
+            #for kmer in break_points[break_point]['inner_kmers']:
+            #    count = break_points[break_point]['inner_kmers'][kmer]
+            #    for zyg in distribution:
+            #        likelihood[break_point]['likelihood']['inner'][zyg] += inner_distribution[zyg].log_pmf(count)
+            #for zyg in distribution:
+            #    likelihood[break_point]['likelihood']['inner'][zyg] -= len(likelihood[break_point]['inner_kmers']) * distribution[zyg].log_pmf(distribution[zyg].mean)
+            #    likelihood[break_point]['likelihood']['inner'][zyg] = abs(likelihood[break_point]['likelihood']['inner'][zyg])
+            #inner_choice, inner_cost = min(likelihood[break_point]['likelihood']['inner'].items(), key = operator.itemgetter(1))
+            #likelihood[break_point]['genotype'] = {}
+            # too few kmers in to do anything useful
+        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'genotype_' + track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(likelihood, json_file, sort_keys = True, indent = 4)
+        return path
+
+    def reduce(self):
+        c = config.Configuration()
+        output = map_reduce.Job.reduce(self)
+        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'merge.bed'), 'w') as bed_file:
+            for track in output:
+                with open(output[track], 'r') as track_file:
+                    break_points = json.load(track_file)
+                    chrom = track.split('_')[0]
+                    begin = track.split('_')[1]
+                    end = track.split('_')[2]
+                    for break_point in break_points:
+                        inner_kmers = statistics.mean(list(map(lambda kmer: break_points[break_point]['inner_kmers'][kmer], break_points[break_point]['inner_kmers'])))
+                        left_local_unique_kmers = statistics.mean(list(map(lambda kmer: break_points[break_point]['left_local_unique_kmers'][kmer], break_points[break_point]['left_local_unique_kmers'])))
+                        right_local_unique_kmers = statistics.mean(list(map(lambda kmer: break_points[break_point]['right_local_unique_kmers'][kmer], break_points[break_point]['right_local_unique_kmers'])))
+                        bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(inner_kmers) + '\t' +
+                                str(left_local_unique_kmers) + '\t' + str(right_local_unique_kmers) + '\t' +
+                                '\n')
+        return output
+
+    def plot(self, tracks):
+        left = []
+        right = []
+        inner = []
+        for track in tracks:
+            with open(tracks[track], 'r') as track_file:
+                print(tracks[track])
+                break_points = json.load(track_file)
+                for break_point in break_points:
+                    inner.append(statistics.mean(list(map(lambda kmer: break_points[break_point]['inner_kmers'][kmer], break_points[break_point]['inner_kmers']))))
+                    right.append(statistics.mean(list(map(lambda kmer: break_points[break_point]['right_local_unique_kmers'][kmer], break_points[break_point]['right_local_unique_kmers']))))
+                    left.append(statistics.mean(list(map(lambda kmer: break_points[break_point]['left_local_unique_kmers'][kmer], break_points[break_point]['left_local_unique_kmers']))))
+        print(len(right), len(left), len(inner))
+        visualizer.histogram(inner, 'inner_kmers', self.get_current_job_directory())
+        visualizer.histogram(right, 'right_local_unique_kmers', self.get_current_job_directory())
+        visualizer.histogram(left, 'left_local_unique_kmers', self.get_current_job_directory())
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -470,9 +661,4 @@ class GenotypingAnalysisJob(BaseGenotypingJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    if c.job == 'GenotypingJob':
-        GenotypingJob.launch(resume_from_reduce = c.resume_from_reduce)
-    if c.job == 'GenotypingAnalysisJob':
-        GenotypingAnalysisJob.launch(resume_from_reduce = c.resume_from_reduce)
-    if c.job == 'SampleExactKmerCountingJob':
-        SampleExactKmerCountJob.launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)

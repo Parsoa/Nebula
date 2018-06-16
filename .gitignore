@@ -5,10 +5,14 @@ venv2/
 
 *.pyc
 
+__pycache__/
+
 *.fa
 *.fai
 *.ref
 *.fq
+*.Fq
+*.swp
 
 *.ct
 *.out

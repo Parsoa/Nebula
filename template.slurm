@@ -2,15 +2,12 @@
 
 #SBATCH --partition=gc
 #SBATCH --nodes=1
-#SBATCH --mem=60G
-#SBATCH --job-name="HG512/EstimateDepthOfCoverage"
-#SBATCH --ntasks=24
-#SBATCH --time=12:00:00
+#SBATCH --mem=90G
+#SBATCH --job-name="PairedEndCounting"
+#SBATCH --ntasks=48
+#SBATCH --time=4-12:00:00
 #SBATCH --mail-user=pkhorsand@ucdavis.edu
 #SBATCH --output=/share/hormozdiarilab/Codes/NebulousSerendipity/HG512.coverage.out
 #SBATCH --mail-type=ALL
-
-cd /share/hormozdiarilab/Codes/NebulousSerendipity
-source venv/bin/activate
-cd src/python
-python -m kmer.prune --reference hg38 --fastq /share/hormozdiarilab/Data/Genomes/Illumina/1KG_Trio_Phase4/CHS_Trio/HG00512.alt_bwamem_GRCh38DH.20150715.CHS.high_coverage.Test.Fq --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/exons.filtered.bed --threads 48
+cd 
+./run.sh
