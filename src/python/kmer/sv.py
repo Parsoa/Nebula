@@ -53,66 +53,42 @@ class StructuralVariation(object):
         self.sequence = chromosome[track.start - 1 : track.end - 1]
         #print(blue(self.sequence))
 
-    def get_reference_signature_kmers(self, begin, end):
-        c = config.Configuration()
-        begin = (c.radius + c.ksize) + begin - c.ksize
-        end = (len(self.sequence) - c.radius - c.ksize) + end + c.ksize
-        seq = self.sequence[begin : end]
-        #
-        self.ref_head = seq[0:2 * c.ksize]
-        self.ref_tail = seq[-2 * c.ksize:]
-        kmers = extract_kmers(self.ref_head, self.ref_tail)
-        return kmers
-
     # will return the same set of inner kmers for every breakpoint 
-    def get_inner_kmers(self, counter, count = 1, n = 100):
-        c = config.Configuration()
-        begin = (c.radius + c.ksize + c.read_length + self.slack) + c.radius
-        end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack) - c.radius
-        inner_seq = self.sequence[begin : end]
-        if begin > end:
-            return {}
-        self.inner_kmers = {}
-        for kmer in gen_extract_kmers(c.ksize, inner_seq):
-            # we won't have a kmer with lenght zero as both the sequence and the counttable are from the reference
-            if counter(kmer) <= count:
-                if not kmer in self.inner_kmers:
-                    self.inner_kmers[kmer] = 0
-                    if len(self.inner_kmers) >= n:
-                        break
-        return self.inner_kmers
-
-    def get_near_boundary_inner_kmers(self, counter = lambda x: 0):
+    def get_inner_kmers(self, counter, count, n):
         c = config.Configuration()
         begin = (c.radius + c.ksize + c.read_length + self.slack) + c.radius
         end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack) - c.radius
         if begin > end:
             return {}
         inner_seq = self.sequence[begin : end]
-        offset = c.insert_size - 2 * c.radius - c.read_length
-        if end - begin < 2 * offset:
-            return extract_kmers(c.ksize, inner_seq)
+        # now count the kmers
+        inner_kmers = extract_canonical_kmers(c.ksize, counter, count, inner_seq)
+        items = inner_kmers.items()
+        if len(inner_kmers) <= n:
+            return inner_kmers
         else:
-            return extract_kmers(c.ksize, inner_seq[: offset], inner_seq[-offset :])
+            return {kmer: inner_kmers[kmer] for kmer in list(map(lambda i: items[i][0], sorted(random.sample(range(0, len(inner_kmers)), n))))}
+
+    def get_near_boundary_inner_kmers(self, counter = lambda x: 1, count = 1):
+        c = config.Configuration()
+        begin = (c.radius + c.ksize + c.read_length + self.slack)
+        end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack)
+        if begin > end:
+            return {}
+        inner_seq = self.sequence[begin : end]
+        if end - begin < 6 * self.slack:
+            return extract_kmers(c.ksize, counter, count, inner_seq)
+        else:
+            return extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
 
     # <L><Slack><K><R>|Event boundary|<R><Slack><L> ... <L><Slack><R>|Event Boundary|<R><K><Slack><L>
-    def get_local_unique_kmers(self, counter = lambda x: 0):
+    def get_local_unique_kmers(self, counter):
         c = config.Configuration()
-        begin = c.radius + c.ksize + c.read_length + self.slack
-        end = len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack
-        right_end = self.sequence[:self.slack + c.read_length]
-        left_end = self.sequence[end + c.radius + c.ksize :]
+        left_end = self.sequence[:self.slack + c.read_length]
+        right_end = self.sequence[-self.slack - c.read_length:]
         #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
-        right_local_unique_kmers = {}
-        left_local_unique_kmers = {}
-        for kmer in gen_extract_kmers(c.ksize, right_end):
-            if counter(kmer) == 1:
-                if not kmer in right_local_unique_kmers:
-                    right_local_unique_kmers[kmer] = 0
-        for kmer in gen_extract_kmers(c.ksize, left_end):
-            if counter(kmer) == 1:
-                if not kmer in left_local_unique_kmers:
-                    left_local_unique_kmers[kmer] = 0
+        left_local_unique_kmers = extract_kmers(c.ksize, counter, 1, left_end)
+        right_local_unique_kmers = extract_kmers(c.ksize, counter, 1, right_end)
         return right_local_unique_kmers, left_local_unique_kmers
 
 # ============================================================================================================================ #
@@ -121,7 +97,7 @@ class StructuralVariation(object):
 
 class Inversion(StructuralVariation):
 
-    def get_signature_kmers(self, begin, end):
+    def get_signature_kmers(self, begin, end, counter):
         c = config.Configuration()
         begin = (c.radius + c.ksize + c.read_length + self.slack) + begin - c.ksize
         end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack) + end + c.ksize
@@ -139,7 +115,7 @@ class Inversion(StructuralVariation):
         #
         self.head = head
         self.tail = tail
-        kmers = extract_kmers(c.ksize, head, tail)
+        kmers = extract_kmers(c.ksize, counter, 0, head, tail)
         return kmers, head + tail
 
 # ============================================================================================================================ #
@@ -148,7 +124,7 @@ class Inversion(StructuralVariation):
 
 class Deletion(StructuralVariation):
 
-    def get_signature_kmers(self, begin, end):
+    def get_signature_kmers(self, begin, end, counter):
         #print('getting signature kmers')
         c = config.Configuration()
         begin = (c.radius + c.ksize + c.read_length + self.slack) + begin - c.ksize
@@ -158,7 +134,6 @@ class Deletion(StructuralVariation):
         if begin > end:
             return None, None
         #
-        inner_seq = seq[c.ksize:-c.ksize]
         seq = seq[:c.ksize] + seq[-c.ksize:]
-        kmers = extract_kmers(c.ksize, seq)
-        return kmers, seq
+        boundary_kmers = extract_kmers(c.ksize, counter, 0, seq)
+        return boundary_kmers, seq

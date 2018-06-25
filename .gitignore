@@ -19,6 +19,7 @@ __pycache__/
 *.log
 output/*
 simulation/*
+programming/*
 data/*
 training/*
 learning/*

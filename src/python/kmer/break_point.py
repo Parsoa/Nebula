@@ -30,9 +30,6 @@ print = pretty_print
 
 import pybedtools
 
-import plotly.offline as plotly
-import plotly.graph_objs as graph_objs
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -68,7 +65,6 @@ class ExtractBreakPointsJob(map_reduce.Job):
         self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
         self.bedtools = {str(track): track for track in pybedtools.BedTool(c.bed_file)}
         self.round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
-        self.inner_kmers = {}
 
     def transform(self, track, track_name):
         sv = self.get_sv_type()(track)
@@ -82,55 +78,52 @@ class ExtractBreakPointsJob(map_reduce.Job):
         json_file.close()
         return path
 
-    # ============================================================================================================================ #
-    # job-specific helpers
-    # ============================================================================================================================ #
-
-    def get_sv_type(self):
-        c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        if bed_file_name.find('DEL') != -1:
-            return Deletion
-        if bed_file_name.find('INV') != -1:
-            return Inversion
-        return Deletion
-
     def extract_break_points(self, sv, track_name):
         c = config.Configuration()
-        break_points = {}
-        inner_kmers = {}
         left_local_unique_kmers = {}
         right_local_unique_kmers = {}
-        for kmer in sv.get_inner_kmers(self.reference_counts_provider.get_kmer_count):
-            inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
-        if len(inner_kmers) > 100:
-            print(red("FUCK THIS", track_name))
-        if len(inner_kmers) == 0:
-            right_local_unique_kmers, left_local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count)
-            if len(right_local_unique_kmers) == 0 or len(left_local_unique_kmers) == 0:
-                print(red(track_name), white('skipped, no local unique kmers'))
-                return None
-            for kmer in sv.get_near_boundary_inner_kmers():
-                if not kmer in self.inner_kmers:
-                    inner_kmers[kmer] = self.counts_provider.get_kmer_count(kmer)
-                    self.inner_kmers[kmer] = track_name
-        for begin in range(0, 1):#-c.radius, c.radius + 1):
-            for end in range(0, 1):#-c.radius, c.radius + 1):
-                boundary_kmers, boundary = sv.get_signature_kmers(begin, end)
+        unique_inner_kmers = sv.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 1, n = 100)
+        unique_inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in unique_inner_kmers}
+        right_local_unique_kmers, left_local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count)
+        inner_kmers = sv.get_near_boundary_inner_kmers()
+        inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers}
+        break_points = {
+            'inner_kmers': inner_kmers,
+            'unique_inner_kmers': unique_inner_kmers,
+            'left_local_unique_kmers': left_local_unique_kmers,
+            'right_local_unique_kmers': right_local_unique_kmers
+        }
+        for begin in range(-c.radius, c.radius + 1):
+            for end in range(-c.radius, c.radius + 1):
+                boundary_kmers, boundary = sv.get_signature_kmers(begin, end, self.reference_counts_provider.get_kmer_count)
                 if len(boundary_kmers) == 0:
                     continue
                 name = '(' + str(begin) + ',' + str(end) + ')'
                 break_points[name] = {
                     'boundary': boundary,
-                    'inner_kmers': inner_kmers,
-                    'left_local_unique_kmers': left_local_unique_kmers,
-                    'right_local_unique_kmers': right_local_unique_kmers
+                    'novel_kmers': {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in boundary_kmers},
                 }
-                novel_kmers = list(filter(lambda kmer: self.reference_counts_provider.get_kmer_count(kmer) == 0, boundary_kmers)) 
-                break_points[name]['novel_kmers'] = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in novel_kmers}
                 score = float(len(break_points[name]['novel_kmers'])) / len(boundary_kmers)
                 break_points[name]['score'] = score
         return break_points if break_points else None
+
+    def plot(self, tracks):
+        print('plotting')
+        unique = []
+        inner = []
+        right = []
+        left = []
+        for track in tracks:
+            with open(tracks[track], 'r') as json_file:
+                break_points = json.load(json_file)['break_points']
+                inner.append(len(break_points[break_point]['inner_kmers']))
+                unique.append(len(break_points[break_point]['unique_inner_kmers']))
+                left.append(len(break_points[break_point]['left_local_unique_kmers']))
+                right.append(len(break_points[break_point]['right_local_unique_kmers']))
+        visualizer.histogram(unique, 'num_unique_inner_kmers', self.get_current_job_directory(), x_label = 'number of inner kmers', y_label = 'number of events') 
+        visualizer.histogram(inner, 'num_boundary_inner_kmers', self.get_current_job_directory(), x_label = 'number of inner kmers', y_label = 'number of events') 
+        visualizer.histogram(right, 'num_right_kmers', self.get_current_job_directory(), x_label = 'number of right kmers', y_label = 'number of events') 
+        visualizer.histogram(left, 'num_left_kmers', self.get_current_job_directory(), x_label = 'number of left kmers', y_label = 'number of events') 
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -182,12 +175,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # calculate likelihoods
         m = None
         for break_point in break_points:
-            likelihood['break_points'][break_point] = {}
+            likelihood['break_points'][break_point] = break_points[break_point]
             likelihood['break_points'][break_point]['likelihood'] = 0
-            likelihood['break_points'][break_point]['novel_kmers'] = break_points[break_point]['novel_kmers']
-            likelihood['break_points'][break_point]['inner_kmers'] = break_points[break_point]['inner_kmers']
-            likelihood['break_points'][break_point]['left_local_unique_kmers'] = break_points[break_point]['left_local_unique_kmers']
-            likelihood['break_points'][break_point]['right_local_unique_kmers'] = break_points[break_point]['right_local_unique_kmers']
             for kmer in kmers:
                 count = kmers[kmer]
                 r_1_1 = self.distribution['(1, 1)'].log_pmf(count)
@@ -205,23 +194,24 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         #with open(path, 'w') as json_file:
             #json.dump(likelihood, json_file, sort_keys = True, indent = 4)
         path = os.path.join(self.get_current_job_directory(), 'most_likely_' + track_name + '.json')
+        most_likely = likelihood['break_points'][m]
+        most_likely['unique_inner_kmers'] = break_points['unique_inner_kmers']
+        most_likely['right_local_unique_kmers'] = break_points['right_local_unique_kmers']
+        most_likely['left_local_unique_kmers'] = break_points['left_local_unique_kmers']
+        most_likely['inner_kmers'] = break_points['inner_kmers']
         with open(path, 'w') as json_file:
-            json.dump({m: likelihood['break_points'][m]}, json_file, sort_keys = True, indent = 4)
+            json.dump({m: most_likely}, json_file, sort_keys = True, indent = 4)
         return path
 
     def plot(self, tracks):
-        pass
-        x = []
-        target = 'inner_kmers'
+        novel = []
+        inner = []
         for track in tracks:
             with open(tracks[track], 'r') as json_file:
                 break_points = json.load(json_file)
                 for break_point in break_points:
-                    if len(break_points[break_point][target]) != 0:
-                        for kmer in break_points[break_point][target]:
-                            x.append(break_points[break_point][target][kmer])
-                        #x.append(len(break_points[break_point][target]))
-        visualizer.histogram([ x[i] for i in sorted(random.sample(xrange(len(x)), len(x) / 100)) ], name = target, path = self.get_current_job_directory())
+                    novel.append(len(break_points[break_point]['novel_kmers']))
+        visualizer.histogram(novel, 'num_novel_kmers', self.get_current_job_directory(), x_label = 'number of novel kmers', y_label = 'number of events') 
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -329,7 +319,4 @@ class MostLikelyBreakPointsPlottingJob(map_reduce.Job):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    if c.job == 'ExtractBreakPointsJob':
-        ExtractBreakPointsJob.launch(resume_from_reduce = c.resume_from_reduce)
-    if c.job == 'MostLikelyBreakPointsJob':
-        MostLikelyBreakPointsJob.launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)

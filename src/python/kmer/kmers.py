@@ -142,33 +142,38 @@ def get_canonical_kmer_representation(kmer):
     reverse_complement = reverse_complement_sequence(kmer)
     return kmer if kmer < reverse_complement else reverse_complement
 
-def extract_canonical_kmers(k, *args):
+def extract_canonical_kmers(k, counter = lambda x: 1, count = 1, *args):
     kmers = {}
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = get_canonical_kmer_representation(s[i : i + k])
+            if counter(kmer) > count:
+                continue
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
     return kmers
 
 def find_kmer(k, kmers):
-    rc = k.replace('A', 'Z').replace('T', 'A')#.replace('Z', 'T').replace('C', 'Z').replace('G', 'C').replace('Z', 'G')[::-1]
-    #rc = reverse_complement_sequence(k)
+    rc = reverse_complement(k)
     if k in kmers:
         return k
     if rc in kmers:
         return rc
     return None
 
-def extract_kmers(k, *args):
+def extract_kmers(ksize, counter = lambda x: 1, count = 1, *args):
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = s[i : i + k]
-            if not kmer in kmers:
-                kmers[kmer] = 0
-            kmers[kmer] += 1
+        for i in range(0, len(s) - ksize + 1):
+            kmer = s[i : i + ksize]
+            if counter(kmer) > count:
+                continue
+            k = find_kmer(kmer, kmers)
+            if not k:
+                kmers[kmer] = 1
+            else:
+                kmers[k] += 1
     return kmers
 
 def gen_extract_kmers(k, *args):

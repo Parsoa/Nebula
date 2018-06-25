@@ -111,6 +111,12 @@ def filter_overlapping_intervals(intervals):
         n = n + 1
     return intervals
 
+def export_bed(intervals, name):
+    print('Exporting BED file:', green(name + '.bed'))
+    with open(os.path.join(get_output_directory(), name + '.bed'), 'w') as bed_file:
+        for interval in intervals:
+            bed_file.write(str(interval.chrom) + '\t' + str(interval.start) + '\t' + str(interval.end) + '\n')
+
 def generate_fasta(ref, SVs):
     c = config.Configuration()
     print('Total number of SVs:', blue(len(SVs)))
@@ -227,18 +233,12 @@ def get_output_directory():
     c = config.Configuration()
     bed_file_name = c.bed_file.split('/')[-1]
     return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-        '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/Simulation'))
+        '../../../simulation/' + bed_file_name + '/' + str(c.ksize) + '/Simulation'))
 
 def create_output_directories():
     dir = get_output_directory()
     if not os.path.exists(dir):
         os.makedirs(dir)
-
-def export_bed(intervals, name):
-    print('Exporting BED file:', green(name + '.bed'))
-    with open(os.path.join(get_output_directory(), name + '.bed'), 'w') as bed_file:
-        for interval in intervals:
-            bed_file.write(str(interval.chrom) + '\t' + str(interval.start) + '\t' + str(interval.end) + '\n')
 
 def simulate():
     c = config.Configuration()

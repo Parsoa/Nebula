@@ -22,11 +22,10 @@ from kmer import (
     counttable,
 )
 
+from kmer.sv import StructuralVariation, Inversion, Deletion, SNP
 from kmer.kmers import *
 from kmer.commons import *
 print = pretty_print
-
-#import rapidjson as json
 
 def on_exit(job):
     print(green('job', job.index, 'exiting'))
@@ -42,9 +41,10 @@ def on_exit(job):
 
 class Job(object):
 
-    def __init__(self, job_name, previous_job_name, **kwargs):
+    def __init__(self, job_name, previous_job_name, category = 'output', **kwargs):
         self.job_name = job_name
         self.previous_job_name = previous_job_name
+        self.category = category
         self.index = -1
         self.batch = {}
         self.batch_file_prefix = 'batch_'
@@ -66,17 +66,18 @@ class Job(object):
     def execute(self):
         c = config.Configuration()
         self.check_cli_arguments(None)
-        self.prepare()
         self.create_output_directories()
         self.find_thread_count()
         if not self.resume_from_reduce:
             print('normal execution flow')
+            self.prepare()
             self.load_inputs()
             self.distribute_workload()
             self.wait_for_children()
         else:
             print('resuming from reduce')
-        self.reduce()
+        output = self.reduce()
+        self.plot(output)
 
     def post_process(self):
         # this is for when you need to make small adjustments to the output after the job has finished but don't want to run it all over again
@@ -84,12 +85,7 @@ class Job(object):
 
     def find_thread_count(self):
         c = config.Configuration()
-        max_index = 0
-        for index in range(0, c.max_threads):
-            path = os.path.join(self.get_previous_job_directory(), self.batch_file_prefix + str(index) + '.json')
-            if os.path.isfile(path):
-                max_index = index + 1
-        self.num_threads = max_index
+        self.num_threads = c.max_threads
 
     def load_inputs(self):
         tracks = self.load_previous_job_results()
@@ -97,6 +93,7 @@ class Job(object):
 
     def load_previous_job_results(self):
         path = os.path.join(self.get_previous_job_directory(), self.previous_job_batch_file_prefix + 'merge.json')
+        print(path)
         with open(path, 'r') as json_file:
             return json.load(json_file)
 
@@ -165,19 +162,7 @@ class Job(object):
 
     # This MUST call exit()
     def output_batch(self, batch):
-        # output manually, io redirection could get entangled with multiple client/servers
         n = 0
-        # This forces children to output sequenctially
-        #while False:
-        #    if self.index == 0:
-        #        break
-        #    if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index - 1) + '.json')):
-        #        print('found output for', self.index - 1)
-        #        break
-        #    n += 1
-        #    if n == 100000:
-        #        print(self.index, 'waiting for', self.index - 1)
-        #        n = 0 
         json_file = open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)
         json_file.close()
@@ -207,7 +192,6 @@ class Job(object):
                     output.update(batch)
         with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
-        self.plot(output)
         return output
 
     def load_output_batch(self, index):
@@ -229,14 +213,28 @@ class Job(object):
             os.remove(path)
 
     # ============================================================================================================================ #
+    # misc helpers
+    # ============================================================================================================================ #
+
+    def get_sv_type(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        if bed_file_name.find('DEL') != -1:
+            return Deletion
+        if bed_file_name.find('INV') != -1:
+            return Inversion
+        return Deletion
+
+    # ============================================================================================================================ #
     # filesystem helpers
     # ============================================================================================================================ #
 
     def get_output_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
+        d = 'simulation' if c.simulation else self.category
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output/' + bed_file_name + '/' + str(c.ksize) + '/'))
+            '../../../' + d + '/' + bed_file_name + '/' + str(c.ksize) + '/'))
 
     def get_previous_job_directory(self):
         # get rid of the final _
@@ -256,181 +254,35 @@ class Job(object):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce Job to find reads containing kmers from structural variation events that produce too many novel kmers.
+# Base class for every job that is a direct part of the genotyping procrss
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class RecursiveMergeCountsJob(Job):
-
-    @staticmethod
-    def launch(previous_job_directory, **kwargs):
-        job = RecursiveMergeCountsJob(job_name = 'RecursiveMergeCountsJob_', previous_job_name = previous_job_directory.split('/')[-1] + '_', previous_job_directory = previous_job_directory, **kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # Helper to speed up exporting
-    # ============================================================================================================================ #
-
-    def find_thread_count(self):
-        c = config.Configuration()
-        self.num_threads = c.max_threads
-
-    def load_inputs(self):
-        pass
-
-    def distribute_workload(self):
-        for index in range(0, self.num_threads, self.batch_size):
-            pid = os.fork()
-            if pid == 0:
-                # forked process
-                self.index = index
-                self.transform()
-                exit()
-            else:
-                # main process
-                self.children[pid] = index
-                print('spawned child', '{:2d}'.format(index), ':', pid)
-        print(cyan('done distributing workload'))
-
-    def transform(self):
-        c = config.Configuration()
-        base = self.index
-        child = int(self.index + self.batch_size / 2)
-        print('merging ', blue(base), 'and', green(child))
-        base_dir = self.get_previous_job_directory() if self.batch_size == 1 else self.get_current_job_directory()
-        suffix = '' if self.batch_size == 1 else '_' + str(self.batch_size / 2)
-        with open(os.path.join(base_path, 'batch_' + str(base) + suffix + '.json'), 'r') as json_file:
-            kmers = json.load(json_file)
-        with open(os.path.join(base_path, 'batch_' + str(child) + suffix + '.json'), 'r') as json_file:
-            batch = json.load(json_file)
-            for kmer in batch:
-                kmers[kmer] += batch[kmer]
-        with open(os.path.join(self.get_current_job_directory(), 'batch_' + str(base) + '_' + str(self.batch_size) + '.json'), 'w') as json_file:
-            json.dump(kmers, json_file, sort_keys = True, indent = 4)
-
-    def reduce(self):
-        pass
+class BaseGenotypingJob(Job ):
 
     def get_output_directory(self):
-        return self.previous_job_directory
-
-    def get_previous_job_directory(self):
-        return self.previous_job_directory
+        c = config.Configuration()
+        if c.simulation:
+            return Job.get_output_directory(self)
+        else:
+            fastq_file_name = c.fastq_file.split('/')[-1][::-1].split('.')[-1][::-1]
+            return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../' + self.category + '/genotyping/' + fastq_file_name))
 
     def get_current_job_directory(self):
-        # get rid of the final _
-        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1]))
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# MapReduce Job to find reads containing kmers from structural variation events that produce too many novel kmers.
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class BaseExactCountingJob(Job):
-
-    # ============================================================================================================================ #
-    # job-specific stuff
-    # ============================================================================================================================ #
-
-    def parse_fastq(self):
-        name = None
-        #tracemalloc.start()
-        HEADER_LINE = 0
-        SEQUENCE_LINE = 1
-        THIRD_LINE = 2
-        QUALITY_LINE = 3
-        state = HEADER_LINE
-        # need to skip invalid lines
-        line = self.fastq_file.readline().strip()
-        # for the very rare occasion that the first byte in a segment is a line feed
-        if len(line) == 0:
-            line = self.fastq_file.readline().strip()
-        ahead = self.fastq_file.readline().strip()
-        n = 0
-        m = 0
-        t = time.time()
-        while ahead:
-            #print(state, line)
-            if state == HEADER_LINE:
-                if line[0] == '@' and ahead[0] != '@':
-                    if self.fastq_file.tell() >= (self.index + 1) * self.fastq_file_chunk_size:
-                        print(self.index, 'reached segment boundary')
-                        break
-                    name = line[:-1] # ignore the EOL character
-                    state = SEQUENCE_LINE
-            elif state == SEQUENCE_LINE:
-                state = THIRD_LINE
-                seq = line[:-1] # ignore the EOL character
-                n += 1
-                if n == 100000:
-                    n = 0
-                    m += 1
-                    c = self.fastq_file.tell() - self.index * self.fastq_file_chunk_size
-                    s = time.time()
-                    p = c / float(self.fastq_file_chunk_size)
-                    e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-                yield seq, name
-            elif state == THIRD_LINE:
-                state = QUALITY_LINE
-            elif state == QUALITY_LINE:
-                state = HEADER_LINE
-            line = ahead
-            ahead = self.fastq_file.readline()
-        print(self.index, ' end of input')
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def find_thread_count(self):
         c = config.Configuration()
-        self.num_threads = c.max_threads
+        if c.simulation:
+            return Job.get_current_job_directory(self)
+        else:
+            bed_file_name = c.bed_file.split('/')[-1]
+            return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], bed_file_name))
 
-    def run_batch(self, batch):
+    def get_previous_job_directory(self):
         c = config.Configuration()
-        self.fastq_file = open(c.fastq_file, 'r')
-        self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
-        self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
-        # this forked process will exit at the end of the following function call
-        self.transform()
-        self.output_batch(self.kmers)
-
-    def transform(self):
-        c = config.Configuration()
-        for read, name in self.parse_fastq():
-            kmers = extract_kmers(c.ksize, read)
-            for kmer in kmers:
-                if kmer in self.kmers: 
-                    self.kmers[kmer] += 1
-
-    def merge_counts_recursive(self):
-        for i in range(1, math.ceil(math.log(self.num_threads, 2)) + 1):
-            job = RecursiveMergeCountsJob.launch(batch_size = 2 ** i, previous_job_directory = self.get_current_job_directory())
-
-    def merge_counts(self):
-        c = config.Configuration()
-        print('merging kmer counts ...')
-        kmers = {}
-        index = 0
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                kmers = json.load(json_file)
-                index = i
-                break
-        for i in range(0, self.num_threads):
-            if i == index:
-                continue
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            if not os.path.isfile(path):
-                print(red('couldn\'t find batch'), i, red('results will be unreliable'))
-                continue
-            with open (path, 'r') as json_file:
-                batch = json.load(json_file)
-                for kmer in batch:
-                    kmers[kmer] += batch[kmer]
-        return kmers
+        print(c.simulation)
+        if c.simulation:
+            return Job.get_previous_job_directory(self)
+        else:
+            bed_file_name = c.bed_file.split('/')[-1]
+            return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1], bed_file_name))
 
