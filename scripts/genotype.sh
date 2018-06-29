@@ -21,5 +21,5 @@ echo $STD
 JLY=$(echo $SIM | awk -v BED=$BED -v P=$P -v GEN=$GEN '{ if ($0 ~ /.*simulation.*/) { print P "/../Simulation/test.jf" } else { print "/share/hormozdiarilab/Experiments/Jellyfish/" GEN "/mer_counts.jf" } }')
 echo $JLY
 echo $@
-python -m kmer.genotyping --job GenotypingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY --coverage $COV --std $STD --fastq $GEN $SIM "$@"
-#python -m kmer.LocalUniqueKmersGenotypingJob --job GenotypingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --fastq $GEN $SIM "$@"
+#python -m kmer.genotyping --job GenotypingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY --coverage $COV --std $STD --fastq $GEN $SIM "$@"
+python -m kmer.genotyping --job LocalUniqueKmersGenotypingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --fastq $GEN $SIM "$@"

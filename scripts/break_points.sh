@@ -1,6 +1,8 @@
 #!/bin/bash
 P=$(pwd)
 echo $P
+SIM=$(echo $P | awk '{ if ($0 ~ /.*mulation.*/) { print "--simulation" } else { print "" } }')
+echo $SIM
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv2/bin/activate
 cd src/python
@@ -10,8 +12,6 @@ GEN=$(echo $BED | awk -F. '{ print $1 }')
 echo $BED
 echo $REF
 echo $GEN
-SIM=$(echo $P | awk '{ if ($0 ~ /.*mulation.*/) { print "--simulation" } else { print "" } }')
-echo $SIM
 JLY=$(echo $SIM | awk -v P=$P -v GEN=$GEN '{ if ($0 ~ /.*simulation.*/) { print P "/../Simulation/control.jf" } else { print "/share/hormozdiarilab/Experiments/Jellyfish/" GEN "/mer_counts.jf" } }')
 echo $JLY
 echo "$@"

@@ -10,5 +10,5 @@ echo $BED
 echo $REF
 RND=$(echo $BED | awk '{ if ($0 ~ /.*Random.*/) { print "--random" } else { print "" } }')
 echo $RND
-python -m kmer.simulator --reference $REF --coverage 30 --seed 165784623 --heterozygous $RND --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED
+python -m kmer.simulator --job Simulation --reference $REF --coverage 30 --seed 165784623 --heterozygous $RND --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --jellyfish /share/hormozdiarilab/Experiments/Jellyfish/$REF/mer_counts.jf "$@"
 deactivate

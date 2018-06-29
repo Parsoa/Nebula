@@ -79,13 +79,12 @@ class Job(object):
         output = self.reduce()
         self.plot(output)
 
-    def post_process(self):
-        # this is for when you need to make small adjustments to the output after the job has finished but don't want to run it all over again
-        pass
-
     def find_thread_count(self):
         c = config.Configuration()
         self.num_threads = c.max_threads
+
+    def prepare(self):
+        pass
 
     def load_inputs(self):
         tracks = self.load_previous_job_results()
@@ -119,13 +118,11 @@ class Job(object):
                     continue
             pid = os.fork()
             if pid == 0:
-                # forked process
                 self.index = index
                 # atexit.register(on_exit, self)
                 self.run_batch(self.batch[index])
                 exit()
             else:
-                # main process
                 self.children[pid] = index
                 print('spawned child', '{:2d}'.format(index), ':', pid)
         print(cyan('done distributing workload'))
@@ -175,7 +172,7 @@ class Job(object):
             (pid, e) = os.wait()
             index = self.children[pid]
             self.children.pop(pid, None)
-            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + str(index) + '.json')):
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
             else:
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
@@ -204,6 +201,9 @@ class Job(object):
         pass
 
     def sort(self, output):
+        pass
+
+    def post_process(self):
         pass
 
     def clean_up(self):
@@ -254,7 +254,7 @@ class Job(object):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# Base class for every job that is a direct part of the genotyping procrss
+# Base class for every job that is a direct part of the genotyping process
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 

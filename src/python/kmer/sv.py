@@ -62,7 +62,7 @@ class StructuralVariation(object):
             return {}
         inner_seq = self.sequence[begin : end]
         # now count the kmers
-        inner_kmers = extract_canonical_kmers(c.ksize, counter, count, inner_seq)
+        inner_kmers = c_extract_canonical_kmers(c.ksize, counter, count, inner_seq)
         items = inner_kmers.items()
         if len(inner_kmers) <= n:
             return inner_kmers
@@ -77,9 +77,9 @@ class StructuralVariation(object):
             return {}
         inner_seq = self.sequence[begin : end]
         if end - begin < 6 * self.slack:
-            return extract_kmers(c.ksize, counter, count, inner_seq)
+            return c_extract_kmers(c.ksize, counter, count, inner_seq)
         else:
-            return extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
+            return c_extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
 
     # <L><Slack><K><R>|Event boundary|<R><Slack><L> ... <L><Slack><R>|Event Boundary|<R><K><Slack><L>
     def get_local_unique_kmers(self, counter):
@@ -87,8 +87,8 @@ class StructuralVariation(object):
         left_end = self.sequence[:self.slack + c.read_length]
         right_end = self.sequence[-self.slack - c.read_length:]
         #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
-        left_local_unique_kmers = extract_kmers(c.ksize, counter, 1, left_end)
-        right_local_unique_kmers = extract_kmers(c.ksize, counter, 1, right_end)
+        left_local_unique_kmers = extract_kmers(c.ksize, left_end)
+        right_local_unique_kmers = extract_kmers(c.ksize, right_end)
         return right_local_unique_kmers, left_local_unique_kmers
 
 # ============================================================================================================================ #

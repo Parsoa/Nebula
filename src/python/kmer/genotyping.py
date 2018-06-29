@@ -302,7 +302,6 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
                 self.tracks[track][break_point]['inner_kmers'] = {kmer: 0 for kmer in self.tracks[track][break_point]['inner_kmers']}
                 for kmer in self.tracks[track][break_point]['left_local_unique_kmers']:
                     if kmer in self.left_local_unique_kmers:
-                        print(red('duplicate'))
                         duplicates[kmer] = 0
                     self.left_local_unique_kmers[kmer] = {
                         'count': 0,
@@ -318,7 +317,6 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
                     }
                 for kmer in self.tracks[track][break_point]['right_local_unique_kmers']:
                     if kmer in self.right_local_unique_kmers:
-                        print(red('duplicate'))
                         duplicates[kmer] = 0
                     self.right_local_unique_kmers[kmer] = {
                         'count': 0,
@@ -357,7 +355,6 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
     def update_counts(self, right, left, right_kmers, left_kmers):
         found = {}
         for kmer in extract_kmers(c.ksize, left):
-            #kmer = find_kmer(k, left_kmers)
             if kmer in left_kmers:
                 track = left_kmers[kmer]['track']
                 break_point = left_kmers[kmer]['break_point']
@@ -405,11 +402,7 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
                 self.inner_kmers[kmer] += 1
 
     def get_previous_job_directory(self):
-        c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        d = 'simulatiom' if c.simulation else 'output'
-        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../' + d + '/' + bed_file_name + '/' + str(c.ksize) + '/', self.previous_job_name[:-1]))
+        return os.path.abspath(os.path.join(map_reduce.Job.get_output_directory(self), self.previous_job_name[:-1]))
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -440,9 +433,6 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
             '(1, 0)': (lambda x: abs(x - 1)),
             '(0, 0)': (lambda x: abs(x - 0)),
         }
-        # all kmers remaining in the track are to be considered part of the signature, no matter the number of breakpoints
-        #with open(track, 'r') as track_file:
-        #    break_points = json.load(track_file)
         break_points = track
         for break_point in break_points:
             if len(break_points[break_point]['right_local_unique_kmers']) == 0:
@@ -457,9 +447,9 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
             left =  likelihood[break_point]['mean']['left']  = statistics.mean(list(map(lambda kmer: break_points[break_point]['left_local_unique_kmers'][kmer], break_points[break_point]['left_local_unique_kmers'])))
             #print(likelihood[break_point]['mean'])
             if inner == 0:
-                likelihood[break_point]['genotype'] = '(0, 0)'
-            if right == 0 or left == 0:
                 likelihood[break_point]['genotype'] = '(1, 1)'
+            if right == 0 or left == 0:
+                likelihood[break_point]['genotype'] = '(0, 0)'
             else:
                 m = statistics.mean([right, left])
                 r = float(inner) / float(m)
@@ -485,10 +475,6 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
                     begin = track.split('_')[1]
                     end = track.split('_')[2]
                     for break_point in break_points:
-                        #bed_file.write('{:5}'.format(chrom) + '    ' + '{:12}'.format(begin) + '    ' + '{:12}'.format(end) + '    ' + '{:5}'.format(str(break_points[break_point]['mean']['inner'])) + '    ' +
-                        #        '{:5}'.format(str(break_points[break_point]['mean']['left'])) + '    ' + '{:5}'.format(str(break_points[break_point]['mean']['right'])) + '    ' +
-                        #    break_points[break_point]['genotype'] +
-                        #    '\n')
                         bed_file.write(chrom + '\t' + begin + '\t' + end + '\t' + str(break_points[break_point]['mean']['inner']) + '\t' +
                             str(break_points[break_point]['mean']['left']) + '\t' + str(break_points[break_point]['mean']['right']) + '\t' +
                             break_points[break_point]['genotype'] +
@@ -513,7 +499,6 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
         #visualizer.histogram(left, 'num_left_local_unique_kmers', self.get_current_job_directory(), x_label = 'mean of the number of reads supporting each kmer', y_label = 'number of events')
         self.plot_accuracy_over_event_length(tracks)
 
-
     def plot_accuracy_over_event_length(self, tracks):
         bins = {}
         L = []
@@ -537,7 +522,6 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
         bins = sorted(bins.items(), key = operator.itemgetter(0))
         visualizer.bar(x = list(map(lambda b: b[0], bins)), ys = [list(map(lambda b: len(b[1]), bins)), list(map(lambda b: sum(b[1]), bins))], path = self.get_current_job_directory(), name = 'accuracy_per_event_length', x_label = 'event lenght rounded to the nearest hundred', y_label = 'genotypinh accuracy')
         visualizer.histogram(x = L, name = 'event_length_distribution', path = self.get_current_job_directory(), x_label = 'event length', y_label = 'number of events')
-
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

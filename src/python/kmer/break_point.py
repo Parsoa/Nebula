@@ -168,6 +168,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # accumulate all kmers in one dictionary
         kmers = {}
         for break_point in break_points:
+            if not break_point.startswith('('):
+                continue
             for kmer in break_points[break_point]['novel_kmers']:
                 count = break_points[break_point]['novel_kmers'][kmer]
                 if count:
@@ -175,6 +177,8 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         # calculate likelihoods
         m = None
         for break_point in break_points:
+            if not break_point.startswith('('):
+                continue
             likelihood['break_points'][break_point] = break_points[break_point]
             likelihood['break_points'][break_point]['likelihood'] = 0
             for kmer in kmers:
@@ -188,7 +192,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
                     likelihood['break_points'][break_point]['likelihood'] += r_0_0
             m = break_point if not m or likelihood['break_points'][break_point]['likelihood'] > likelihood['break_points'][m]['likelihood'] else m
         if not m:
-            print(red(track_name), 'no novel kmers found for track', red(track_name))
+            print('no novel kmers found for track', red(track_name))
             return None
         #path = os.path.join(self.get_current_job_directory(), 'likelihood_' + track_name + '.json')
         #with open(path, 'w') as json_file:

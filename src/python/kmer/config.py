@@ -72,7 +72,7 @@ def parse_args():
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
-    parser.add_argument("--coverage", type = int)
+    parser.add_argument("--coverage", type = int,default = 30)
     # the path to a jellyfish generated kmer count index
     parser.add_argument("--jellyfish", nargs = '*')
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
@@ -110,7 +110,7 @@ def configure(args):
         radius = args.radius,
         random = args.random,
         bed_file = args.bed,
-        coverage =  2 * args.coverage if args.simulation else args.coverage,
+        coverage =  1 * args.coverage if args.simulation else args.coverage,
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
         fastq_file = os.path.abspath(args.fastq),

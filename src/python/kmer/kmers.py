@@ -142,13 +142,23 @@ def get_canonical_kmer_representation(kmer):
     reverse_complement = reverse_complement_sequence(kmer)
     return kmer if kmer < reverse_complement else reverse_complement
 
-def extract_canonical_kmers(k, counter = lambda x: 1, count = 1, *args):
+def c_extract_canonical_kmers(k, counter = lambda x: 1, count = 1, *args):
     kmers = {}
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = get_canonical_kmer_representation(s[i : i + k])
             if counter(kmer) > count:
                 continue
+            if not kmer in kmers:
+                kmers[kmer] = 0
+            kmers[kmer] += 1
+    return kmers
+
+def extract_canonical_kmers(k, *args):
+    kmers = {}
+    for s in args:
+        for i in range(0, len(s) - k + 1):
+            kmer = get_canonical_kmer_representation(s[i : i + k])
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
@@ -162,7 +172,7 @@ def find_kmer(k, kmers):
         return rc
     return None
 
-def extract_kmers(ksize, counter = lambda x: 1, count = 1, *args):
+def c_extract_kmers(ksize, counter = lambda x: 1, count = 1, *args):
     kmers = {}
     for s in args:
         for i in range(0, len(s) - ksize + 1):
@@ -176,7 +186,17 @@ def extract_kmers(ksize, counter = lambda x: 1, count = 1, *args):
                 kmers[k] += 1
     return kmers
 
-def gen_extract_kmers(k, *args):
+def extract_kmers(ksize, *args):
+    kmers = {}
+    for s in args:
+        for i in range(0, len(s) - ksize + 1):
+            kmer = s[i : i + ksize]
+            if not kmer in kmers:
+                kmers[kmer] = 0
+            kmers[kmer] += 1
+    return kmers
+
+def stream_kmers(k, *args):
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = s[i : i + k]
