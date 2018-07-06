@@ -55,23 +55,39 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         self.check_cli_arguments(None)
         self.create_output_directories()
-        self.simulate()
-        exit()
+        if not self.resume_from_reduce:
+            print('normal execution flow')
+            #self.plot_reference_kmer_profile()
+            self.simulate()
+            exit()
         self.find_thread_count()
         self.prepare()
         self.load_inputs()
-        if not self.resume_from_reduce:
-            print('normal execution flow')
-            self.distribute_workload()
-            self.wait_for_children()
-        else:
-            print('resuming from reduce')
+        self.distribute_workload()
+        self.wait_for_children()
         output = self.reduce()
         self.plot(output)
 
+    def plot_reference_kmer_profile(self):
+        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
+        counts = []
+        n = 0
+        for kmer, count in self.reference_counts_provider.stream_kmers():
+            print(kmer, count)
+            counts.append(count)
+            n += 1
+            if n % 10000 == 1:
+                print(green(n), 'kmers counted')
+        counts = [counts[i] for i in random.sample(range(0, len(counts)), len(counts) / 10000)]
+        visualizer.histogram(counts, 'reference_genome_kmer_profile', self.get_current_job_directory(), 'kmer coverage', 'number of kmers')
+        exit()
+
     def simulate(self):
         c = config.Configuration()
-        self.ref = extract_chromosome('chr1')
+        if c.whole_genome:
+            self.extract_whole_genome()
+        else:
+            self.ref = extract_chromosome(c.chrom)
         if c.seed:
             random.seed(c.seed)
         if c.random:
@@ -83,30 +99,36 @@ class Simulation(map_reduce.Job):
             # generate homozygous control channel using all events
             if pid == 0:
                 self.export_bed(SVs, 'all')
-                #control = self.generate_fasta(SVs)
-                #self.export_fasta(control, 'control')
-                #self.export_fastq('control')
-                #self.export_jellyfish_table('control', 'control')
+                self.export_fasta(SVs, 'control_strand')
+                self.export_fastq('control_strand')
+                self.merge_fastq_files('control_strand')
+                self.export_jellyfish_table('control', 'control_strand')
             # generate hetereozygous test channel using half the events
             else:
                 n = len(SVs) / 2
                 r = sorted(random.sample(xrange(len(SVs)), n))
                 a = list(filter(lambda i: i not in r, range(len(SVs))))
-                present = [ SVs[i] for i in r ]
                 absent = [ SVs[i] for i in a ]
-                self.export_bed(present, 'present')
+                present = [ SVs[i] for i in r ]
                 self.export_bed(absent, 'absent')
-                strand_1, strand_2, homozygous_SVs, heterozygous_SVs = self.generate_fasta(present)
+                self.export_bed(present, 'present')
+                homozygous_SVs, heterozygous_SVs = self.select_events(present)
                 self.export_bed(homozygous_SVs, 'homozygous')
                 self.export_bed(heterozygous_SVs, 'heterozygous')
-                self.export_fasta(strand_1, 'test_strand_1')
-                self.export_fasta(strand_2, 'test_strand_2')
+                self.export_fasta(homozygous_SVs, 'test_strand_1')
+                self.export_fasta(heterozygous_SVs, 'test_strand_2')
                 # export a couple of fastq files for each strand, will this work?
                 self.export_fastq('test_strand_1')
                 self.export_fastq('test_strand_2')
                 self.merge_fastq_files('test_strand_1')
                 self.merge_fastq_files('test_strand_2')
                 self.export_jellyfish_table('test', 'test_strand_1', 'test_strand_2')
+
+    def extract_whole_genome(self):
+        c = [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 2, 20, 21, 22, 3, 4, 5, 6, 7, 8, 9, 'x', 'y']
+        self.chrom = {}
+        for seq, chrom in extract_chromosome(c):
+            self.chrom[chrom] = seq
 
     def generate_random_intervals(self, n):
         c = config.Configuration()
@@ -118,7 +140,7 @@ class Simulation(map_reduce.Job):
         for i in range(0, n):
             start = random.randint(offset, l - offset)
             end = start + random.randint(100, 2000)
-            event = pybedtools.Interval(chrom = 'chr1', start = start, end = end)
+            event = pybedtools.Interval(chrom = c.chrom, start = start, end = end)
             SVs.append(event)
         SVs = sorted(SVs, key = lambda x: x.start)
         SVs = self.filter_overlapping_intervals(SVs)
@@ -131,7 +153,7 @@ class Simulation(map_reduce.Job):
         n = 0
         tracks = []
         for track in bedtools:
-            if track.chrom != 'chr1':
+            if track.chrom != c.chrom:
                 continue
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
             # too large, skip
@@ -170,56 +192,55 @@ class Simulation(map_reduce.Job):
             for interval in intervals:
                 bed_file.write(str(interval.chrom) + '\t' + str(interval.start) + '\t' + str(interval.end) + '\n')
 
-    def generate_fasta(self, SVs):
+    def select_events(self, SVs):
         c = config.Configuration()
         print('Present SVs:', blue(len(SVs)))
         # select a set of commons SVs to be applied to both strands
         n = len(SVs) / 2
         print('Homozygous SVs:', blue(n))
-        homozygous = [ SVs[i] for i in sorted(random.sample(xrange(len(SVs)), n)) ]
+        SVs = sorted(SVs, key = lambda x: x.start)
+        homozygous = [ SVs[i] for i in sorted(random.sample(range(len(SVs)), n)) ]
         heterozygous = []
         for sv in SVs:
             if not sv in homozygous:
                 heterozygous.append(sv)
         # sort
-        SVs = sorted(SVs, key = lambda x: x.start)
         homozygous = sorted(homozygous, key = lambda x: x.start)
         heterozygous = sorted(heterozygous, key = lambda x: x.start)
-        strand_1 = self.apply_events_to_ref(SVs)
-        strand_2 = self.apply_events_to_ref(homozygous)
-        return strand_1, strand_2, homozygous, heterozygous
-    
-    def export_fasta(self, sequence, name):
+        return homozygous, heterozygous
+
+    def export_fasta(self, events, name):
         print('Exporting FASTA file:', green(name + '.fa')) 
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), name + '.fa'), 'w') as fasta_file:
-            fasta_file.write('>' + 'chr1' + '\n')
-            l = len(sequence)
-            num_lines = l / 50
-            for i in range(0, num_lines):
-                fasta_file.write(sequence[i * 50 : (i + 1) * 50] + '\n')
-            if l % 50 != 0:
-                fasta_file.write(sequence[num_lines * 50 :] + '\n')
-        with open(os.path.join(self.get_current_job_directory(), name + '.lines.fa'), 'w') as fasta_lines_file:
-            fasta_lines_file.write('>' + 'chr1' + '\n')
-            fasta_lines_file.write(sequence)
-    
-    def apply_events_to_ref(self, SVs):
+            for chrom in self.chrom:
+                fasta_file.write('>' + chrom + '\n')
+                seq = self.apply_events_to_chromosome(chrom, events)
+                l = len(seq)
+                n = 100
+                num_lines = l / n
+                for i in range(0, num_lines):
+                    line = seq[i * n : (i + 1) * n].upper() + '\n'
+                    fasta_file.write(line)
+                with open(os.path.join(self.get_current_job_directory(), chrom + '.fa'), 'w') as chrom_file:
+                    chrom_file.write('>' + chrom + '\n')
+                    chrom_file.write(seq)
+
+    def apply_events_to_chromosome(self, chrom, SVs):
         seq = ''
         previous = 0
         for i, sv in enumerate(SVs):
             left = sv.start
-            seq += self.ref[previous:left]
-            if self.get_sv_type() == 'INV':
-                seq += reverse_complement(self.ref[left:right])
+            seq += self.chrom[chrom][previous:left]
             previous = sv.end
+        seq += self.chrom[chrom][previous:]
         return seq
-    
+
     def export_fastq(self, name):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
         print('Generating FASTQ files:', green(name + '.1.fq'), green(name + '.2.fq'))
-        num_reads = len(self.ref) * c.coverage / 100
+        num_reads = sum(map(lambda x: len(self.chrom[x]), self.chrom)) * c.simulation / 100
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
@@ -228,10 +249,12 @@ class Simulation(map_reduce.Job):
 
     def merge_fastq_files(self, name):
         print('Merging fastq files', name)
-        with open(os.path.join(self.get_current_job_directory(), name + '.1.fq'), 'a') as fastq_file:
-                with open(os.path.join(self.get_current_job_directory(), name + '.2.fq'), 'r') as in_file:
-                    for line in in_file:
-                        fastq_file.write(line)
+        with open(os.path.join(self.get_current_job_directory(), name + '.1.fq'), 'a') as out_file:
+            with open(os.path.join(self.get_current_job_directory(), name + '.2.fq'), 'r') as in_file:
+                line = in_file.readline()
+                while line:
+                    out_file.write(line)
+                    line = in_file.readline()
         os.rename(os.path.join(self.get_current_job_directory(), name + '.1.fq'), os.path.join(self.get_current_job_directory(), name + '.fq'))
         os.remove(os.path.join(self.get_current_job_directory(), name + '.2.fq'))
 
@@ -260,7 +283,7 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
         print('Generating Jellyfish table')
-        command = "jellyfish count -m 31 -s 1000000000 -t 24 --canonical "
+        command = "jellyfish count -m 31 -s 1000000000 -t 24 --canonical --out-counter-len 2"
         for name in args:
             command += ' ' + os.path.join(self.get_current_job_directory(), name + '.fq')
         command += ' -o ' + os.path.join(self.get_current_job_directory(), channel + '.jf')
@@ -272,7 +295,7 @@ class Simulation(map_reduce.Job):
     # ============================================================================================================================ #
 
     def prepare(self):
-        print('Simulatio completed. Preparing statistics...')
+        print('Simulation completed. Preparing statistics...')
 
     def load_inputs(self):
         self.tracks_00 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'absent.bed'))}

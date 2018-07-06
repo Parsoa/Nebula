@@ -28,15 +28,15 @@ awk 'BEGIN {FS = "\t"} /^.*\(4, 4\).*/ ' *merge*.bed > 44.bed
 if [ "$SIM" == "--simulation" ]; then
     echo "Simulation"
     SIM="/share/hormozdiarilab/Codes/NebulousSerendipity/simulation/$BED/31/Simulation/"
-    bedtools intersect -a 11.bed -b $SIM"homozygous.bed" -wa -f 1.0 | sort -u > 11_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 | sort -u > 11_as_10.bed
-    bedtools intersect -a 00.bed -b $SIM"homozygous.bed" -wa -f 1.0 | sort -u > 11_as_00.bed
-    bedtools intersect -a 11.bed -b $SIM"heterozygous.bed" -wa -f 1.0 | sort -u > 10_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"heterozygous.bed" -wa -f 1.0 | sort -u > 10_as_10.bed
-    bedtools intersect -a 00.bed -b $SIM"heterozygous.bed" -wa -f 1.0 | sort -u > 10_as_00.bed
-    bedtools intersect -a 11.bed -b $SIM"absent.bed" -wa -f 1.0 | sort -u > 00_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"absent.bed" -wa -f 1.0 | sort -u > 00_as_10.bed
-    bedtools intersect -a 00.bed -b $SIM"absent.bed" -wa -f 1.0 | sort -u > 00_as_00.bed
+    bedtools intersect -a 11.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
+    bedtools intersect -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0| sort -u > 11_as_10.bed
+    bedtools intersect -a 00.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
+    bedtools intersect -a 11.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
+    bedtools intersect -a 10.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
+    bedtools intersect -a 00.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_00.bed
+    bedtools intersect -a 11.bed -b $SIM"absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_11.bed
+    bedtools intersect -a 10.bed -b $SIM"absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_10.bed
+    bedtools intersect -a 00.bed -b $SIM"absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_00.bed
     ################################################################################
     cat 11_as_11.bed > true_positive.bed
     cat 11_as_10.bed >> true_positive.bed

@@ -46,7 +46,7 @@ def parse_args():
     # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
     parser.add_argument("--snp")
     # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
-    parser.add_argument("--std", type = int)
+    parser.add_argument("--std", type = float)
     # the seed to use for random number generation 
     parser.add_argument("--seed", type = int)
     # triggers the debug mode 
@@ -57,10 +57,14 @@ def parse_args():
     parser.add_argument("--khmer")
     # specifies that this counttable should return dummy values
     parser.add_argument("--dummy", action='store_true')
+    # the chromosome to simulate
+    parser.add_argument("--chrom", default = 'chr1')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
+    # whether to do a whole genome simulation or not 
+    parser.add_argument("--whole", action = 'store_true')
     # the name of the genome being genotyped or whatver 
     parser.add_argument("--genome")
     # radius of the neighborhood considered for breakpoints 
@@ -72,7 +76,7 @@ def parse_args():
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
-    parser.add_argument("--coverage", type = int,default = 30)
+    parser.add_argument("--coverage", type = float, default = 30)
     # the path to a jellyfish generated kmer count index
     parser.add_argument("--jellyfish", nargs = '*')
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
@@ -80,7 +84,7 @@ def parse_args():
     # the outer insert size of the paired end reads 
     parser.add_argument("--insertsize", type = int, default = 1000)
     # indicates if this is part of a simulation
-    parser.add_argument("--simulation", action = 'store_true')
+    parser.add_argument("--simulation", type = int, default = 0)
     # the size of the reads in the FASTQ file 
     parser.add_argument("--readlength", type = int, default = 100)
     # whether the simulation should be heterozygous
@@ -102,6 +106,7 @@ def configure(args):
         snp = args.snp,
         std = args.std,
         seed = args.seed,
+        chrom = args.chrom,
         debug = args.debug,
         exons = args.exons,
         khmer = args.khmer,
@@ -110,7 +115,7 @@ def configure(args):
         radius = args.radius,
         random = args.random,
         bed_file = args.bed,
-        coverage =  1 * args.coverage if args.simulation else args.coverage,
+        coverage = round(2 * args.coverage) if args.simulation else (args.coverage),
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
         fastq_file = os.path.abspath(args.fastq),
@@ -121,6 +126,7 @@ def configure(args):
         insert_size = args.insertsize,
         read_length = args.readlength,
         heterozygous = args.heterozygous,
+        whole_genome = args.whole,
         reference_genome = reference_genome,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,

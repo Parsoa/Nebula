@@ -85,13 +85,13 @@ class ExtractBreakPointsJob(map_reduce.Job):
         unique_inner_kmers = sv.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 1, n = 100)
         unique_inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in unique_inner_kmers}
         right_local_unique_kmers, left_local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count)
-        inner_kmers = sv.get_near_boundary_inner_kmers()
-        inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers}
+        near_boundary_inner_kmers = sv.get_near_boundary_inner_kmers()
+        near_boundary_inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers}
         break_points = {
-            'inner_kmers': inner_kmers,
             'unique_inner_kmers': unique_inner_kmers,
             'left_local_unique_kmers': left_local_unique_kmers,
-            'right_local_unique_kmers': right_local_unique_kmers
+            'right_local_unique_kmers': right_local_unique_kmers,
+            'near_boundary_inner_kmers': near_boundary_inner_kmers
         }
         for begin in range(-c.radius, c.radius + 1):
             for end in range(-c.radius, c.radius + 1):
@@ -105,7 +105,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
                 }
                 score = float(len(break_points[name]['novel_kmers'])) / len(boundary_kmers)
                 break_points[name]['score'] = score
-        return break_points if break_points else None
+        return break_points
 
     def plot(self, tracks):
         print('plotting')
@@ -116,10 +116,10 @@ class ExtractBreakPointsJob(map_reduce.Job):
         for track in tracks:
             with open(tracks[track], 'r') as json_file:
                 break_points = json.load(json_file)['break_points']
-                inner.append(len(break_points[break_point]['inner_kmers']))
-                unique.append(len(break_points[break_point]['unique_inner_kmers']))
-                left.append(len(break_points[break_point]['left_local_unique_kmers']))
-                right.append(len(break_points[break_point]['right_local_unique_kmers']))
+                inner.append(len(break_points['inner_kmers']))
+                unique.append(len(break_points['unique_inner_kmers']))
+                left.append(len(break_points['left_local_unique_kmers']))
+                right.append(len(break_points['right_local_unique_kmers']))
         visualizer.histogram(unique, 'num_unique_inner_kmers', self.get_current_job_directory(), x_label = 'number of inner kmers', y_label = 'number of events') 
         visualizer.histogram(inner, 'num_boundary_inner_kmers', self.get_current_job_directory(), x_label = 'number of inner kmers', y_label = 'number of events') 
         visualizer.histogram(right, 'num_right_kmers', self.get_current_job_directory(), x_label = 'number of right kmers', y_label = 'number of events') 
@@ -153,7 +153,7 @@ class MostLikelyBreakPointsJob(map_reduce.Job):
         self.distribution = {
             '(1, 1)': statistics.NormalDistribution(mean = c.coverage, std = c.std),
             '(1, 0)': statistics.NormalDistribution(mean = c.coverage / 2, std = c.std),
-            '(0, 0)': statistics.ErrorDistribution(1.0 / 1000),
+            '(0, 0)': statistics.NormalDistribution(mean = 0, std = c.std),
         }
 
     def transform(self, track, track_name):

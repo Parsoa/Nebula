@@ -63,25 +63,35 @@ def parse_fastq(path):
 # kmer helpers
 # ============================================================================================================================ #
 
-def extract_chromosome(chrom):
+def extract_chromosome(chromosomes):
     c = config.Configuration()
     sequence = ''
     ref = open(c.reference_genome)
     count = 0
+    line = ref.readline().lower().strip()
+    chrom = 'chr' + str(chromosomes.pop(0))
+    found = False
     while True:
         count += 1
-        line = ref.readline().strip()
-        if line == '>' + chrom or line == '':
-            break
-    if len(line) == 0:
-        return []
-    while True:
-        count += 1
-        line = ref.readline().upper().strip()
-        if line.startswith('>') or line == '':
-            break
-        sequence += line
-    return sequence
+        if line == '>' + chrom:
+            print('found', chrom)
+            while True:
+                line = ref.readline().lower().strip()
+                count += 1
+                if line.startswith('>') or len(line) == 0:
+                    print(line)
+                    yield sequence, chrom
+                    sequence = ''
+                    if len(chromosomes) == 0:
+                        return
+                    chrom = 'chr' + str(chromosomes.pop(0))
+                    found = True
+                    break
+                sequence += line
+        if found:
+            found = False
+            continue
+        line = ref.readline().lower().strip()
 
 def get_kmer_count(kmer, index, ref):
     start = time.time()
@@ -147,7 +157,8 @@ def c_extract_canonical_kmers(k, counter = lambda x: 1, count = 1, *args):
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = get_canonical_kmer_representation(s[i : i + k])
-            if counter(kmer) > count:
+            c = counter(kmer)
+            if c > count:
                 continue
             if not kmer in kmers:
                 kmers[kmer] = 0

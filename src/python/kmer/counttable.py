@@ -13,6 +13,7 @@ from kmer import (
 )
 
 from kmer.kmers import *
+from kmer.commons import *
 
 #import khmer
 import jellyfish
@@ -118,6 +119,12 @@ class JellyfishCountsProvider(KmerCountsProvider):
         canon.canonicalize()
         return self.qf[canon]
 
+    def stream_kmers(self):
+        mf = jellyfish.ReadMerFile(self.path)
+        #print({key: value for key, value in mf.__dict__.items() if not key.startswith("__")})
+        for kmer, count in mf:
+            yield kmer, count
+
 # ============================================================================================================================ #
 # KMC
 # ============================================================================================================================ #
@@ -137,3 +144,4 @@ class KmcCountsProvider(KmerCountsProvider):
         kmer_str = ctypes.create_string_buffer(str.encode(kmer))
         count = self.kmc.get_kmer_count(kmer_str)
         return count
+

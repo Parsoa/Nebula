@@ -275,7 +275,7 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = LocalUniqueKmersCountingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPointsJob_', batch_file_prefix = 'experimental_', **kwargs)
+        job = LocalUniqueKmersCountingJob(job_name = 'Genotyping_', previous_job_name = 'MostLikelyBreakPointsJob_', batch_file_prefix = 'experimental', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -379,7 +379,7 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
 
     def reduce(self):
         c = config.Configuration()
-        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '0.json')
+        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_0.json')
         with open(path, 'r') as json_file:
             output = json.load(json_file)
         for i in range(1, self.num_threads):
@@ -392,7 +392,7 @@ class LocalUniqueKmersCountingJob(map_reduce.BaseGenotypingJob):
                         output[track][break_point]['left_local_unique_kmers'][kmer] += tracks[track][break_point]['left_local_unique_kmers'][kmer]
                     for kmer in tracks[track][break_point]['right_local_unique_kmers']:
                         output[track][break_point]['right_local_unique_kmers'][kmer] += tracks[track][break_point]['right_local_unique_kmers'][kmer]
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'merge.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
 
     def count_inner_kmers(self, read):
@@ -418,7 +418,7 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = LocalUniqueKmersGenotypingJob(job_name = 'Genotyping_', previous_job_name = 'Genotyping_', batch_file_prefix = 'outer_', previous_job_batch_file_prefix = 'experimental_', **kwargs)
+        job = LocalUniqueKmersGenotypingJob(job_name = 'Genotyping_', previous_job_name = 'Genotyping_', batch_file_prefix = 'outer', previous_job_batch_file_prefix = 'experimental_', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -458,7 +458,7 @@ class LocalUniqueKmersGenotypingJob(map_reduce.BaseGenotypingJob):
                 choice = min(likelihood[break_point]['likelihood'].items(), key = operator.itemgetter(1))[0]
                 print(choice)
                 likelihood[break_point]['genotype'] = choice
-        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + 'genotype_' + track_name + '.json')
+        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_genotype_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(likelihood, json_file, sort_keys = True, indent = 4)
         return path

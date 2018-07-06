@@ -1,7 +1,7 @@
 #!/bin/bash
 P=$(pwd)
 echo $P
-SIM=$(echo $P | awk '{ if ($0 ~ /.*mulation.*/) { print "--simulation" } else { print "" } }')
+SIM=$(echo $P | awk -F/ '{ if ($0 ~ /.*mulation.*/) { print "--simulation " $8 } else { print "" } }')
 echo $SIM
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv2/bin/activate

@@ -2,7 +2,7 @@
 export PYTHONPATH=$PYTHONPATH:/home/pkhorsand/local/cplex/lib/python
 P=$(pwd)
 echo $P
-SIM=$(echo $P | awk '{ if ($0 ~ /.*mulation.*/) { print "--simulation" } else { print "" } }')
+SIM=$(echo $P | awk -F/ '{ if ($0 ~ /.*mulation.*/) { print "--simulation " $8 } else { print "" } }')
 echo $SIM
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv2/bin/activate
@@ -15,11 +15,11 @@ echo $REF
 echo $GEN
 DEP=$(echo $P | awk -v P=$P '{ if ($0 ~ /.*simulation.*/) { print P "/../DepthOfCoverageEstimationJob/stats.json"} else { print P "/../../DepthOfCoverageEstimationJob/stats.json" } }')
 echo $DEP
-COV="$(head -n 10 "$DEP" | sed -n 's/\s*"mean":\s*\([0-9]*\).*/\1/p')"
-STD="$(head -n 10 "$DEP" | sed -n 's/\s*"std":\s*\([0-9]*\).*/\1/p')"
+COV="$(head -n 10 "$DEP" | sed -n 's/\s*"mean":\s*\([0-9]*\.[0-9]*\).*/\1/p')"
+STD="$(head -n 10 "$DEP" | sed -n 's/\s*"std":\s*\([0-9]*\.[0-9]*\).*/\1/p')"
 echo $COV
 echo $STD
 JLY=$(echo $SIM | awk -v P=$P -v GEN=$GEN '{ if ($0 ~ /.*simulation.*/) { print P "/../Simulation/test.jf" } else { print "/share/hormozdiarilab/Experiments/Jellyfish/" GEN "/mer_counts.jf" } }')
 echo $JLY
 echo "$@"
-python -m kmer.programming --job IntegerProgrammingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish /share/hormozdiarilab/Experiments/Jellyfish/$REF/mer_counts.jf $JLY --coverage $COV --fastq $GEN $SIM "$@"
+python -m kmer.programming --job IntegerProgrammingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY /share/hormozdiarilab/Experiments/Jellyfish/$REF/mer_counts.jf --coverage $COV --fastq $GEN $SIM "$@"

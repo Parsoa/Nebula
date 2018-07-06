@@ -3,3 +3,8 @@ pybedtools
 colorama
 pylru
 plotly
+seaborn
+pandas
+matplotlib
+scipy
+tk

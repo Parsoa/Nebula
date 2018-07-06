@@ -56,17 +56,20 @@ class StructuralVariation(object):
     # will return the same set of inner kmers for every breakpoint 
     def get_inner_kmers(self, counter, count, n):
         c = config.Configuration()
-        begin = (c.radius + c.ksize + c.read_length + self.slack) + c.radius
-        end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack) - c.radius
+        begin = (c.radius + c.ksize + c.read_length + self.slack)# + c.radius
+        end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack)# - c.radius
         if begin > end:
+            print(yellow('Event too short, no inner kmers exist'))
             return {}
         inner_seq = self.sequence[begin : end]
         # now count the kmers
         inner_kmers = c_extract_canonical_kmers(c.ksize, counter, count, inner_seq)
         items = inner_kmers.items()
         if len(inner_kmers) <= n:
+            #print(blue('YES'))
             return inner_kmers
         else:
+            #print(red('NO'))
             return {kmer: inner_kmers[kmer] for kmer in list(map(lambda i: items[i][0], sorted(random.sample(range(0, len(inner_kmers)), n))))}
 
     def get_near_boundary_inner_kmers(self, counter = lambda x: 1, count = 1):
@@ -135,5 +138,5 @@ class Deletion(StructuralVariation):
             return None, None
         #
         seq = seq[:c.ksize] + seq[-c.ksize:]
-        boundary_kmers = extract_kmers(c.ksize, counter, 0, seq)
+        boundary_kmers = c_extract_kmers(c.ksize, counter, 0, seq)
         return boundary_kmers, seq
