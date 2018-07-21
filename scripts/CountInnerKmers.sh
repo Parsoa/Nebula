@@ -1,4 +1,5 @@
 #!/bin/bash
+export PYTHONPATH=$PYTHONPATH:/home/pkhorsand/local/cplex/lib/python
 P=$(pwd)
 echo $P
 SIM=$(echo $P | awk -F/ '{ if ($0 ~ /.*mulation.*/) { print "--simulation " $8 } else { print "" } }')
@@ -12,13 +13,7 @@ GEN=$(echo $P | awk -F/ '{ if ($0 ~ /.*mulation.*/) { print "SIM" } else { print
 echo $BED
 echo $REF
 echo $GEN
-DEP=$(echo $P | awk -v P=$P '{ if ($0 ~ /.*simulation.*/) { print P "/../DepthOfCoverageEstimationJob/stats.json"} else { print P "/../../DepthOfCoverageEstimationJob/stats.json" } }')
-echo $DEP
-COV="$(head -n 10 "$DEP" | sed -n 's/\s*"mean":\s*\([0-9]*\).*/\1/p')"
-STD="$(head -n 10 "$DEP" | sed -n 's/\s*"std":\s*\([0-9]*\).*/\1/p')"
-echo $COV
-echo $STD
 JLY=$(echo $SIM | awk -v BED=$BED -v P=$P -v GEN=$GEN '{ if ($0 ~ /.*simulation.*/) { print P "/../Simulation/test.jf" } else { print "/share/hormozdiarilab/Experiments/Jellyfish/" GEN "/mer_counts.jf" } }')
 echo $JLY
 echo $@
-python -m kmer.genotyping --job LocalUniqueKmersCountingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --coverage $COV --std $STD --fastq /share/hormozdiarilab/Codes/NebulousSerendipity/HG00512.alt_bwamem_GRCh38DH.20150715.CHS.high_coverage.Test.ReSorted.Fq $SIM "$@"
+python -m kmer.programming --job CountInnerKmersJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --fastq "$P/../Simulation/test_2x.fq" $SIM "$@"

@@ -52,52 +52,45 @@ class KmerCountsProvider(object):
 # Dummy. Always returns 40. Use for testing.
 # ============================================================================================================================ #
 
+class DictionaryCountsProvider(KmerCountsProvider):
+
+    def __init__(self, kmers):
+        self.kmers = kmers
+
+    def get_kmer_count(self, kmer):
+        k = find_kmer(kmer, self.kmers)
+        return self.kmers[k]
+
+    def stream_kmers(self):
+        for kmer in self.kmers:
+            yield str(kmer), self.kmers[kmer]
+
+# ============================================================================================================================ #
+# Dummy. Always returns 40. Use for testing.
+# ============================================================================================================================ #
+
+class ReferenceCountsProvider(KmerCountsProvider):
+
+    def __init__(self, path):
+        self.path = path
+        self.chrom = {}
+        for c in range(1, 23):
+            self.chrom[c] = open(os.path.join(self.path, 'chr' + str(c) + '.fa')).readlines()[1].upper()
+        self.chrom['x'] = open(os.path.join(self.path, 'chrx.fa')).readlines()[1].upper()
+        self.chrom['y'] = open(os.path.join(self.path, 'chry.fa')).readlines()[1].upper()
+
+    @Memoize
+    def get_kmer_count(self, kmer):
+        return sum(list(map(lambda x: len(x), [[m.start() for m in re.finditer(kmer, self.chrom[c])] for c in self.chrom]))) + sum(list(map(lambda x: len(x), [[m.start() for m in re.finditer(reverse_complement(kmer), self.chrom[c])] for c in self.chrom])))
+
+# ============================================================================================================================ #
+# Dummy. Always returns 40. Use for testing.
+# ============================================================================================================================ #
+
 class DummyCountsProvider(KmerCountsProvider):
 
     def get_kmer_count(self, kmer):
         return 40
-
-# ============================================================================================================================ #
-# Khmer
-# ============================================================================================================================ #
-
-#class KhmerCountsProvider(KmerCountsProvider):
-#
-#    @commons.measure_time
-#    def export_counts():
-#        c = config.Configuration()
-#        # 
-#        cache = c.counttable + '.ct'
-#        print(colorama.Fore.BLUE + 'searching for cached counttable ', cache)
-#        if os.path.isfile(cache):
-#            print(colorama.Fore.BLUE + 'found at ', cache)
-#            return
-#        #
-#        print(colorama.Fore.BLUE + 'not found, generating counttable...')
-#        counttable, nkmers = self.count_kmers_from_file(c.khmer)
-#        counttable.save(cache)
-#        print(colorama.Fore.BLUE + 'done')
-#        #
-#        print(colorama.Fore.BLUE + 'counttable cached\n', 'kmers: ', nkmers,\
-#            '\nsize: ', os.stat(cache).st_size)
-#        return
-#
-#    def count_kmers_from_file(seq_file):
-#        c = config.Configuration()
-#        #
-#        counttable = khmer.Counttable(c.ksize, c.khmer_table_size, c.khmer_num_tables)
-#        nseqs, nkmers = counttable.consume_seqfile(seq_file)
-#        #
-#        return counttable, nkmers
-#
-#    @commons.measure_time
-#    def import_counts(self):
-#        c = config.Configuration()
-#        print(colorama.Fore.MAGENTA + 'importing counttable for ', c.counttable)
-#        cache = c.counttable + '.ct'
-#        counttable = khmer.Counttable.load(cache)
-#        print(colorama.Fore.MAGENTA + 'done')
-#        return counttable
 
 # ============================================================================================================================ #
 # Jellyfish
@@ -123,7 +116,7 @@ class JellyfishCountsProvider(KmerCountsProvider):
         mf = jellyfish.ReadMerFile(self.path)
         #print({key: value for key, value in mf.__dict__.items() if not key.startswith("__")})
         for kmer, count in mf:
-            yield kmer, count
+            yield str(kmer), count
 
 # ============================================================================================================================ #
 # KMC

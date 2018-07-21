@@ -21,77 +21,69 @@ from kmer import (
     config,
 )
 
+from kmer.commons import *
+
 import socket
 import struct
-
-# ============================================================================================================================ #
-# FASTQ helpers
-# ============================================================================================================================ #
-
-def parse_fastq(path):
-    name = None
-    #tracemalloc.start()
-    HEADER_LINE = 0
-    SEQUENCE_LINE = 1
-    THIRD_LINE = 2
-    QUALITY_LINE = 3
-    state = HEADER_LINE
-    # need to skip invalid lines
-    fastq_file = open(path)
-    line = fastq_file.readline().strip()
-    ahead = fastq_file.readline().strip()
-    n = 0
-    m = 0
-    t = time.time()
-    while ahead:
-        if state == HEADER_LINE:
-            if line[0] == '@' and ahead[0] != '@':
-                name = line[:-1] # ignore the EOL character
-                state = SEQUENCE_LINE
-        elif state == SEQUENCE_LINE:
-            state = THIRD_LINE
-            seq = line[:-1] # ignore the EOL character
-            yield seq, name
-        elif state == THIRD_LINE:
-            state = QUALITY_LINE
-        elif state == QUALITY_LINE:
-            state = HEADER_LINE
-        line = ahead
-        ahead = fastq_file.readline()
 
 # ============================================================================================================================ #
 # kmer helpers
 # ============================================================================================================================ #
 
-def extract_chromosome(chromosomes):
+@Memoize
+def extract_chromosome(chromosome):
     c = config.Configuration()
     sequence = ''
     ref = open(c.reference_genome)
     count = 0
     line = ref.readline().lower().strip()
-    chrom = 'chr' + str(chromosomes.pop(0))
     found = False
     while True:
         count += 1
-        if line == '>' + chrom:
-            print('found', chrom)
-            while True:
-                line = ref.readline().lower().strip()
-                count += 1
-                if line.startswith('>') or len(line) == 0:
-                    print(line)
-                    yield sequence, chrom
-                    sequence = ''
-                    if len(chromosomes) == 0:
-                        return
-                    chrom = 'chr' + str(chromosomes.pop(0))
-                    found = True
-                    break
-                sequence += line
+        if line.startswith('>chr'):
+            chrom = line[line.find('>') + 1:]
+            if chrom == chromosome:
+                print('extracting ' + chrom)
+                while True:
+                    line = ref.readline().lower().strip()
+                    count += 1
+                    if line.startswith('>') or len(line) == 0:
+                        print(line)
+                        return sequence
+                    sequence += line
+        line = ref.readline().lower().strip()
+        if len(line) == 0:
+            break
+
+def extract_chromosomes(chromosomes):
+    c = config.Configuration()
+    sequence = ''
+    ref = open(c.reference_genome)
+    count = 0
+    line = ref.readline().lower().strip()
+    found = False
+    while True:
+        count += 1
+        if line.startswith('>chr'):
+            chrom = line[line.find('>') + 1:]
+            if chrom in chromosomes:
+                print('extracting ' + chrom)
+                while True:
+                    line = ref.readline().lower().strip()
+                    count += 1
+                    if line.startswith('>') or len(line) == 0:
+                        print(line)
+                        yield sequence, chrom
+                        sequence = ''
+                        found = True
+                        break
+                    sequence += line
         if found:
             found = False
             continue
         line = ref.readline().lower().strip()
+        if len(line) == 0:
+            break
 
 def get_kmer_count(kmer, index, ref):
     start = time.time()

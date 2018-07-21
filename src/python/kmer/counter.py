@@ -1,10 +1,34 @@
+from __future__ import print_function
+
+import io
+import os
+import re
+import pwd
+import sys
+import copy
+import json
+import time
+import argparse
+import operator
+import traceback
+
+from kmer import (
+    bed,
+    config,
+    map_reduce,
+)
+
+from kmer.kmers import *
+from kmer.commons import *
+print = pretty_print
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # MapReduce Job to find reads containing kmers from structural variation events that produce too many novel kmers.
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class RecursiveMergeCountsJob(Job):
+class RecursiveMergeCountsJob(map_reduce.Job):
 
     @staticmethod
     def launch(previous_job_directory, **kwargs):
@@ -71,7 +95,7 @@ class RecursiveMergeCountsJob(Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseExactCountingJob(Job):
+class BaseExactCountingJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # job-specific stuff
@@ -86,11 +110,11 @@ class BaseExactCountingJob(Job):
         QUALITY_LINE = 3
         state = HEADER_LINE
         # need to skip invalid lines
-        line = self.fastq_file.readline().strip()
+        line = self.fastq_file.readline().upper().strip()
         # for the very rare occasion that the first byte in a segment is a line feed
         if len(line) == 0:
-            line = self.fastq_file.readline().strip()
-        ahead = self.fastq_file.readline().strip()
+            line = self.fastq_file.readline().upper().strip()
+        ahead = self.fastq_file.readline().upper().strip()
         n = 0
         m = 0
         t = time.time()
@@ -128,10 +152,6 @@ class BaseExactCountingJob(Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def find_thread_count(self):
-        c = config.Configuration()
-        self.num_threads = c.max_threads
-
     def run_batch(self, batch):
         c = config.Configuration()
         self.fastq_file = open(c.fastq_file, 'r')
@@ -147,26 +167,17 @@ class BaseExactCountingJob(Job):
             kmers = extract_kmers(c.ksize, read)
             for kmer in kmers:
                 if kmer in self.kmers: 
-                    self.kmers[kmer] += 1
+                    self.kmers[kmer]['count'] += 1
 
-    def merge_counts_recursive(self):
-        for i in range(1, math.ceil(math.log(self.num_threads, 2)) + 1):
-            job = RecursiveMergeCountsJob.launch(batch_size = 2 ** i, previous_job_directory = self.get_current_job_directory())
+    #def merge_counts_recursive(self):
+    #    for i in range(1, math.ceil(math.log(self.num_threads, 2)) + 1):
+    #        job = RecursiveMergeCountsJob.launch(batch_size = 2 ** i, previous_job_directory = self.get_current_job_directory())
 
     def merge_counts(self):
         c = config.Configuration()
         print('merging kmer counts ...')
         kmers = {}
-        index = 0
         for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                kmers = json.load(json_file)
-                index = i
-                break
-        for i in range(0, self.num_threads):
-            if i == index:
-                continue
             print('adding batch', i)
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
             if not os.path.isfile(path):
@@ -175,6 +186,12 @@ class BaseExactCountingJob(Job):
             with open (path, 'r') as json_file:
                 batch = json.load(json_file)
                 for kmer in batch:
-                    kmers[kmer] += batch[kmer]
+                    k = find_kmer(kmer, kmers)
+                    if k:
+                        kmers[k]['count'] += batch[kmer]['count']
+                    else:
+                        kmers[kmer] = batch[kmer]
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(kmers, json_file, indent = 4, sort_keys = True)
         return kmers
 

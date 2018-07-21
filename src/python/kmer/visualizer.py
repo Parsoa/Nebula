@@ -54,7 +54,6 @@ def bar(x, ys, name, path, x_label, y_label):
 
 def violin(x, y, name, path, x_label, y_label):
     data = pd.DataFrame(dict(LP = y, Zygosity = x))
-    print(data)
-    fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity')
+    fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity', width = 120 * len(set(x)))
     plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
 

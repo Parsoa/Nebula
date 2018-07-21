@@ -51,101 +51,60 @@ class Simulation(map_reduce.Job):
     # Simulation
     # ============================================================================================================================ #
 
-    def execute(self):
+    def load_inputs(self):
         c = config.Configuration()
-        self.check_cli_arguments(None)
-        self.create_output_directories()
-        if not self.resume_from_reduce:
-            print('normal execution flow')
-            #self.plot_reference_kmer_profile()
-            self.simulate()
-            exit()
-        self.find_thread_count()
-        self.prepare()
-        self.load_inputs()
-        self.distribute_workload()
-        self.wait_for_children()
-        output = self.reduce()
-        self.plot(output)
-
-    def plot_reference_kmer_profile(self):
-        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-        counts = []
-        n = 0
-        for kmer, count in self.reference_counts_provider.stream_kmers():
-            print(kmer, count)
-            counts.append(count)
-            n += 1
-            if n % 10000 == 1:
-                print(green(n), 'kmers counted')
-        counts = [counts[i] for i in random.sample(range(0, len(counts)), len(counts) / 10000)]
-        visualizer.histogram(counts, 'reference_genome_kmer_profile', self.get_current_job_directory(), 'kmer coverage', 'number of kmers')
-        exit()
-
-    def simulate(self):
-        c = config.Configuration()
-        if c.whole_genome:
-            self.extract_whole_genome()
-        else:
-            self.ref = extract_chromosome(c.chrom)
         if c.seed:
             random.seed(c.seed)
         if c.random:
-            SVs = self.generate_random_intervals(ref, 1000)
+            self.SVs = self.generate_random_intervals(ref, 1000)
         else:
-            SVs = self.load_structural_variations()
-        if c.heterozygous:
-            pid = os.fork()
-            # generate homozygous control channel using all events
-            if pid == 0:
-                self.export_bed(SVs, 'all')
-                self.export_fasta(SVs, 'control_strand')
-                self.export_fastq('control_strand')
-                self.merge_fastq_files('control_strand')
-                self.export_jellyfish_table('control', 'control_strand')
-            # generate hetereozygous test channel using half the events
-            else:
-                n = len(SVs) / 2
-                r = sorted(random.sample(xrange(len(SVs)), n))
-                a = list(filter(lambda i: i not in r, range(len(SVs))))
-                absent = [ SVs[i] for i in a ]
-                present = [ SVs[i] for i in r ]
-                self.export_bed(absent, 'absent')
-                self.export_bed(present, 'present')
-                homozygous_SVs, heterozygous_SVs = self.select_events(present)
-                self.export_bed(homozygous_SVs, 'homozygous')
-                self.export_bed(heterozygous_SVs, 'heterozygous')
-                self.export_fasta(homozygous_SVs, 'test_strand_1')
-                self.export_fasta(heterozygous_SVs, 'test_strand_2')
-                # export a couple of fastq files for each strand, will this work?
-                self.export_fastq('test_strand_1')
-                self.export_fastq('test_strand_2')
-                self.merge_fastq_files('test_strand_1')
-                self.merge_fastq_files('test_strand_2')
-                self.export_jellyfish_table('test', 'test_strand_1', 'test_strand_2')
+            self.SVs = self.load_structural_variations()
+        self.export_bed(self.SVs, 'all')
+        n = len(self.SVs) / 2
+        r = sorted(random.sample(xrange(len(self.SVs)), n))
+        a = list(filter(lambda i: i not in r, range(len(self.SVs))))
+        self.absent = [ self.SVs[i] for i in a ]
+        self.present = [ self.SVs[i] for i in r ]
+        self.export_bed(self.absent, 'absent')
+        self.export_bed(self.present, 'present')
+        self.homozygous, self.heterozygous = self.select_events(self.present)
+        self.export_bed(self.homozygous, 'homozygous')
+        self.export_bed(self.heterozygous, 'heterozygous')
+        #
+        self.extract_whole_genome()
+        self.round_robin(self.chrom)
 
     def extract_whole_genome(self):
-        c = [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 2, 20, 21, 22, 3, 4, 5, 6, 7, 8, 9, 'x', 'y']
+        c = ['chr' + str(x) for x in range(1, 23)]
+        c.append('chrx')
+        c.append('chry')
+        c = ['chr2']
         self.chrom = {}
-        for seq, chrom in extract_chromosome(c):
+        n = 0
+        for seq, chrom in extract_chromosomes(c):
+            print('got', chrom, len(seq), 'bases')
             self.chrom[chrom] = seq
+            n += 1
+            with open(os.path.join(self.get_current_job_directory(), chrom + '.fa'), 'w') as chrom_file:
+                #chrom_file.write('>' + chrom + '\n')
+                chrom_file.write(seq)
 
     def generate_random_intervals(self, n):
         c = config.Configuration()
         random.seed(c.seed)
         print('generating', n, 'random events')
         l = len(self.ref)
-        SVs = []
+        intervals = []
         offset = 100000
         for i in range(0, n):
             start = random.randint(offset, l - offset)
             end = start + random.randint(100, 2000)
-            event = pybedtools.Interval(chrom = c.chrom, start = start, end = end)
-            SVs.append(event)
-        SVs = sorted(SVs, key = lambda x: x.start)
-        SVs = self.filter_overlapping_intervals(SVs)
-        return SVs
-    
+            interval = pybedtools.Interval(chrom = c.chrom, start = start, end = end)
+            intervals.append(interval)
+        intervals = sorted(intervals, key = lambda x: x.start)
+        intervals = self.filter_overlapping_intervals(intervals)
+        return intervals
+
     def load_structural_variations(self):
         c = config.Configuration()
         bedtools = pybedtools.BedTool(c.bed_file)
@@ -164,7 +123,7 @@ class Simulation(map_reduce.Job):
         tracks = sorted(tracks, key = lambda x: x.start)
         print('Total number of deletions:', len(tracks))
         return self.filter_overlapping_intervals(tracks)
-    
+
     def filter_overlapping_intervals(self, intervals):
         remove = []
         i = 0
@@ -185,7 +144,7 @@ class Simulation(map_reduce.Job):
             intervals.pop(index - n)
             n = n + 1
         return intervals
-    
+
     def export_bed(self, intervals, name):
         print('Exporting BED file:', green(name + '.bed'))
         with open(os.path.join(self.get_current_job_directory(), name + '.bed'), 'w') as bed_file:
@@ -209,76 +168,107 @@ class Simulation(map_reduce.Job):
         heterozygous = sorted(heterozygous, key = lambda x: x.start)
         return homozygous, heterozygous
 
-    def export_fasta(self, events, name):
+    def transform(self, seq, chrom):
+        print('simulating', chrom)
+        self.export_chromosome_fasta(chrom, self.present, chrom + '_strand_1')
+        self.export_chromosome_fasta(chrom, self.homozygous, chrom + '_strand_2')
+        # export a couple of fastq files for each strand, will this work?
+        exit()
+        self.export_fastq(seq, chrom + '_strand_1')
+        self.export_fastq(seq, chrom + '_strand_2')
+        #self.merge_fastq_files(chrom, chrom + '_strand_1.1', chrom + '_strand_2.2')
+        #self.merge_fastq_files(chrom + '_strand_2')
+
+    def export_chromosome_fasta(self, chrom, events, name):
         print('Exporting FASTA file:', green(name + '.fa')) 
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), name + '.fa'), 'w') as fasta_file:
-            for chrom in self.chrom:
-                fasta_file.write('>' + chrom + '\n')
+            fasta_file.write('>' + chrom + '\n')
+            if chrom == c.chrom:
                 seq = self.apply_events_to_chromosome(chrom, events)
-                l = len(seq)
-                n = 100
-                num_lines = l / n
-                for i in range(0, num_lines):
-                    line = seq[i * n : (i + 1) * n].upper() + '\n'
-                    fasta_file.write(line)
-                with open(os.path.join(self.get_current_job_directory(), chrom + '.fa'), 'w') as chrom_file:
-                    chrom_file.write('>' + chrom + '\n')
-                    chrom_file.write(seq)
+            else:
+                seq = self.chrom[chrom]
+            l = len(seq)
+            n = 100
+            num_lines = l / n
+            for i in range(0, num_lines):
+                line = seq[i * n : (i + 1) * n].upper() + '\n'
+                fasta_file.write(line)
 
     def apply_events_to_chromosome(self, chrom, SVs):
+        chrom = ''
+        with open(os.path.join(self.get_current_job_directory(), 'chr2.fa')) as chrom_file:
+            chrom = chrom_file.readlines()
+        chrom = chrom[0].upper()
+        print(chrom.find('CGGCAGTGGGGACCACCCGTGGACAGGAGAG'))
+        print(len(chrom))
         seq = ''
         previous = 0
         for i, sv in enumerate(SVs):
             left = sv.start
-            seq += self.chrom[chrom][previous:left]
+            #print(previous, '\t', left)
+            s = chrom[previous:left]
+            seq += s
+            if seq.find('CGGCAGTGGGGACCACCCGTGGACAGGAGAG') != -1:
+                print(previous, left, sv)
             previous = sv.end
-        seq += self.chrom[chrom][previous:]
+        print(previous)
+        seq += chrom[previous:]
+        print(seq.find('CGGCAGTGGGGACCACCCGTGGACAGGAGAG'))
         return seq
 
-    def export_fastq(self, name):
+    def export_fastq(self, seq, name):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
         print('Generating FASTQ files:', green(name + '.1.fq'), green(name + '.2.fq'))
-        num_reads = sum(map(lambda x: len(self.chrom[x]), self.chrom)) * c.simulation / 100
+        num_reads = len(seq) * c.simulation / 100
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
         command =  "wgsim -d400 -N{} -1100 -2100 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
-    def merge_fastq_files(self, name):
+    def merge_fastq_files(self, name, *args):
         print('Merging fastq files', name)
-        with open(os.path.join(self.get_current_job_directory(), name + '.1.fq'), 'a') as out_file:
-            with open(os.path.join(self.get_current_job_directory(), name + '.2.fq'), 'r') as in_file:
-                line = in_file.readline()
-                while line:
-                    out_file.write(line)
+        with open(os.path.join(self.get_current_job_directory(), name + '.fq'), 'w') as out_file:
+            for arg in args:
+                with open(os.path.join(self.get_current_job_directory(), arg + '.fq'), 'r') as in_file:
                     line = in_file.readline()
-        os.rename(os.path.join(self.get_current_job_directory(), name + '.1.fq'), os.path.join(self.get_current_job_directory(), name + '.fq'))
-        os.remove(os.path.join(self.get_current_job_directory(), name + '.2.fq'))
+                    while line:
+                        out_file.write(line)
+                        line = in_file.readline()
+        #os.rename(os.path.join(self.get_current_job_directory(), name + '.1.fq'), os.path.join(self.get_current_job_directory(), name + '.fq'))
+        #os.remove(os.path.join(self.get_current_job_directory(), name + '.2.fq'))
 
-    #def export_bam(self, name):
-        # generate sam file
-        #print('Generating SAM file:', green(name + '.sam'))
-        #sam_file = os.path.join(self.get_current_job_directory(), name + '.sam')
-        #command = "bwa mem -M -t 20 -R \"@RG\\tID:1\\tPL:ILLUMINA\\tSM:cnv_1000_ref\" {} {} {} > {}".format(c.reference_genome, fastq_1, fastq_2, sam_file)
-        #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-        ## generate bam file
-        #print('Generating unsorted BAM file:', green(name + '.unsorted.bam'))
-        #unsorted_bam = os.path.join(self.get_current_job_directory(), name + '.unsorted.bam')
-        #command = "samtools view -S -b {} > {}".format(sam_file, unsorted_bam)  
-        #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-        #print('Sorting ...')
-        #bam = os.path.join(self.get_current_job_directory(), name)
-        #command = "samtools sort {} -o {}".format(unsorted_bam, bam)
-        #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-        #print('Indexing ...')
-        #bam_index = os.path.join(self.get_current_job_directory(), name + '.bai')
-        #command = "samtools index {} {}".format(bam + '.bam', bam_index)
-        #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
-        #print('Done!')
-    
+    def reduce(self):
+        self.chrom = ['chr' + c for c in [str(x) for x in range(1, 23)]]
+        self.chrom.append('chrx')
+        self.chrom.append('chry')
+        #self.chrom = ['chr1']
+        #print(self.chrom)
+        #with open(os.path.join(self.get_current_job_directory(), 'test_1.fq'), 'w') as out_file:
+        #    for chrom in self.chrom:
+        #        print('1: adding reads for', chrom)
+        #        for i in [1, 2]:
+        #            with open(os.path.join(self.get_current_job_directory(), chrom + '_strand_' + str(i) + '.' + str(i) + '.fq'), 'r') as in_file:
+        #                line = in_file.readline()
+        #                while line:
+        #                    out_file.write(line)
+        #                    line = in_file.readline()
+        #    exit()
+        #else:
+        #    with open(os.path.join(self.get_current_job_directory(), 'test_strand_2.fq'), 'w') as out_file:
+        #        for chrom in self.chrom:
+        #            print('2: adding reads for', chrom)
+        #            for i in [1, 2]:
+        #                with open(os.path.join(self.get_current_job_directory(), chrom + '_strand_2.' + str(i) + '.fq'), 'r') as in_file:
+        #                    line = in_file.readline()
+        #                    while line:
+        #                        out_file.write(line)
+        #                        line = in_file.readline()
+        #    os.waitpid(pid, 0)
+        #self.export_jellyfish_table('test', 'test')
+
     def export_jellyfish_table(self, channel, *args):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
@@ -294,72 +284,86 @@ class Simulation(map_reduce.Job):
     # Simulation
     # ============================================================================================================================ #
 
-    def prepare(self):
-        print('Simulation completed. Preparing statistics...')
+    #def prepare(self):
+    #    print('Simulation completed. Preparing statistics...')
 
-    def load_inputs(self):
-        self.tracks_00 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'absent.bed'))}
-        self.tracks_10 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'heterozygous.bed'))}
-        self.tracks_11 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'homozygous.bed'))}
-        self.tracks = {}
-        self.tracks.update(self.tracks_00)
-        self.tracks.update(self.tracks_10)
-        self.tracks.update(self.tracks_11)
-        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-        self.counts_provider = counttable.JellyfishCountsProvider(os.path.join(self.get_current_job_directory(), 'test.jf'))
-        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.start > 1000000) 
+    #def load_inputs(self):
+    #    self.tracks_00 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'absent.bed'))}
+    #    self.tracks_10 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'heterozygous.bed'))}
+    #    self.tracks_11 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'homozygous.bed'))}
+    #    self.tracks = {}
+    #    self.tracks.update(self.tracks_00)
+    #    self.tracks.update(self.tracks_10)
+    #    self.tracks.update(self.tracks_11)
+    #    self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
+    #    self.counts_provider = counttable.JellyfishCountsProvider(os.path.join(self.get_current_job_directory(), 'test.jf'))
+    #    self.round_robin(self.tracks, filter_func = lambda track: track.end - track.start > 1000000) 
 
-    def transform(self, track, track_name):
-        sv = self.get_sv_type()(track)
-        c = config.Configuration()
-        inner_kmers = sv.get_inner_kmers(self.reference_counts_provider.get_kmer_count, count = 1, n = 1000)
-        if len(inner_kmers) == 0:
-            return None
-        path = os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track_name  + '.json')
-        with open(path, 'w') as json_file:
-            json.dump({'inner_kmers': {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers} }, json_file, sort_keys = True, indent = 4)
-        return path
+    #def transform(self, track, track_name):
+    #    sv = self.get_sv_type()(track)
+    #    c = config.Configuration()
+    #    inner_kmers = sv.get_inner_kmers(self.reference_counts_provider.get_kmer_count, count = 1, n = 1000)
+    #    if len(inner_kmers) == 0:
+    #        return None
+    #    path = os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track_name  + '.json')
+    #    with open(path, 'w') as json_file:
+    #        json.dump({'inner_kmers': {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers} }, json_file, sort_keys = True, indent = 4)
+    #    return path
 
-    def reduce(self):
-        self.tracks = map_reduce.Job.reduce(self)
-        self.kmers_00 = {}
-        self.kmers_10 = {}
-        self.kmers_11 = {}
-        means_00 = []
-        means_10 = []
-        means_11 = []
-        print(cyan(len(self.tracks)), 'tracks')
-        for track in self.tracks:
-            with open(self.tracks[track], 'r') as json_file:
-                inner_kmers = json.load(json_file)['inner_kmers']
-                #print(len(inner_kmers))
-                if track in self.tracks_00:
-                    means_00.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
-                    for inner_kmer in inner_kmers:
-                        self.kmers_00[inner_kmer] = inner_kmers[inner_kmer]
-                if track in self.tracks_10:
-                    means_10.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
-                    for inner_kmer in inner_kmers:
-                        self.kmers_10[inner_kmer] = inner_kmers[inner_kmer]
-                if track in self.tracks_11:
-                    means_11.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
-                    for inner_kmer in inner_kmers:
-                        self.kmers_11[inner_kmer] = inner_kmers[inner_kmer]
-        print(green(len(self.tracks_00)), '00 tracks')
-        print(green(len(self.tracks_10)), '10 tracks')
-        print(green(len(self.tracks_11)), '11 tracks')
-        print(blue(len(self.kmers_00)), '00 kmers')
-        print(blue(len(self.kmers_10)), '10 kmers')
-        print(blue(len(self.kmers_11)), '11 kmers')
-        print(cyan(len(means_00)), '00 means')
-        print(cyan(len(means_10)), '10 means')
-        print(cyan(len(means_11)), '11 means')
-        visualizer.histogram([self.kmers_00[kmer] for kmer in self.kmers_00], '00 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
-        visualizer.histogram([self.kmers_10[kmer] for kmer in self.kmers_10], '10 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
-        visualizer.histogram([self.kmers_11[kmer] for kmer in self.kmers_11], '11 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
-        visualizer.histogram(means_00, 'mean coverage of 00 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
-        visualizer.histogram(means_10, 'mean coverage of 10 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
-        visualizer.histogram(means_11, 'mean coverage of 11 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
+    #def reduce(self):
+    #    self.tracks = map_reduce.Job.reduce(self)
+    #    self.kmers_00 = {}
+    #    self.kmers_10 = {}
+    #    self.kmers_11 = {}
+    #    means_00 = []
+    #    means_10 = []
+    #    means_11 = []
+    #    print(cyan(len(self.tracks)), 'tracks')
+    #    for track in self.tracks:
+    #        with open(self.tracks[track], 'r') as json_file:
+    #            inner_kmers = json.load(json_file)['inner_kmers']
+    #            #print(len(inner_kmers))
+    #            if track in self.tracks_00:
+    #                means_00.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
+    #                for inner_kmer in inner_kmers:
+    #                    self.kmers_00[inner_kmer] = inner_kmers[inner_kmer]
+    #            if track in self.tracks_10:
+    #                means_10.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
+    #                for inner_kmer in inner_kmers:
+    #                    self.kmers_10[inner_kmer] = inner_kmers[inner_kmer]
+    #            if track in self.tracks_11:
+    #                means_11.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
+    #                for inner_kmer in inner_kmers:
+    #                    self.kmers_11[inner_kmer] = inner_kmers[inner_kmer]
+    #    print(green(len(self.tracks_00)), '00 tracks')
+    #    print(green(len(self.tracks_10)), '10 tracks')
+    #    print(green(len(self.tracks_11)), '11 tracks')
+    #    print(blue(len(self.kmers_00)), '00 kmers')
+    #    print(blue(len(self.kmers_10)), '10 kmers')
+    #    print(blue(len(self.kmers_11)), '11 kmers')
+    #    print(cyan(len(means_00)), '00 means')
+    #    print(cyan(len(means_10)), '10 means')
+    #    print(cyan(len(means_11)), '11 means')
+    #    visualizer.histogram([self.kmers_00[kmer] for kmer in self.kmers_00], '00 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
+    #    visualizer.histogram([self.kmers_10[kmer] for kmer in self.kmers_10], '10 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
+    #    visualizer.histogram([self.kmers_11[kmer] for kmer in self.kmers_11], '11 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
+    #    visualizer.histogram(means_00, 'mean coverage of 00 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
+    #    visualizer.histogram(means_10, 'mean coverage of 10 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
+    #    visualizer.histogram(means_11, 'mean coverage of 11 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
+
+    #def plot_reference_kmer_profile(self):
+    #    self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
+    #    counts = []
+    #    n = 0
+    #    for kmer, count in self.reference_counts_provider.stream_kmers():
+    #        print(kmer, count)
+    #        counts.append(count)
+    #        n += 1
+    #        if n % 10000 == 1:
+    #            print(green(n), 'kmers counted')
+    #    counts = [counts[i] for i in random.sample(range(0, len(counts)), len(counts) / 10000)]
+    #    visualizer.histogram(counts, 'reference_genome_kmer_profile', self.get_current_job_directory(), 'kmer coverage', 'number of kmers')
+    #    exit()  
 
 # ============================================================================================================================ #
 # Main

@@ -115,7 +115,7 @@ def configure(args):
         radius = args.radius,
         random = args.random,
         bed_file = args.bed,
-        coverage = round(2 * args.coverage) if args.simulation else (args.coverage),
+        coverage = round(1 * args.coverage) if args.simulation else (args.coverage),
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
         fastq_file = os.path.abspath(args.fastq),

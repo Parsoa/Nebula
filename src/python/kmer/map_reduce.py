@@ -68,10 +68,10 @@ class Job(object):
         self.check_cli_arguments(None)
         self.create_output_directories()
         self.find_thread_count()
+        self.prepare()
         if not self.resume_from_reduce:
-            print('normal execution flow')
-            self.prepare()
             self.load_inputs()
+            print('normal execution flow')
             self.distribute_workload()
             self.wait_for_children()
         else:
@@ -103,7 +103,8 @@ class Job(object):
             track_name = name_func(track)
             if filter_func(tracks[track]):
                 continue
-            index = n % c.max_threads 
+            index = n % c.max_threads
+            print(index)
             if not index in self.batch:
                 self.batch[index] = {}
             self.batch[index][track_name] = tracks[track]
@@ -228,7 +229,6 @@ class Job(object):
     # ============================================================================================================================ #
     # filesystem helpers
     # ============================================================================================================================ #
-
     def get_output_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]

@@ -50,7 +50,8 @@ class StructuralVariation(object):
         #self.sequence = bed.extract_sequence(track)
         #print(green(self.sequence))
         chromosome = extract_chromosome(track.chrom)
-        self.sequence = chromosome[track.start - 1 : track.end - 1]
+        print(track.chrom, len(chromosome))
+        self.sequence = chromosome[track.start: track.end]
         #print(blue(self.sequence))
 
     # will return the same set of inner kmers for every breakpoint 
