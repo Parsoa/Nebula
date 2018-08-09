@@ -52,22 +52,15 @@ class ExtractInnerKmersJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     def load_inputs(self):
-        print('here', self.get_current_job_directory())
         c = config.Configuration()
-        print(c.jellyfish[1])
         self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
         self.bedtools = {str(track): track for track in pybedtools.BedTool(c.bed_file)}
-        print(len(self.bedtools))
         self.round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
-        #tracks = self.load_previous_job_results()
-        #self.round_robin(tracks)
 
     def transform(self, track, track_name):
         c = config.Configuration()
-        tokens = track_name.split('_')
-        b = bed.BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
-        sv = self.get_sv_type()(b)
-        inner_kmers = sv.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10, n = 1000, overlap = False)
+        sv = self.get_sv_type()(bed.track_from_name(track_name))
+        inner_kmers = sv.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10, n = 1000, overlap = False, canonical = True)
         novel_kmers = sv.get_boundary_kmers(begin = 0, end = 0, counter = self.reference_counts_provider.get_kmer_count, count = 1)
         l = len(inner_kmers)
         inner_kmers = {kmer: inner_kmers[kmer] for kmer in filter(lambda k: k not in novel_kmers and reverse_complement(k) not in novel_kmers, inner_kmers)}
@@ -78,11 +71,6 @@ class ExtractInnerKmersJob(map_reduce.Job):
             'inner_kmers': {kmer: {'track': inner_kmers[kmer], 'count': self.reference_counts_provider.get_kmer_count(kmer)} for kmer in list(filter(lambda x: self.reference_counts_provider.get_kmer_count(x) > 1, inner_kmers))},
             'novel_kmers': novel_kmers,
         }
-        #with open(track, 'r') as json_file:
-        #    break_points = json.load(json_file)
-        #    for break_point in break_points:
-        #        if break_point.startswith('('):
-        #            kmers['novel_kmers'][break_point] = break_points[break_point]['novel_kmers']
         if len(inner_kmers) == 0:
             print(red('skipping', track_name, 'no inner kmers found'))
             return None
@@ -189,7 +177,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             kmers = json.load(json_file)
             inner_kmers = kmers['inner_kmers']
             #inner_kmers.update(kmers['unique_inner_kmers'])
-            if len(inner_kmers) == 0:
+            if len(inner_kmers) < 5:
                 print('no inner kmers found for', red(track_name))
                 return None
             #inner_kmers = kmers['inner_kmers']
@@ -209,12 +197,12 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                     self.inner_kmers[kmer]['tracks'][track_name] = inner_kmers[kmer]['track']
             novel_kmers = {}
         path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + track_name + '.json')
-        #with open(path, 'w') as json_file:
-        #    json.dump(
-        #        {
-        #            'inner_kmers': {kmer: self.inner_kmers[kmer] for kmer in inner_kmers},
-        #            'novel_kmers': {kmer: self.novel_kmers[kmer] for kmer in novel_kmers},
-        #        }, json_file, indent = 4, sort_keys = True)
+        with open(path, 'w') as json_file:
+            json.dump(
+                {
+                    'inner_kmers': {kmer: self.inner_kmers[kmer] for kmer in inner_kmers},
+                    'novel_kmers': {kmer: self.novel_kmers[kmer] for kmer in novel_kmers},
+                }, json_file, indent = 4, sort_keys = True)
         return path
 
     def output_batch(self, batch):
@@ -286,6 +274,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 r += kmer['tracks'][track]
             kmer['residue'] = kmer['reference'] - r
             kmer['coverage'] = c.coverage
+            kmer['reference'] = 1
 
     def generate_linear_program(self):
         c = config.Configuration()
@@ -307,15 +296,15 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         # the real-valued error parameter for inner_kmer
         problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.inner_kmers)],
             #types = ['C'] * len(self.inner_kmers),
-            ub = [kmer['count'] - kmer['coverage'] * kmer['residue'] for kmer in self.inner_kmers],
-            lb = [kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']) for kmer in self.inner_kmers]
+            ub = [(kmer['count'] - kmer['coverage'] * kmer['residue']) / float(kmer['reference']) for kmer in self.inner_kmers],
+            lb = [(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) / float(kmer['reference']) for kmer in self.inner_kmers]
         )
         # absolute value of the inner_kmer error parameter
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.inner_kmers)],
-            #obj = [1.0] * len(self.inner_kmers),
+            obj = [1.0] * len(self.inner_kmers),
             #types = ['C'] * len(self.inner_kmers)
         )
-        problem.objective.set_quadratic([0.0] * len(self.tracks) + [1.0] * len(self.inner_kmers) + [0.0] * len(self.inner_kmers))
+        #problem.objective.set_quadratic([0.0] * len(self.tracks) + [1.0] * len(self.inner_kmers) + [0.0] * len(self.inner_kmers))
         #problem.objective.set_quadratic([cplex.SparsePair(ind = [index], val = [1.0]) for index, kmer in enumerate(self.inner_kmers)])
         # constraints
         n = 0
@@ -324,7 +313,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             ind = list(map(lambda track: track, kmer['tracks'])) # C
             ind.append(len(self.tracks) + index) #E + str(index)
             val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-            val.append(1.0)
+            val.append(kmer['reference'])
             problem.linear_constraints.add(
                 lin_expr = [cplex.SparsePair(
                     ind = ind,

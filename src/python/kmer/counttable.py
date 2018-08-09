@@ -110,7 +110,6 @@ class JellyfishCountsProvider(KmerCountsProvider):
     def get_kmer_count(self, kmer):
         canon = jellyfish.MerDNA(str(kmer))
         canon.canonicalize()
-        print(self.qf[canon])
         return self.qf[canon]
 
     def stream_kmers(self):

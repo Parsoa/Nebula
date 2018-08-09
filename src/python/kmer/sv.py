@@ -55,7 +55,7 @@ class StructuralVariation(object):
         #print(blue(self.sequence))
 
     # will return the same set of inner kmers for every breakpoint 
-    def get_inner_kmers(self, counter, count, n, begin = 0, end = 0, overlap = True):
+    def get_inner_kmers(self, counter, count, n, begin = 0, end = 0, overlap = True, canonical = True):
         c = config.Configuration()
         print(c.ksize)
         begin = (c.radius + c.ksize + c.read_length + self.slack) + begin# + c.radius

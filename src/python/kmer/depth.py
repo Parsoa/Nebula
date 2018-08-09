@@ -281,7 +281,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
             mean = numpy.mean(counts)
             counts = list(filter(lambda x: x < 3 * mean, counts))
             r.append(counts)
-        visualizer.bar(ys = [list(map(lambda x: statistics.mean(x), r)), list(map(lambda x: statistics.variance(x), r))], x = list(range(1, 11)), name = 'bar plot mean kmer coverage by reference frequency', path = self.get_current_job_directory(), x_label = 'reference frequency', y_label = 'mean coverage')
+        visualizer.bar(ys = [list(map(lambda x: statistics.mean(x), r)), list(map(lambda x: statistics.variance(x), r))], x = list(range(1, 2)), name = 'bar plot mean kmer coverage by reference frequency', path = self.get_current_job_directory(), x_label = 'reference frequency', y_label = 'mean coverage')
 
     # ============================================================================================================================ #
     # filesystem helpers
