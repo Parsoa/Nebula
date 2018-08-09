@@ -78,7 +78,6 @@ class Simulation(map_reduce.Job):
         c = ['chr' + str(x) for x in range(1, 23)]
         c.append('chrx')
         c.append('chry')
-        c = ['chr2']
         self.chrom = {}
         n = 0
         for seq, chrom in extract_chromosomes(c):
@@ -86,7 +85,7 @@ class Simulation(map_reduce.Job):
             self.chrom[chrom] = seq
             n += 1
             with open(os.path.join(self.get_current_job_directory(), chrom + '.fa'), 'w') as chrom_file:
-                #chrom_file.write('>' + chrom + '\n')
+                chrom_file.write('>' + chrom + '\n')
                 chrom_file.write(seq)
 
     def generate_random_intervals(self, n):
@@ -173,7 +172,6 @@ class Simulation(map_reduce.Job):
         self.export_chromosome_fasta(chrom, self.present, chrom + '_strand_1')
         self.export_chromosome_fasta(chrom, self.homozygous, chrom + '_strand_2')
         # export a couple of fastq files for each strand, will this work?
-        exit()
         self.export_fastq(seq, chrom + '_strand_1')
         self.export_fastq(seq, chrom + '_strand_2')
         #self.merge_fastq_files(chrom, chrom + '_strand_1.1', chrom + '_strand_2.2')
@@ -196,25 +194,16 @@ class Simulation(map_reduce.Job):
                 fasta_file.write(line)
 
     def apply_events_to_chromosome(self, chrom, SVs):
-        chrom = ''
-        with open(os.path.join(self.get_current_job_directory(), 'chr2.fa')) as chrom_file:
-            chrom = chrom_file.readlines()
-        chrom = chrom[0].upper()
-        print(chrom.find('CGGCAGTGGGGACCACCCGTGGACAGGAGAG'))
-        print(len(chrom))
         seq = ''
         previous = 0
         for i, sv in enumerate(SVs):
             left = sv.start
             #print(previous, '\t', left)
-            s = chrom[previous:left]
+            s = self.chrom[chrom][previous:left]
             seq += s
-            if seq.find('CGGCAGTGGGGACCACCCGTGGACAGGAGAG') != -1:
-                print(previous, left, sv)
             previous = sv.end
-        print(previous)
+        #print(previous)
         seq += chrom[previous:]
-        print(seq.find('CGGCAGTGGGGACCACCCGTGGACAGGAGAG'))
         return seq
 
     def export_fastq(self, seq, name):
@@ -225,7 +214,7 @@ class Simulation(map_reduce.Job):
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
-        command =  "wgsim -d400 -N{} -1100 -2100 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
+        command =  "wgsim -d400 -N{} -1100 -2100 -r 0.0 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def merge_fastq_files(self, name, *args):
@@ -244,30 +233,25 @@ class Simulation(map_reduce.Job):
         self.chrom = ['chr' + c for c in [str(x) for x in range(1, 23)]]
         self.chrom.append('chrx')
         self.chrom.append('chry')
-        #self.chrom = ['chr1']
-        #print(self.chrom)
-        #with open(os.path.join(self.get_current_job_directory(), 'test_1.fq'), 'w') as out_file:
-        #    for chrom in self.chrom:
-        #        print('1: adding reads for', chrom)
-        #        for i in [1, 2]:
-        #            with open(os.path.join(self.get_current_job_directory(), chrom + '_strand_' + str(i) + '.' + str(i) + '.fq'), 'r') as in_file:
-        #                line = in_file.readline()
-        #                while line:
-        #                    out_file.write(line)
-        #                    line = in_file.readline()
-        #    exit()
-        #else:
-        #    with open(os.path.join(self.get_current_job_directory(), 'test_strand_2.fq'), 'w') as out_file:
-        #        for chrom in self.chrom:
-        #            print('2: adding reads for', chrom)
-        #            for i in [1, 2]:
-        #                with open(os.path.join(self.get_current_job_directory(), chrom + '_strand_2.' + str(i) + '.fq'), 'r') as in_file:
-        #                    line = in_file.readline()
-        #                    while line:
-        #                        out_file.write(line)
-        #                        line = in_file.readline()
-        #    os.waitpid(pid, 0)
-        #self.export_jellyfish_table('test', 'test')
+        self.export_reference_genome()
+        self.export_reference_jellyfish_table()
+
+    def export_reference_genome(self):
+        command = 'cat '# + os.path.join(self.get_current_job_directory(), 'chr*.fq') + ' > ' + os.path.join(self.get_current_job_directory(), 'test.fq')
+        for chrom in self.chrom:
+            command += ' ' + chrom + '.fa '
+        command += ' genome.fa'
+        output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+
+    def export_reference_jellyfish_table(self):
+        c = config.Configuration()
+        FNULL = open(os.devnull, 'w')
+        print('Generating Jellyfish table')
+        command = "jellyfish count -m " + str(c.ksize) + " -s 1000000000 -t 24 --canonical --out-counter-len 2"
+        command += os.path.join(self.get_current_job_directory(), 'reference.fa')
+        command += ' -o ' + os.path.join(self.get_current_job_directory(), 'reference.jf')
+        print(command)
+        output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def export_jellyfish_table(self, channel, *args):
         c = config.Configuration()

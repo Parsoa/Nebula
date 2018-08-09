@@ -55,6 +55,8 @@ def parse_args():
     parser.add_argument("--exons")
     # the path to a previously generated khmer counttable without the .ct extension
     parser.add_argument("--khmer")
+    # length of the kmers 
+    parser.add_argument("--ksize", type = int)
     # specifies that this counttable should return dummy values
     parser.add_argument("--dummy", action='store_true')
     # the chromosome to simulate
@@ -95,7 +97,7 @@ def parse_args():
 
 def configure(args):
     genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
-    genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/hg38.fa'
+    genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/GRC38.fasta'
     reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38 if args.reference == 'hg38' else args.reference
     max_threads = args.threads
     khmer_table_size = 16e9
@@ -110,7 +112,7 @@ def configure(args):
         debug = args.debug,
         exons = args.exons,
         khmer = args.khmer,
-        ksize = 31,
+        ksize = args.ksize if args.ksize else 31,
         genome = args.genome,
         radius = args.radius,
         random = args.random,

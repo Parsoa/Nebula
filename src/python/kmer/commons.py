@@ -25,10 +25,10 @@ class Memoize:
         self.f = f
         self.cache = {}
 
-    def __call__(self, arg):
-        if not arg in self.cache:
-            self.cache[arg] = self.f(arg)
-        return self.cache[arg]
+    def __call__(self, *args):
+        if not args[0] in self.cache:
+            self.cache[args[0]] = self.f(*args)
+        return self.cache[args[0]]
 
 # ============================================================================================================================ #
 # STDIO Wrappers/Helpers

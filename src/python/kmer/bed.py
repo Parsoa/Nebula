@@ -41,18 +41,9 @@ def read_tracks(path):
     bedtools = pybedtools.BedTool(path)
     return {str(track.chrom) + '_' + str(track.start) + '_' + str(track.end): track for track in bedtools}
 
-def extract_sequence(track):
-    c = config.Configuration()
-    interval = pybedtools.Interval(chrom = track.chrom, start = track.start,\
-        end = track.end)
-    bedtool = pybedtools.BedTool(str(interval), from_string = True)
-    f = open(bedtool.sequence(c.reference_genome).seqfn)
-    sequence = ''
-    for i, line in enumerate(f):
-        if i >= 1:
-            line = line.strip().upper()
-            sequence += line
-    return sequence
+def track_from_name(name):
+    tokens = name.split('_')
+    return BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
 
 def parse_bed_file(f):
     line = f.readline()

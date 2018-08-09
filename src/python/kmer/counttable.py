@@ -59,11 +59,11 @@ class DictionaryCountsProvider(KmerCountsProvider):
 
     def get_kmer_count(self, kmer):
         k = find_kmer(kmer, self.kmers)
-        return self.kmers[k]
+        return self.kmers[k]['count']
 
     def stream_kmers(self):
         for kmer in self.kmers:
-            yield str(kmer), self.kmers[kmer]
+            yield str(kmer), self.kmers[kmer]['count']
 
 # ============================================================================================================================ #
 # Dummy. Always returns 40. Use for testing.
@@ -75,11 +75,11 @@ class ReferenceCountsProvider(KmerCountsProvider):
         self.path = path
         self.chrom = {}
         for c in range(1, 23):
+            print(c)
             self.chrom[c] = open(os.path.join(self.path, 'chr' + str(c) + '.fa')).readlines()[1].upper()
         self.chrom['x'] = open(os.path.join(self.path, 'chrx.fa')).readlines()[1].upper()
         self.chrom['y'] = open(os.path.join(self.path, 'chry.fa')).readlines()[1].upper()
 
-    @Memoize
     def get_kmer_count(self, kmer):
         return sum(list(map(lambda x: len(x), [[m.start() for m in re.finditer(kmer, self.chrom[c])] for c in self.chrom]))) + sum(list(map(lambda x: len(x), [[m.start() for m in re.finditer(reverse_complement(kmer), self.chrom[c])] for c in self.chrom])))
 
@@ -110,6 +110,7 @@ class JellyfishCountsProvider(KmerCountsProvider):
     def get_kmer_count(self, kmer):
         canon = jellyfish.MerDNA(str(kmer))
         canon.canonicalize()
+        print(self.qf[canon])
         return self.qf[canon]
 
     def stream_kmers(self):

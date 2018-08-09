@@ -23,4 +23,4 @@ echo $STD
 JLY=$(echo $SIM | awk -v P=$P -v GEN=$GEN '{ if ($0 ~ /.*simulation.*/) { print P "/../Simulation/test.jf" } else { print "/share/hormozdiarilab/Experiments/Jellyfish/" GEN "/mer_counts.jf" } }')
 echo $JLY
 echo "$@"
-python -m kmer.programming --job IterativeIntegerProgrammingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY /share/hormozdiarilab/Experiments/Jellyfish/$REF/mer_counts.jf --coverage $COV --fastq $GEN $SIM "$@"
+python -m kmer.programming --job ExperimentalIntegerProgrammingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY /share/hormozdiarilab/Experiments/Jellyfish/$REF/mer_counts.jf --coverage $COV --fastq $GEN $SIM "$@"

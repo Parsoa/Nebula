@@ -98,7 +98,9 @@ class Job(object):
 
     def round_robin(self, tracks, name_func = lambda x: x, filter_func = lambda x: False):
         c = config.Configuration()
+        print('round robin', c.max_threads)
         n = 0
+        self.batch = {}
         for track in tracks:
             track_name = name_func(track)
             if filter_func(tracks[track]):
@@ -229,6 +231,7 @@ class Job(object):
     # ============================================================================================================================ #
     # filesystem helpers
     # ============================================================================================================================ #
+
     def get_output_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
@@ -247,6 +250,12 @@ class Job(object):
         # get rid of the final _
         return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1]))
 
+    def get_simulation_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+            '../../../simulation/' + bed_file_name + '/' + str(c.simulation) + '/Simulation/'))
+
     def create_output_directories(self):
         dir = self.get_output_directory()
         if not os.path.exists(dir):
@@ -261,7 +270,7 @@ class Job(object):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseGenotypingJob(Job ):
+class BaseGenotypingJob(Job):
 
     def get_output_directory(self):
         c = config.Configuration()

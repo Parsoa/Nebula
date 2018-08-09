@@ -86,7 +86,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
         unique_inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in unique_inner_kmers}
         right_local_unique_kmers, left_local_unique_kmers = sv.get_local_unique_kmers(self.reference_counts_provider.get_kmer_count)
         near_boundary_inner_kmers = sv.get_near_boundary_inner_kmers()
-        near_boundary_inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers}
+        near_boundary_inner_kmers = {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in near_boundary_inner_kmers}
         break_points = {
             'unique_inner_kmers': unique_inner_kmers,
             'left_local_unique_kmers': left_local_unique_kmers,
@@ -95,7 +95,7 @@ class ExtractBreakPointsJob(map_reduce.Job):
         }
         for begin in range(-c.radius, c.radius + 1):
             for end in range(-c.radius, c.radius + 1):
-                boundary_kmers, boundary = sv.get_signature_kmers(begin, end, self.reference_counts_provider.get_kmer_count)
+                boundary_kmers, boundary = sv.get_boundary_kmers(begin, end, self.reference_counts_provider.get_kmer_count)
                 if len(boundary_kmers) == 0:
                     continue
                 name = '(' + str(begin) + ',' + str(end) + ')'

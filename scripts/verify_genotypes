@@ -29,7 +29,7 @@ if [ "$SIM" == "--simulation" ]; then
     echo "Simulation"
     SIM="/share/hormozdiarilab/Codes/NebulousSerendipity/simulation/$BED/31/Simulation/"
     bedtools intersect -a 11.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0| sort -u > 11_as_10.bed
+    bedtools intersect -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
     bedtools intersect -a 00.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
     bedtools intersect -a 11.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
     bedtools intersect -a 10.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
@@ -62,6 +62,7 @@ elif [ "$BED_GENOME" == "$GENOME" ]; then
     bedtools intersect -a present.bed -b $DATA$BED -f 1.0 -v > false_positive.bed
     sort -n -k2 -o false_positive.bed false_positive.bed
 else
+    echo HERE
     ################################################################################
     bedtools intersect -a $DATA$BED -b $DATA$TARGET -wa -f 0.9 | sort -u > $DATA$BED"_in_"$TARGET
     bedtools intersect -a $DATA$BED -b $DATA$TARGET -wa -f 0.9 -v | sort -u > $DATA$BED"_not_in_"$TARGET

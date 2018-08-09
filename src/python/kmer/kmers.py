@@ -35,22 +35,19 @@ def extract_chromosome(chromosome):
     c = config.Configuration()
     sequence = ''
     ref = open(c.reference_genome)
-    count = 0
     line = ref.readline().lower().strip()
     found = False
     while True:
-        count += 1
         if line.startswith('>chr'):
             chrom = line[line.find('>') + 1:]
             if chrom == chromosome:
                 print('extracting ' + chrom)
                 while True:
                     line = ref.readline().lower().strip()
-                    count += 1
                     if line.startswith('>') or len(line) == 0:
                         print(line)
                         return sequence
-                    sequence += line
+                    sequence += line.upper()
         line = ref.readline().lower().strip()
         if len(line) == 0:
             break
@@ -59,25 +56,22 @@ def extract_chromosomes(chromosomes):
     c = config.Configuration()
     sequence = ''
     ref = open(c.reference_genome)
-    count = 0
     line = ref.readline().lower().strip()
     found = False
     while True:
-        count += 1
         if line.startswith('>chr'):
             chrom = line[line.find('>') + 1:]
             if chrom in chromosomes:
                 print('extracting ' + chrom)
                 while True:
                     line = ref.readline().lower().strip()
-                    count += 1
                     if line.startswith('>') or len(line) == 0:
                         print(line)
                         yield sequence, chrom
                         sequence = ''
                         found = True
                         break
-                    sequence += line
+                    sequence += line.upper()
         if found:
             found = False
             continue
@@ -85,83 +79,36 @@ def extract_chromosomes(chromosomes):
         if len(line) == 0:
             break
 
-def get_kmer_count(kmer, index, ref):
-    start = time.time()
-    c = config.Configuration()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    port = c.count_server_port
-    s.connect(('localhost', port + index))
-    s.send(bytearray(kmer, 'ascii'))
-    response = s.recv(4) # integer size
-    count = struct.unpack('!i', response)[0]
-    end = time.time()
-    print(end - start)
-    return count
-
-def get_novel_kmers(kmers, index):
-    novel_kmers = {}
-    for kmer in kmers:
-        if not kmer in novel_kmers:
-            count = get_kmer_count(kmer, index, True)
-            if count != 0:
-                # this is a novel kmer
-                novel_kmers[kmer] = True
-    return novel_kmers
-
-def has_novel_kmers(kmers, index):
-    # checks if this candidate has a kmer that has not occured in the reference genome
-    for kmer in kmers:
-        if is_kmer_novel(kmer, index):
-            return True
-    return False
-
-def is_kmer_novel(kmer, index):
-    count = get_kmer_count(kmer, index, True)
-    return count == 0
-
-def has_unique_novel_kmers(track, candidate, kmers, index):
-    # checks if this candidate has a novel kmer that hasn't occurred in any other candidate
-    for kmer in kmers:
-        if is_kmer_novel(kmer, index):
-            found = False
-            for break_point in track:
-                # skip the wicked candidate count key
-                if break_point.find('candidates') != -1:
-                    continue
-                if candidate != break_point:
-                    # this kmer appears in at least one other break point so no need to go further
-                    if kmer in track[break_point]['kmers']:
-                        found = True
-                        break
-            # we didn't find this novel kmer anywhere so it should be unique, no need to check others
-            if not found:
-                return True
-    # we haven't returned yet so we didn't find any uniquely novel kmers
-    return False
-
 def get_canonical_kmer_representation(kmer):
     kmer = kmer.upper()
     reverse_complement = reverse_complement_sequence(kmer)
     return kmer if kmer < reverse_complement else reverse_complement
 
-def c_extract_canonical_kmers(k, counter = lambda x: 1, count = 1, *args):
+def c_extract_canonical_kmers(counter = lambda x: 1, count = 1, overlap = True, *args):
+    c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = get_canonical_kmer_representation(s[i : i + k])
-            c = counter(kmer)
-            if c > count:
+        i = 0
+        while i <= len(s) - c.ksize and i >= 0:
+            kmer = get_canonical_kmer_representation(s[i : i + c.ksize])
+            if counter(kmer) > count:
+                i += 1
                 continue
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
+            if not overlap:
+                i += c.ksize
+            else:
+                i += 1
     return kmers
 
-def extract_canonical_kmers(k, *args):
+def extract_canonical_kmers(*args):
+    c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = get_canonical_kmer_representation(s[i : i + k])
+        for i in range(0, len(s) - c.ksize + 1):
+            kmer = get_canonical_kmer_representation(s[i : i + c.ksize])
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
@@ -175,11 +122,12 @@ def find_kmer(k, kmers):
         return rc
     return None
 
-def c_extract_kmers(ksize, counter = lambda x: 1, count = 1, *args):
+def c_extract_kmers(counter = lambda x: 1, count = 1, *args):
+    c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - ksize + 1):
-            kmer = s[i : i + ksize]
+        for i in range(0, len(s) - c.ksize + 1):
+            kmer = s[i : i + c.ksize]
             if counter(kmer) > count:
                 continue
             k = find_kmer(kmer, kmers)
@@ -189,11 +137,12 @@ def c_extract_kmers(ksize, counter = lambda x: 1, count = 1, *args):
                 kmers[k] += 1
     return kmers
 
-def extract_kmers(ksize, *args):
+def extract_kmers(*args):
+    c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - ksize + 1):
-            kmer = s[i : i + ksize]
+        for i in range(0, len(s) - c.ksize + 1):
+            kmer = s[i : i + c.ksize]
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1

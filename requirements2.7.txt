@@ -1,10 +1,11 @@
-cython
-pybedtools
+biopython
 colorama
-pylru
-plotly
-seaborn
-pandas
+cython
 matplotlib
+pandas
+plotly
+pybedtools
+pylru
 scipy
+seaborn
 tk
