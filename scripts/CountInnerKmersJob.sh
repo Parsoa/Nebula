@@ -8,4 +8,4 @@ source venv2/bin/activate
 cd src/python
 source BED.sh
 echo $@
-python -m kmer.programming --job CountInnerKmersJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --fastq "$P/../Simulation/test.fq" --ksize $KSZ $SIM "$@"
+python -m kmer.programming --job $JOB --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --fastq "$P/../Simulation/test.fq" --ksize $KSZ $SIM "$@"

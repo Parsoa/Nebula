@@ -214,7 +214,7 @@ class Simulation(map_reduce.Job):
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
-        command =  "wgsim -d400 -N{} -1100 -2100 -r 0.0 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
+        command =  "wgsim -d400 -N{} -1100 -2100 -r0 -R0 -e0 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def merge_fastq_files(self, name, *args):
@@ -237,19 +237,24 @@ class Simulation(map_reduce.Job):
         self.export_reference_jellyfish_table()
 
     def export_reference_genome(self):
+        c = config.Configuration()
+        FNULL = open(os.devnull, 'w')
         command = 'cat '# + os.path.join(self.get_current_job_directory(), 'chr*.fq') + ' > ' + os.path.join(self.get_current_job_directory(), 'test.fq')
         for chrom in self.chrom:
-            command += ' ' + chrom + '.fa '
-        command += ' genome.fa'
+            path = os.path.join(self.get_current_job_directory(), chrom + '.fa')
+            command += path + ' ' 
+        path = os.path.join(self.get_current_job_directory(), 'reference.fa')
+        command += '> ' + path
+        print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def export_reference_jellyfish_table(self):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
         print('Generating Jellyfish table')
-        command = "jellyfish count -m " + str(c.ksize) + " -s 1000000000 -t 24 --canonical --out-counter-len 2"
+        command = "jellyfish count -m " + str(c.ksize) + " -s 1000000000 -t 24 --canonical --out-counter-len 2 "
         command += os.path.join(self.get_current_job_directory(), 'reference.fa')
-        command += ' -o ' + os.path.join(self.get_current_job_directory(), 'reference.jf')
+        command += ' -o ' + os.path.join(self.get_current_job_directory(), 'reference_' + str(c.ksize) + '.jf')
         print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 

@@ -30,8 +30,12 @@ import struct
 # kmer helpers
 # ============================================================================================================================ #
 
+chroms = {}
+
 @Memoize
 def extract_chromosome(chromosome):
+    if chromosome in chroms:
+        return chroms[chromosome]
     c = config.Configuration()
     sequence = ''
     ref = open(c.reference_genome)
@@ -79,10 +83,18 @@ def extract_chromosomes(chromosomes):
         if len(line) == 0:
             break
 
-def get_canonical_kmer_representation(kmer):
-    kmer = kmer.upper()
-    reverse_complement = reverse_complement_sequence(kmer)
-    return kmer if kmer < reverse_complement else reverse_complement
+def extract_whole_genome():
+    c = ['chr' + str(x) for x in range(1, 23)]
+    c.append('chrx')
+    c.append('chry')
+    for seq, chrom in extract_chromosomes(c):
+        chroms[chrom] = seq
+    return chroms
+
+def canonicalize(seq):
+    seq = seq.upper()
+    reverse_complement = reverse_complement_sequence(seq)
+    return seq if seq < reverse_complement else reverse_complement
 
 def c_extract_canonical_kmers(counter = lambda x: 1, count = 1, overlap = True, *args):
     c = config.Configuration()
@@ -90,7 +102,7 @@ def c_extract_canonical_kmers(counter = lambda x: 1, count = 1, overlap = True, 
     for s in args:
         i = 0
         while i <= len(s) - c.ksize and i >= 0:
-            kmer = get_canonical_kmer_representation(s[i : i + c.ksize])
+            kmer = canonicalize(s[i : i + c.ksize])
             if counter(kmer) > count:
                 i += 1
                 continue
@@ -108,7 +120,19 @@ def extract_canonical_kmers(*args):
     kmers = {}
     for s in args:
         for i in range(0, len(s) - c.ksize + 1):
-            kmer = get_canonical_kmer_representation(s[i : i + c.ksize])
+            kmer = canonicalize(s[i : i + c.ksize])
+            if not kmer in kmers:
+                kmers[kmer] = 0
+            kmers[kmer] += 1
+    return kmers
+
+def extract_canonical_gapped_kmers(*args):
+    c = config.Configuration()
+    kmers = {}
+    for s in args:
+        for i in range(0, len(s) - 35 + 1):
+            kmer = canonicalize(s[i : i + 35])
+            kmer = kmer[:15] + kmer[20:]
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1

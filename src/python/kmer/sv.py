@@ -99,6 +99,32 @@ class StructuralVariation(object):
     def get_boundary_kmers(self, begin, end, counter, count):
         pass
 
+    def extract_boundary_gapped_kmers(self, counter = lambda x: 1, count = 1):
+        c = config.Configuration()
+        begin = (c.radius + c.ksize + c.read_length + self.slack)
+        end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack)
+        outer_gapped_kmers = {}
+        inner_gapped_kmers = {}
+        g = c.gap / 2
+        k = (c.ksize / 2) * 2
+        b = self.sequence[begin - c.ksize: begin + c.ksize]
+        for i in range(0, c.gap):
+            kmer = self.sequence[begin - i - 15: begin - i + 5 + 15]
+            #kmer = kmer[:15] + kmer[20:]
+            inner_gapped_kmers[kmer] = True
+        e = self.sequence[end - c.ksize: end + c.ksize]
+        for i in range(0, c.gap):
+            kmer = self.sequence[end - 1 - i - 15: end - 1 - i + 5 + 15]
+            #kmer = kmer[:15] + kmer[20:]
+            inner_gapped_kmers[kmer] = True
+        seq = self.sequence[: begin] + self.sequence[end :]
+        base = c.radius + c.ksize + c.read_length + self.slack
+        for i in range(0, c.gap):
+            kmer = seq[base - i - 15: base - i + 5 + 15]
+            #kmer = kmer[:15] + kmer[20:]
+            outer_gapped_kmers[kmer] = True
+        return {'inner': inner_gapped_kmers, 'outer': outer_gapped_kmers, 'begin': b, 'end': e}
+
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #

@@ -59,7 +59,16 @@ class DictionaryCountsProvider(KmerCountsProvider):
 
     def get_kmer_count(self, kmer):
         k = find_kmer(kmer, self.kmers)
-        return self.kmers[k]['count']
+        return self.kmers[k]['count'] if k else None
+
+    def get_kmer(self, kmer):
+        k = find_kmer(kmer, self.kmers)
+        if k:
+            return self.kmers[k]
+        return None
+
+    def has_kmer(self, kmer):
+        return find_kmer(kmer, self.kmers)
 
     def stream_kmers(self):
         for kmer in self.kmers:
@@ -103,7 +112,7 @@ class JellyfishCountsProvider(KmerCountsProvider):
         self.import_counts()
 
     def import_counts(self):
-        print('importing jellyfish table')
+        print('importing jellyfish table', self.path)
         self.qf = jellyfish.QueryMerFile(self.path)
         print('table loaded')
 

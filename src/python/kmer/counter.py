@@ -106,7 +106,7 @@ class BaseExactCountingJob(map_reduce.Job):
                 if kmer in self.kmers: 
                     self.kmers[kmer]['count'] += 1
 
-    def merge_counts(self):
+    def merge_counts(self, *keywords):
         c = config.Configuration()
         print('merging kmer counts ...')
         kmers = {}
@@ -122,6 +122,9 @@ class BaseExactCountingJob(map_reduce.Job):
                     k = find_kmer(kmer, kmers)
                     if k:
                         kmers[k]['count'] += batch[kmer]['count']
+                        for keyword in keywords:
+                            if keyword in kmers[k]:
+                                kmers[k][keyword] += batch[kmer][keyword]
                     else:
                         kmers[kmer] = batch[kmer]
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
@@ -150,6 +153,7 @@ class SimulationExactCountingJob(BaseExactCountingJob):
         n = 0
         m = 0
         t = time.time()
+        part = self.fastq_file.name.split('/')[-1]
         while line:
             #print(state, line)
             if state == HEADER_LINE:
@@ -166,7 +170,7 @@ class SimulationExactCountingJob(BaseExactCountingJob):
                     s = time.time()
                     p = c / float(os.path.getsize(self.fastq_file.name))
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+                    print('{:30}'.format(part), '{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.8f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
                 yield seq, name
             elif state == THIRD_LINE:
                 state = QUALITY_LINE

@@ -91,6 +91,7 @@ class Job(object):
         self.round_robin(tracks)
 
     def load_previous_job_results(self):
+        print(self.get_previous_job_directory())
         path = os.path.join(self.get_previous_job_directory(), self.previous_job_batch_file_prefix + '_merge.json')
         print(path)
         with open(path, 'r') as json_file:
@@ -106,7 +107,6 @@ class Job(object):
             if filter_func(tracks[track]):
                 continue
             index = n % c.max_threads
-            print(index)
             if not index in self.batch:
                 self.batch[index] = {}
             self.batch[index][track_name] = tracks[track]
@@ -227,6 +227,25 @@ class Job(object):
         if bed_file_name.find('INV') != -1:
             return Inversion
         return Deletion
+
+    def load_reference_counts_provider(self):
+        c = config.Configuration()
+        if c.simulation:
+            path = os.path.join(self.get_simulation_directory(), 'reference_' + str(c.ksize) + '.jf')
+        else:
+            path = os.path.join(c.jellyfish_base, c.reference, 'mer_counts_' + str(c.ksize) + '.jf')
+        print('Reference kmer index:', green(path))
+        self.reference_counts_provider = counttable.JellyfishCountsProvider(path)
+
+    def get_gapped_reference_counts_provider(self):
+        c = config.Configuration()
+        g = c.gap
+        k = (c.ksize / 2) * 2
+        print(g, k)
+        if c.simulation:
+            return os.path.join(self.get_simulation_directory(), 'reference_' + str(g + k) + '.jf')
+        else:
+            return os.path.join(c.jellyfish_base, c.reference, 'mer_counts_' + str(g + k) + '.jf')
 
     # ============================================================================================================================ #
     # filesystem helpers

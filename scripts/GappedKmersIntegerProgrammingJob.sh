@@ -10,4 +10,4 @@ source BED.sh
 #source CovStd.sh
 source Jellyfish.sh
 echo "$@"
-python -m kmer.programming --job IntegerProgrammingJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY $RJF --fastq $GEN --ksize $KSZ $SIM "$@"
+python -m kmer.gapped --job $JOB --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --jellyfish $JLY $RJF --fastq $GEN $SIM "$@"

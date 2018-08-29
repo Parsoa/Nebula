@@ -43,6 +43,8 @@ def parse_args():
     parser.add_argument("--bed", default = None)
     # the job to execute from this file
     parser.add_argument("--job")
+    #gap size, should be odd
+    parser.add_argument("--gap", default = None, type = int)
     # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
     parser.add_argument("--snp")
     # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
@@ -105,6 +107,7 @@ def configure(args):
     # set up configuration
     Configuration(
         job = args.job,
+        gap = args.gap,
         snp = args.snp,
         std = args.std,
         seed = args.seed,
@@ -120,6 +123,7 @@ def configure(args):
         coverage = round(1 * args.coverage) if args.simulation else (args.coverage),
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
+        reference = args.reference,
         fastq_file = os.path.abspath(args.fastq),
         simulation = args.simulation,
         genome_hg19 = genome_hg19,
@@ -129,11 +133,11 @@ def configure(args):
         read_length = args.readlength,
         heterozygous = args.heterozygous,
         whole_genome = args.whole,
+        jellyfish_base = '/share/hormozdiarilab/Experiments/Jellyfish',
         reference_genome = reference_genome,
         khmer_num_tables = khmer_num_tables,
         khmer_table_size = khmer_table_size,
-        output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../output')),
+        output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../output')),
         resume_from_reduce = args.reduce,
         count_server_port = 6985,
     )

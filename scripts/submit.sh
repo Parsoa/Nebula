@@ -10,9 +10,5 @@
 #SBATCH --mail-type=ALL
 P=$(pwd)
 echo $P
-cd /share/hormozdiarilab/Codes/NebulousSerendipity
-source venv2/bin/activate
-cd $P
-SRC=$1
-shift
-/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/$SRC "$@"
+CMD = $(echo $P | awk -F/ '{ print $NF }')
+srun --mem=12000 --mincpus=48 --time=6000

@@ -207,7 +207,7 @@ class ExonDepthOfCoverageEstimationJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, counter.SimulationExactCountingJob):# if config.Configuration().simulation else counter.BaseExactCountingJob):
+class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, counter.BaseExactCountingJob):# if config.Configuration().simulation else counter.BaseExactCountingJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -226,7 +226,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
         print(self.get_current_job_directory())
         c = config.Configuration()
         #self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
+        self.load_reference_counts_provider() 
         self.kmers = {}
         n = 0
         self.acc = {}
@@ -268,7 +268,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
         print('mean:', self.mean)
         print('std:', self.std)
         #
-        with open(os.path.join(self.get_current_job_directory(), 'stats.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'stats_' + str(c.ksize) + '.json'), 'w') as json_file:
             json.dump({ 'mean': self.mean, 'std': self.std }, json_file, sort_keys = True, indent = 4)
 
     def plot_reference_distribution(self, kmers):
