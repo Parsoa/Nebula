@@ -101,10 +101,13 @@ class BaseExactCountingJob(map_reduce.Job):
     def transform(self):
         c = config.Configuration()
         for read, name in self.parse_fastq():
-            kmers = extract_kmers(c.ksize, read)
-            for kmer in kmers:
-                if kmer in self.kmers: 
-                    self.kmers[kmer]['count'] += 1
+            self.process_read(read, name)
+
+    def process_read(self, read, name):
+        kmers = extract_kmers(c.ksize, read)
+        for kmer in kmers:
+            if kmer in self.kmers: 
+                self.kmers[kmer]['count'] += 1
 
     def merge_counts(self, *keywords):
         c = config.Configuration()
@@ -191,7 +194,7 @@ class SimulationExactCountingJob(BaseExactCountingJob):
         files = {}
         for chrom in chroms:
             for i in range (1, 3):
-                for j in range(1, 3):
+                for j in range(1, 2):
                     path = os.path.join(self.get_simulation_directory(), chrom + '_strand_' + str(i) + '.' + str(j) + '.fq')
                     files[path] = path
                     print(path)
@@ -211,8 +214,34 @@ class SimulationExactCountingJob(BaseExactCountingJob):
         c = config.Configuration()
         self.fastq_file = open(track, 'r')
         for read, name in self.parse_fastq():
-            kmers = extract_kmers(read)
+            self.process_read(read, name)
+    
+    def process_read(self, read, name):
+            kmers = extract_kmers(c.ksize, read)
             for kmer in kmers:
                 if kmer in self.kmers: 
                     self.kmers[kmer]['count'] += 1
 
+    #def calculate_offsets(self, bed):
+    #    c = config.Configuration()
+    #    self.offset = {}
+    #    a = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed')], key = lambda track: track.start)
+    #    homo = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'homozygous.bed')], key = lambda track: track.start)
+    #    hetero = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'heterozygous.bed')], key = lambda track: track.start)
+    #    present = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'present.bed')], key = lambda track: track.start)
+    #    for index, track in enumerate(a):
+    #        tokens = track.split('_')
+    #        chrom = tokens[0]
+    #        if not chrom in self.offset:
+    #            self.offset[chrom] = []
+    #        d_1 = 0
+    #        for t in present:
+    #            if t.start > track.end:
+    #                break
+    #            d_1 += t.end - t.start 
+    #        d_2 = 0
+    #        for t in homo:
+    #            if t.start > track.end:
+    #                break
+    #            d_2 += t.end - t.start
+    #        self.offset.append({'1': d_1, '2': d_2})

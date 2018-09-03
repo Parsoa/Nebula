@@ -17,13 +17,13 @@ DATA="/share/hormozdiarilab/Codes/NebulousSerendipity/data/"
 TARGET=$GEN.$REF.$EVENT.bed
 echo $TARGET
 ################################################################################
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/11.bed -b ./11.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_11_as_11.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/11.bed -b ./10.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_11_as_10.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/11.bed -b ./00.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_11_as_00.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/10.bed -b ./11.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_10_as_11.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/10.bed -b ./10.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_10_as_10.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/10.bed -b ./00.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_10_as_00.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/00.bed -b ./11.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_00_as_11.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/00.bed -b ./10.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_00_as_10.bed
-bedtools intersect -a ../GappedKmersIntegerProgrammingJob/00.bed -b ./00.bed -wa -f 1.0 -F 1.0 | sort -u > gapped_00_as_00.bed
+zyg=("11" "10" "00")
+for i in "${zyg[@]}"; do
+    for j in "${zyg[@]}"; do
+        for k in "${zyg[@]}"; do
+            bedtools intersect -a ../GappedKmersIntegerProgrammingJob/"$i"_as_"$j".bed -b ./"$i"_as_"$k".bed -wa -f 1.0 -F 1.0 | sort -u > gapped_"$i"_as_"$j"_to_"$k".bed
+            bedtools intersect -a ../IntegerProgrammingJob/"$i"_as_"$j".bed -b ./"$i"_as_"$k".bed -wa -f 1.0 -F 1.0 | sort -u > inner_"$i"_as_"$j"_to_"$k".bed
+        done
+    done
+done
 ################################################################################

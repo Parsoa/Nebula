@@ -195,13 +195,16 @@ class Simulation(map_reduce.Job):
 
     def apply_events_to_chromosome(self, chrom, SVs):
         seq = ''
+        real = 0
         previous = 0
+        index = {}
         for i, sv in enumerate(SVs):
             left = sv.start
             #print(previous, '\t', left)
             s = self.chrom[chrom][previous:left]
             seq += s
             previous = sv.end
+            index[real - sv.end] = [real - sv.start]
         #print(previous)
         seq += chrom[previous:]
         return seq

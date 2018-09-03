@@ -69,8 +69,8 @@ class Job(object):
         self.create_output_directories()
         self.find_thread_count()
         self.prepare()
+        self.load_inputs()
         if not self.resume_from_reduce:
-            self.load_inputs()
             print('normal execution flow')
             self.distribute_workload()
             self.wait_for_children()

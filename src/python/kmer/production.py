@@ -61,15 +61,16 @@ class MixGappedInnerKmersIntegerProgrammingJob(map_reduce.Job):
     def execute(self):
         c = config.Configuration()
         self.bedtools = sorted([track for track in pybedtools.BedTool(c.bed_file)], key = lambda track: track.start)
-        self.tracks = {}
+        self.all_tracks = {}
         n = 0
         for b in self.bedtools:
             track = re.sub(r'\s+', '_', str(b).strip()).strip()
             print(track)
-            self.tracks[track] = n
+            self.all_tracks[track] = n
             n += 1
         self.load_gapped_kmers()
-        self.load_inner_kmers()
+        self.load_unique_inner_kmers()
+        self.load_non_unique_inner_kmers()
         self.merge_kmers()
         self.solve()
         exit()
@@ -80,39 +81,76 @@ class MixGappedInnerKmersIntegerProgrammingJob(map_reduce.Job):
         print(cyan('=============================================================================================='))
         if self.resume_from_reduce:
             with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'r') as json_file:
-                self.gapped_kmers = json.load(json_file)['gapped_kmers']
-                return
+                payload = json.load(json_file)
+                self.gapped_kmers = payload['gapped_kmers']
+                self.gapped_tracks = payload['tracks']
+            return
         self.gapped_kmers_solver = gapped.GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'unique_gapped_kmers')
         self.gapped_kmers_solver.create_output_directories()
         self.gapped_kmers_solver.load_inputs()
         self.gapped_kmers_solver.distribute_workload()
         self.gapped_kmers_solver.wait_for_children()
         self.gapped_kmers = copy.deepcopy(self.gapped_kmers_solver.index_kmers())
+        self.gapped_tracks = copy.deepcopy(self.gapped_kmers_solver.index_tracks())
         with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
-            json.dump({'gapped_kmers': self.gapped_kmers}, json_file, indent = 4)
+            json.dump({'gapped_kmers': self.gapped_kmers, 'tracks': self.gapped_tracks}, json_file, indent = 4)
         self.gapped_kmers_solver.calculate_residual_coverage()
         self.gapped_kmers_solver.solve()
 
-    def load_inner_kmers(self):
+    def load_unique_inner_kmers(self):
+        print(cyan('=============================================================================================='))
+        print(cyan('Loading unique inner kmers...'))
+        print(cyan('=============================================================================================='))
+        if self.resume_from_reduce:
+            with open(os.path.join(self.get_current_job_directory(), 'unique_inner_kmers.json'), 'r') as json_file:
+                payload = json.load(json_file)
+                self.inner_kmers = payload['unique_inner_kmers']
+                self.inner_tracks = payload['tracks']
+            return
+        self.unique_inner_kmers_solver = programming.IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_' if c.simulation else 'ExtractInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers')
+        self.unique_inner_kmers_solver.create_output_directories()
+        self.unique_inner_kmers_solver.load_inputs()
+        self.unique_inner_kmers_solver.distribute_workload()
+        self.unique_inner_kmers_solver.wait_for_children()
+        self.unique_inner_kmers = copy.deepcopy(self.unique_inner_kmers_solver.index_kmers())
+        self.unique_inner_tracks = copy.deepcopy(self.unique_inner_kmers_solver.index_tracks())
+        with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
+            json.dump({'inner_kmers': self.inner_kmers, 'tracks': self.inner_tracks}, json_file, indent = 4)
+        self.unique_inner_kmers_solver.calculate_residual_coverage()
+        self.unique_inner_kmers_solver.solve()
+ 
+    def load_non_unique_inner_kmers(self):
         print(cyan('=============================================================================================='))
         print(cyan('Loading inner kmers...'))
         print(cyan('=============================================================================================='))
         if self.resume_from_reduce:
-            with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'r') as json_file:
-                self.inner_kmers = json.load(json_file)['inner_kmers']
+            with open(os.path.join(self.get_current_job_directory(), 'non_unique_inner_kmers.json'), 'r') as json_file:
+                payload = json.load(json_file)
+                self.inner_kmers = payload['non_unique_inner_kmers']
+                self.inner_tracks = payload['tracks']
             return
-        self.inner_kmers_solver = programming.IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_' if c.simulation else 'ExtractInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers')
-        self.inner_kmers_solver.create_output_directories()
-        self.inner_kmers_solver.load_inputs()
-        self.inner_kmers_solver.distribute_workload()
-        self.inner_kmers_solver.wait_for_children()
-        self.inner_kmers = copy.deepcopy(self.inner_kmers_solver.index_kmers())
-        with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
-            json.dump({'inner_kmers': self.inner_kmers}, json_file, indent = 4)
-        self.inner_kmers_solver.calculate_residual_coverage()
-        self.inner_kmers_solver.solve()
+        self.non_unique_inner_kmers_solver = reduction.LociIndicatorKmersIntegerProgrammingJob(job_name = 'LociIndicatorKmersIntegerProgrammingJob_', previous_job_name = 'CountLociIndicatorKmersJob_', category = 'programming', batch_file_prefix = 'non_unique_inner_kmers')
+        self.non_unique_inner_kmers_solver.create_output_directories()
+        self.non_unique_inner_kmers_solver.load_inputs()
+        self.non_unique_inner_kmers_solver.distribute_workload()
+        self.non_unique_inner_kmers_solver.wait_for_children()
+        self.non_unique_inner_kmers = copy.deepcopy(self.non_unique_inner_kmers_solver.index_kmers())
+        self.non_unique_inner_tracks = copy.deepcopy(self.non_unique_inner_kmers_solver.index_tracks())
+        with open(os.path.join(self.get_current_job_directory(), 'non_unique_inner_kmers.json'), 'w') as json_file:
+            json.dump({'non_unique_inner_kmers': self.non_unique_inner_kmers, 'tracks': self.inner_tracks}, json_file, indent = 4)
+        self.non_unique_inner_kmers_solver.calculate_residual_coverage()
+        self.non_unique_inner_kmers_solver.solve()
 
     def merge_kmers(self):
+        self.tracks = {}
+        self.tracks.update(self.non_unique_inner_tracks)
+        self.tracks.update(self.unique_inner_tracks)
+        self.tracks.update(self.gapped_tracks)
+        n = 0
+        tmp = sorted([t for t in self.tracks])
+        for track in tmp:
+            self.tracks[track] = n
+            n += 1
         self.kmers = self.inner_kmers + self.gapped_kmers
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump({'kmers': self.kmers}, json_file, indent = 4)
@@ -127,7 +165,7 @@ class MixGappedInnerKmersIntegerProgrammingJob(map_reduce.Job):
             for track in kmer['tracks']:
                 r += kmer['tracks'][track]
             kmer['residue'] = 0 if kmer['type'] == 'gapped' else kmer['reference'] - r
-            kmer['coverage'] = c.coverage
+            kmer['coverage'] = 42 if kmer['type'] == 'gapped' else 50
 
     def generate_linear_program(self):
         c = config.Configuration()
@@ -140,7 +178,7 @@ class MixGappedInnerKmersIntegerProgrammingJob(map_reduce.Job):
             )
         # the real-valued error parameter for kmer
         problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.kmers)],
-            lb = [(kmer['count'] - c.coverage * kmer['residue'] - c.coverage * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.kmers]
+            lb = [(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.kmers]
         )
         # absolute value of the kmer error parameter
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.kmers)],
@@ -151,28 +189,28 @@ class MixGappedInnerKmersIntegerProgrammingJob(map_reduce.Job):
                 # (1 - T)xR + E = C -> -TxR + E = C - R
                 ind = list(map(lambda track: self.tracks[track], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
-                val = list(map(lambda track: -1 * c.coverage * kmer['tracks'][track], kmer['tracks']))
+                val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
                         val = val,
                     )],
-                    rhs = [kmer['count'] - c.coverage * kmer['residue'] - sum(list(map(lambda track: c.coverage * kmer['tracks'][track], kmer['tracks'])))],
+                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
                     senses = ['E']
                 )
             else:
                 # TxR + E = C
                 ind = list(map(lambda track: self.tracks[track], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
-                val = list(map(lambda track: c.coverage * kmer['tracks'][track], kmer['tracks']))
+                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
                         val = val,
                     )],
-                    rhs = [kmer['count'] - c.coverage * kmer['residue']],
+                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
             problem.linear_constraints.add(
@@ -212,6 +250,16 @@ class MixGappedInnerKmersIntegerProgrammingJob(map_reduce.Job):
                             str(solution[self.tracks[track]]) + '\t' + #4
                             #str(len(track['inner_kmers'])) + '\t' + #5
                             self.batch_file_prefix + '\n') #6
+        x = []
+        with open(os.path.join(self.get_current_job_directory(), 'no_signal.bed'), 'w') as bed_file:
+            for track in self.all_tracks:
+                if not track in self.tracks:
+                    tokens = track.split('_')
+                    x.append(int(tokens[2]) - int(tokens[1]))
+                    bed_file.write(tokens[0] + '\t' + #0
+                                tokens[1] + '\t' + #1
+                                tokens[2] + '\n') #2
+        visualizer.histogram(x = x, name = 'events_without_signal_length_distribution', x_label = 'event length', y_label = 'number of events', step = 1, path = self.get_current_job_directory())
 
 # ============================================================================================================================ #
 # Main

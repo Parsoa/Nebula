@@ -82,9 +82,9 @@ class StructuralVariation(object):
             return {}
         inner_seq = self.sequence[begin : end]
         if end - begin < 6 * self.slack:
-            return c_extract_kmers(counter, count, inner_seq)
+            return c_extract_kmers(c.ksize, counter, count, inner_seq)
         else:
-            return c_extract_kmers(counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
+            return c_extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
 
     # <L><Slack><K><R>|Event boundary|<R><Slack><L> ... <L><Slack><R>|Event Boundary|<R><K><Slack><L>
     def get_local_unique_kmers(self, counter):
@@ -92,8 +92,8 @@ class StructuralVariation(object):
         left_end = self.sequence[:self.slack + c.read_length]
         right_end = self.sequence[-self.slack - c.read_length:]
         #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
-        left_local_unique_kmers = extract_kmers(left_end)
-        right_local_unique_kmers = extract_kmers(right_end)
+        left_local_unique_kmers = extract_kmers(c.ksize, left_end)
+        right_local_unique_kmers = extract_kmers(c.ksize, right_end)
         return right_local_unique_kmers, left_local_unique_kmers
 
     def get_boundary_kmers(self, begin, end, counter, count):
@@ -169,5 +169,5 @@ class Deletion(StructuralVariation):
             return None, None
         #
         seq = seq[:c.ksize] + seq[-c.ksize:]
-        boundary_kmers = c_extract_kmers(counter, count, seq)
+        boundary_kmers = c_extract_canonical_kmers(c.ksize, counter, 0, False, seq)
         return boundary_kmers, seq

@@ -96,13 +96,13 @@ def canonicalize(seq):
     reverse_complement = reverse_complement_sequence(seq)
     return seq if seq < reverse_complement else reverse_complement
 
-def c_extract_canonical_kmers(counter = lambda x: 1, count = 1, overlap = True, *args):
+def c_extract_canonical_kmers(k = 31, counter = lambda x: 1, count = 1, overlap = True, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
         i = 0
-        while i <= len(s) - c.ksize and i >= 0:
-            kmer = canonicalize(s[i : i + c.ksize])
+        while i <= len(s) - k and i >= 0:
+            kmer = canonicalize(s[i : i + k])
             if counter(kmer) > count:
                 i += 1
                 continue
@@ -110,17 +110,17 @@ def c_extract_canonical_kmers(counter = lambda x: 1, count = 1, overlap = True, 
                 kmers[kmer] = 0
             kmers[kmer] += 1
             if not overlap:
-                i += c.ksize
+                i += k
             else:
                 i += 1
     return kmers
 
-def extract_canonical_kmers(*args):
+def extract_canonical_kmers(k = 31, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - c.ksize + 1):
-            kmer = canonicalize(s[i : i + c.ksize])
+        for i in range(0, len(s) - k + 1):
+            kmer = canonicalize(s[i : i + k])
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
@@ -146,12 +146,12 @@ def find_kmer(k, kmers):
         return rc
     return None
 
-def c_extract_kmers(counter = lambda x: 1, count = 1, *args):
+def c_extract_kmers(k = 31, counter = lambda x: 1, count = 1, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - c.ksize + 1):
-            kmer = s[i : i + c.ksize]
+        for i in range(0, len(s) - k + 1):
+            kmer = s[i : i + k]
             if counter(kmer) > count:
                 continue
             k = find_kmer(kmer, kmers)
@@ -161,18 +161,18 @@ def c_extract_kmers(counter = lambda x: 1, count = 1, *args):
                 kmers[k] += 1
     return kmers
 
-def extract_kmers(*args):
+def extract_kmers(k = 31, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
-        for i in range(0, len(s) - c.ksize + 1):
-            kmer = s[i : i + c.ksize]
+        for i in range(0, len(s) - k + 1):
+            kmer = s[i : i + k]
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
     return kmers
 
-def stream_kmers(k, *args):
+def stream_kmers(k = 31, *args):
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = s[i : i + k]
@@ -195,3 +195,7 @@ def complement_sequence(seq):
     seq = seq.replace('Z', 'C')
     #
     return seq
+
+def is_subsequence(x, y):
+    it = iter(y)
+    return all(c in it for c in x)

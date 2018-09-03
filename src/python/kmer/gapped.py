@@ -331,6 +331,7 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.tracks[track] = n
             n += 1
         print(len(self.tracks), 'tracks')
+        return self.tracks
 
     def index_kmers(self):
         c = config.Configuration()
@@ -358,7 +359,7 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
         c = config.Configuration()
         for kmer in self.kmers:
             kmer['residue'] = 0
-            kmer['coverage'] = c.coverage
+            kmer['coverage'] = 42#c.coverage
 
     def generate_linear_program(self):
         c = config.Configuration()
