@@ -56,7 +56,7 @@ class Job(object):
             setattr(self, k, v)
 
     def prepare(self):
-        # Declare and initialize needed variables here
+        # Declare and initialize needed variables here before the mpa reduce flow beings
         pass
 
     def check_cli_arguments(self, args):
@@ -66,6 +66,7 @@ class Job(object):
     def execute(self):
         c = config.Configuration()
         self.check_cli_arguments(None)
+        self.prepare()
         self.create_output_directories()
         self.find_thread_count()
         self.prepare()
@@ -280,6 +281,7 @@ class Job(object):
         if not os.path.exists(dir):
             os.makedirs(dir)
         dir = self.get_current_job_directory()
+        print('creating directory:', green(dir))
         if not os.path.exists(dir):
             os.makedirs(dir)
 

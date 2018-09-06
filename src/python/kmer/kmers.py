@@ -35,6 +35,7 @@ chroms = {}
 @Memoize
 def extract_chromosome(chromosome):
     if chromosome in chroms:
+        print(yellow('loading from cache'))
         return chroms[chromosome]
     c = config.Configuration()
     sequence = ''

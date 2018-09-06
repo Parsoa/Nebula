@@ -65,7 +65,7 @@ class ExtractGappedKmersJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.bedtools = {str(track): track for track in pybedtools.BedTool(c.bed_file)}
+        self.bedtools = {str(track): track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))}
         self.round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
 
     def transform(self, track, track_name):
@@ -256,7 +256,7 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'unique_gapped_kmers', **kwargs)
+        job = GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'gapped_kmers', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -321,17 +321,6 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
             json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
         print('generating linear program...')
         self.solve()
-
-    def index_tracks(self):
-        n = 0
-        tmp = sorted([t for t in self.tracks])
-        print(tmp)
-        for track in tmp:
-            #print(track)
-            self.tracks[track] = n
-            n += 1
-        print(len(self.tracks), 'tracks')
-        return self.tracks
 
     def index_kmers(self):
         c = config.Configuration()

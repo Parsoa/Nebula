@@ -50,29 +50,23 @@ class StructuralVariation(object):
         #self.sequence = bed.extract_sequence(track)
         #print(green(self.sequence))
         chromosome = extract_chromosome(track.chrom)
-        print(track.chrom, len(chromosome))
         self.sequence = chromosome[track.start: track.end]
         #print(blue(self.sequence))
 
-    # will return the same set of inner kmers for every breakpoint 
     def get_inner_kmers(self, counter, count, n, begin = 0, end = 0, overlap = True, canonical = True):
         c = config.Configuration()
-        print(c.ksize)
         begin = (c.radius + c.ksize + c.read_length + self.slack) + begin# + c.radius
         end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack) + end# - c.radius
         if begin > end:
             print(yellow('Event too short, no inner kmers exist'))
             return {}
         inner_seq = self.sequence[begin : end]
-        # now count the kmers
-        inner_kmers = c_extract_canonical_kmers(counter, count, overlap, inner_seq)
-        items = inner_kmers.items()
+        inner_kmers = c_extract_canonical_kmers(c.ksize, counter, count, overlap, inner_seq)
         if len(inner_kmers) <= n:
-            #print(blue('YES'))
             return inner_kmers
         else:
-            #print(red('NO'))
-            return {kmer: inner_kmers[kmer] for kmer in list(map(lambda i: items[i][0], sorted(random.sample(range(0, len(inner_kmers)), n))))}
+            items = sorted(inner_kmers.items(), key = lambda item: item[1])[0:n]
+            return {item[0]: item[1] for item in items}
 
     def get_near_boundary_inner_kmers(self, counter = lambda x: 1, count = 1):
         c = config.Configuration()
@@ -169,5 +163,5 @@ class Deletion(StructuralVariation):
             return None, None
         #
         seq = seq[:c.ksize] + seq[-c.ksize:]
-        boundary_kmers = c_extract_canonical_kmers(c.ksize, counter, 0, False, seq)
+        boundary_kmers = c_extract_canonical_kmers(c.ksize, counter, 0, True, seq)
         return boundary_kmers, seq
