@@ -113,10 +113,10 @@ class CountInnerKmersJob(counter.SimulationExactCountingJob):
             print(track)
             with open(self.tracks[track], 'r') as json_file:
                 kmers = json.load(json_file)
-                for kmer in kmers['inner_kmers']:
-                    if not kmer in self.kmers:
-                        self.kmers[kmer] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
-                        self.kmers[reverse_complement(kmer)] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
+                #for kmer in kmers['inner_kmers']:
+                #    if not kmer in self.kmers:
+                #        self.kmers[kmer] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
+                #        self.kmers[reverse_complement(kmer)] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
                 for kmer in kmers['unique_inner_kmers']:
                     if not kmer in self.kmers:
                         self.kmers[kmer] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
@@ -144,15 +144,15 @@ class CountInnerKmersJob(counter.SimulationExactCountingJob):
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
         for kmer in self.kmers:
-            track = self.kmers[kmer]['track']:
+            track = self.kmers[kmer]['track']
             if not track in self.tracks:
                 self.tracks[track] = {}
             self.tracks[track][kmer] = self.kmers[kmer]
         for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track + '.json'), 'w') as track_file:
+            with open(os.path.join(self.get_current_job_directory(), 'unique_inner_kmers_' + track + '.json'), 'w') as track_file:
                 json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'inner_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+            json.dump({track: 'unique_inner_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -166,7 +166,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers', **kwargs)
+        job = IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers', kmer_type = 'unique_inner',  **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -183,40 +183,34 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         else:
             self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
-        self.inner_kmers = {}
-        self.novel_kmers = {}
+        self.lp_kmers = {}
 
     def transform(self, track, track_name):
         with open(track, 'r') as json_file:
-            kmers = json.load(json_file)
-            inner_kmers = {}
-            #inner_kmers.update(kmers['inner_kmers'])
-            inner_kmers.update(kmers['unique_inner_kmers'])
-            if len(inner_kmers) == 0:
-                print('no inner kmers found for', red(track_name))
+            kmers = json.load(json_file)[self.kmer_type + '_kmers']
+            if len(kmers) == 0:
+                print('no unique inner kmers found for', red(track_name))
                 return None
-            for kmer in inner_kmers:
-                if not kmer in self.inner_kmers:
-                    count = self.counts_provider.get_kmer_count(str(kmer))
-                    self.inner_kmers[kmer] = {
-                        'type': 'unique_inner',
-                        'count': count,
-                        'tracks': {},
-                        'reference': self.reference_counts_provider.get_kmer_count(kmer)
-                    }
-                if kmer in self.inner_kmers:
-                    self.inner_kmers[kmer]['tracks'][track_name] = inner_kmers[kmer]['track']
+            for kmer in kmers:
+                count = self.counts_provider.get_kmer_count(str(kmer))
+                self.lp_kmers[kmer] = {
+                    'type': self.kmer_type,
+                    'count': count,
+                    'tracks': {track_name: kmers[kmer]['track']},
+                    'reference': self.reference_counts_provider.get_kmer_count(kmer)
+                }
+            novel_kmers = {}
         path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(
                 {
-                    'unique_inner_kmers': {kmer: self.inner_kmers[kmer] for kmer in inner_kmers},
+                    self.kmer_type + '_kmers': {kmer: self.lp_kmers[kmer] for kmer in kmers},
                 }, json_file, indent = 4, sort_keys = True)
         return path
 
     def output_batch(self, batch):
         json_file = open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(self.index) + '.json'), 'w')
-        json.dump({'unique_inner_kmers': self.inner_kmers}, json_file, sort_keys = True, indent = 4)
+        json.dump({self.kmer_type + '_kmers': self.lp_kmers}, json_file, sort_keys = True, indent = 4)
         json_file.close()
         exit()
 
@@ -227,15 +221,15 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.calculate_residual_coverage()
         print('exporting kmers...')
         with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_kmers.json'), 'w') as json_file:
-            json.dump({'unique_inner_kmers': self.inner_kmers}, json_file, indent = 4, sort_keys = True)
+            json.dump({self.kmer_type + '_kmers': self.lp_kmers}, json_file, indent = 4, sort_keys = True)
         print('generating linear program...')
         self.solve()
 
     def index_kmers(self):
         c = config.Configuration()
         self.tracks = {}
-        self.inner_kmers = []
-        index = {'inner_kmers': {}}
+        self.lp_kmers = []
+        index = {}
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(i) + '.json')
             if not os.path.isfile(path):
@@ -243,17 +237,17 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             print(path)
             with open(path, 'r') as json_file:
                 kmers = json.load(json_file)
-                for kmer in kmers['inner_kmers']:
-                    if not kmer in index['inner_kmers']:
-                        index['inner_kmers'][kmer] = len(self.inner_kmers)
-                        self.inner_kmers.append(copy.deepcopy(kmers['inner_kmers'][kmer]))
-                        self.inner_kmers[len(self.inner_kmers) - 1]['kmer'] = kmer
-                        for track in kmers['inner_kmers'][kmer]['tracks']:
+                print(len(kmers[self.kmer_type + '_kmers']))
+                for kmer in kmers[self.kmer_type + '_kmers']:
+                    if not kmer in index:
+                        index[kmer] = len(self.lp_kmers)
+                        self.lp_kmers.append(copy.deepcopy(kmers[self.kmer_type + '_kmers'][kmer]))
+                        self.lp_kmers[len(self.lp_kmers) - 1]['kmer'] = kmer
+                        for track in kmers[self.kmer_type + '_kmers'][kmer]['tracks']:
                             if not track in self.tracks:
-                                self.tracks[track]['unique_inner_kmers'] = 0
-                            self.tracks[track]['unique_inner_kmers'] += kmers['inner_kmers'][kmer]['tracks']
-        print(green(len(self.inner_kmers)), 'inner kmers')
-        return self.inner_kmers
+                                self.tracks[track] = {}
+        print(green(len(self.lp_kmers)), 'kmers')
+        return self.lp_kmers
 
     def index_tracks(self):
         n = 0
@@ -268,7 +262,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
     # the portion of a kmer's coverage in reference genome that is outside deletions
     def calculate_residual_coverage(self):
         c = config.Configuration()
-        for kmer in self.inner_kmers:
+        for kmer in self.lp_kmers:
             r = 0
             for track in kmer['tracks']:
                 r += kmer['tracks'][track]
@@ -279,11 +273,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         c = config.Configuration()
         problem = cplex.Cplex()
         problem.objective.set_sense(problem.objective.sense.minimize)
-        self.incorporate_inner_kmers(problem)
-        #self.incorporate_novel_kmers(problem, problem.variables.get_num())
-        return problem
-
-    def incorporate_inner_kmers(self, problem):
         # the coverage of each event
         for track in self.tracks:
             tokens = track.split('_')
@@ -291,20 +280,20 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 ub = [1.0],
             )
         # the real-valued error parameter for inner_kmer
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.inner_kmers)],
-            ub = [kmer['count'] - kmer['coverage'] * kmer['residue'] for kmer in self.inner_kmers],
-            lb = [kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']) for kmer in self.inner_kmers]
+        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            ub = [kmer['count'] - kmer['coverage'] * kmer['residue'] for kmer in self.lp_kmers],
+            lb = [kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']) for kmer in self.lp_kmers]
         )
         # absolute value of the inner_kmer error parameter
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.inner_kmers)],
-            obj = [1.0] * len(self.inner_kmers),
+        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            obj = [1.0] * len(self.lp_kmers),
         )
         #problem.objective.set_quadratic([0.0] * len(self.tracks) + [1.0] * len(self.inner_kmers) + [0.0] * len(self.inner_kmers))
         #problem.objective.set_quadratic([cplex.SparsePair(ind = [index], val = [1.0]) for index, kmer in enumerate(self.inner_kmers)])
         # constraints
         n = 0
         start = time.time()
-        for index, kmer in enumerate(self.inner_kmers):
+        for index, kmer in enumerate(self.lp_kmers):
             ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # C
             ind.append(len(self.tracks) + index) #E + str(index)
             val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
@@ -317,29 +306,32 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                 senses = ['E']
             )
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = [len(self.tracks) + len(self.inner_kmers) + index, len(self.tracks) + index],
-                    val = [1.0, 1.0],
-                )],
-                rhs = [0],
-                senses = ['G']
-            )
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = [len(self.tracks) + len(self.inner_kmers) + index, len(self.tracks) + index],
-                    val = [1.0, -1.0],
-                )],
-                rhs = [0],
-                senses = ['G']
-            )
+            self.add_error_absolute_value_constraints(problem, index)
             n = n + 1
             if n % 1000 == 0:
                 t = time.time()
-                p = float(n) / len(self.inner_kmers)
+                p = float(n) / len(self.lp_kmers)
                 eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
                 print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
         return problem
+
+    def add_error_absolute_value_constraints(self, problem, index):
+        problem.linear_constraints.add(
+            lin_expr = [cplex.SparsePair(
+                ind = [len(self.tracks) + len(self.lp_kmers) + index, len(self.tracks) + index],
+                val = [1.0, 1.0],
+            )],
+            rhs = [0],
+            senses = ['G']
+        )
+        problem.linear_constraints.add(
+            lin_expr = [cplex.SparsePair(
+                ind = [len(self.tracks) + len(self.lp_kmers) + index, len(self.tracks) + index],
+                val = [1.0, -1.0],
+            )],
+            rhs = [0],
+            senses = ['G']
+        )
 
     def solve(self):
         problem = self.generate_linear_program()
@@ -376,16 +368,19 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             print(track)
             all_tracks[track] = n
             n += 1
+        x = []
         with open(os.path.join(self.get_current_job_directory(), 'no_signal.bed'), 'w') as bed_file:
             for track in all_tracks:
                 if not track in self.tracks:
                     tokens = track.split('_')
+                    x.append(int(tokens[2]) - int(tokens[1]))
                     bed_file.write(tokens[0] + '\t' + #0
                                 tokens[1] + '\t' + #1
                                 tokens[2] + '\n') #2
+        visualizer.histogram(x = x, name = 'events_without_signal_length_distribution', x_label = 'event length', y_label = 'number of events', step = 1, path = self.get_current_job_directory())
 
     def plot(self, _):
-        counts = [kmer['count'] for kmer in self.inner_kmers]
+        counts = [kmer['count'] for kmer in self.lp_kmers]
         visualizer.histogram(counts, self.batch_file_prefix, self.get_current_job_directory(), x_label = 'number of times kmer appears in sample', y_label = 'number of kmers')
 
     def get_previous_job_directory(self):

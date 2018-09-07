@@ -214,9 +214,9 @@ class SimulationExactCountingJob(BaseExactCountingJob):
         c = config.Configuration()
         self.fastq_file = open(track, 'r')
         for read, name in self.parse_fastq():
-            self.process_read(read, name)
+            self.process_read(read, name, track_name)
     
-    def process_read(self, read, name):
+    def process_read(self, read, name, track_name):
             kmers = extract_kmers(c.ksize, read)
             for kmer in kmers:
                 if kmer in self.kmers: 

@@ -43,7 +43,7 @@ from Bio import pairwise2
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class MixIntegerProgrammingJob(map_reduce.Job):
+class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -112,7 +112,7 @@ class MixIntegerProgrammingJob(map_reduce.Job):
                 self.gapped_kmers = payload['gapped_kmers']
                 self.gapped_tracks = payload['tracks']
             return
-        self.gapped_kmers_solver = gapped.GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'gapped_kmers')
+        self.gapped_kmers_solver = gapped.GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'gapped_kmers', kmer_type = 'gapped')
         self.gapped_kmers_solver.create_output_directories()
         self.gapped_kmers_solver.load_inputs()
         self.gapped_kmers_solver.distribute_workload()
@@ -136,7 +136,7 @@ class MixIntegerProgrammingJob(map_reduce.Job):
                 self.unique_inner_kmers = payload['unique_inner_kmers']
                 self.unique_inner_tracks = payload['tracks']
             return
-        self.unique_inner_kmers_solver = programming.IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_' if c.simulation else 'ExtractInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers')
+        self.unique_inner_kmers_solver = programming.IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_' if c.simulation else 'ExtractInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers', kmer_type = 'unique_inner')
         self.unique_inner_kmers_solver.create_output_directories()
         self.unique_inner_kmers_solver.load_inputs()
         self.unique_inner_kmers_solver.distribute_workload()
@@ -160,7 +160,7 @@ class MixIntegerProgrammingJob(map_reduce.Job):
                 self.non_unique_inner_kmers = payload['non_unique_inner_kmers']
                 self.non_unique_inner_tracks = payload['tracks']
             return
-        self.non_unique_inner_kmers_solver = reduction.LociIndicatorKmersIntegerProgrammingJob(job_name = 'LociIndicatorKmersIntegerProgrammingJob_', previous_job_name = 'CountLociIndicatorKmersJob_', category = 'programming', batch_file_prefix = 'indicator_kmers')
+        self.non_unique_inner_kmers_solver = reduction.LociIndicatorKmersIntegerProgrammingJob(job_name = 'LociIndicatorKmersIntegerProgrammingJob_', previous_job_name = 'CountLociIndicatorKmersJob_', category = 'programming', batch_file_prefix = 'indicator_kmers', kmer_type = 'non_unique_inner')
         self.non_unique_inner_kmers_solver.create_output_directories()
         self.non_unique_inner_kmers_solver.load_inputs()
         self.non_unique_inner_kmers_solver.distribute_workload()
@@ -177,24 +177,29 @@ class MixIntegerProgrammingJob(map_reduce.Job):
         self.tracks.update(self.non_unique_inner_tracks)
         self.tracks.update(self.unique_inner_tracks)
         self.tracks.update(self.gapped_tracks)
+        #self.find_tracks_with_no_signal()
+        #for track in self.tracks.keys():
+        #    if track in self.unique_inner_tracks or track in self.gapped_tracks:
+        #        self.tracks.pop(track, None)
         n = 0
         tmp = sorted([t for t in self.tracks])
         for track in tmp:
-            self.tracks[track] = n
+            self.tracks[track] = {'index': n, 'unique_inner': 0, 'gapped': 0, 'non_unique_inner': 0}
             n += 1
-        self.kmers = self.non_unique_inner_kmers + self.unique_inner_kmers + self.gapped_kmers
+        self.lp_kmers = self.unique_inner_kmers + self.gapped_kmers + self.non_unique_inner_kmers
+        #self.lp_kmers = self.non_unique_inner_kmers
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump({'kmers': self.kmers}, json_file, indent = 4)
+            json.dump({'kmers': self.lp_kmers}, json_file, indent = 4)
         print(cyan('=============================================================================================='))
         print(cyan('=============================================================================================='))
         print(cyan('=============================================================================================='))
         print(cyan('=============================================================================================='))
-        print(cyan('Solving composite model on'), blue(len(self.kmers)), cyan('kmers and '), blue(len(self.tracks)), cyan('tracks'))
+        print(cyan('Solving composite model on'), blue(len(self.lp_kmers)), cyan('kmers and '), blue(len(self.tracks)), cyan('tracks'))
         print(cyan('=============================================================================================='))
         print(cyan('=============================================================================================='))
         print(cyan('=============================================================================================='))
         print(cyan('=============================================================================================='))
-        for kmer in self.kmers:
+        for kmer in self.lp_kmers:
             r = 0
             for track in kmer['tracks']:
                 r += kmer['tracks'][track]
@@ -211,17 +216,52 @@ class MixIntegerProgrammingJob(map_reduce.Job):
                 ub = [1.0],
             )
         # the real-valued error parameter for kmer
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.kmers)],
-            lb = [(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.kmers]
+        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            lb = [(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.lp_kmers]
         )
         # absolute value of the kmer error parameter
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.kmers)],
-            obj = [1.0] * len(self.kmers),
+        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            obj = [1.0 / kmer['reference'] for index, kmer in enumerate(self.lp_kmers)]
         )
-        for index, kmer in enumerate(self.kmers):
+        m = 0
+        n = 0
+        for index, kmer in enumerate(self.lp_kmers):
+            self.add_error_absolute_value_constraints(problem, index)
+            #if kmer['type'] == 'non_unique_inner':
+            #    if len(filter(lambda track: track not in self.tracks, kmer['tracks'])) != 0:
+            #        problem.linear_constraints.add(
+            #            lin_expr = [cplex.SparsePair(
+            #                ind = [len(self.tracks) + index],
+            #                val = [1.0],
+            #            )],
+            #            rhs = [0],
+            #            senses = ['E']
+            #        )
+            #        problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
+            #        continue
+            if kmer['type'] == 'non_unique_inner':
+                if len(kmer['tracks']) == 1:
+                    track = kmer['tracks'].keys()[0]
+                    if self.tracks[track]['gapped'] + self.tracks[track]['unique_inner'] > 5:
+                        m += 1
+                        problem.linear_constraints.add(
+                            lin_expr = [cplex.SparsePair(
+                                ind = [len(self.tracks) + index],
+                                val = [1.0],
+                            )],
+                            rhs = [0],
+                            senses = ['E']
+                        )
+                        problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
+                        continue
+                    else:
+                        n += 1
+                        print(yellow(track))
+            for track in kmer['tracks']:
+                self.tracks[track][kmer['type']] += 1
             if kmer['type'] == 'gapped' and kmer['side'] == 'outer':
                 # (1 - T)xR + E = C -> -TxR + E = C - R
-                ind = list(map(lambda track: self.tracks[track], kmer['tracks']))
+                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
@@ -235,7 +275,7 @@ class MixIntegerProgrammingJob(map_reduce.Job):
                 )
             else:
                 # TxR + E = C
-                ind = list(map(lambda track: self.tracks[track], kmer['tracks']))
+                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
@@ -247,53 +287,11 @@ class MixIntegerProgrammingJob(map_reduce.Job):
                     rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = [len(self.tracks) + len(self.kmers) + index, len(self.tracks) + index],
-                    val = [1.0, 1.0],
-                )],
-                rhs = [0],
-                senses = ['G']
-            )
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = [len(self.tracks) + len(self.kmers) + index, len(self.tracks) + index],
-                    val = [1.0, -1.0],
-                )],
-                rhs = [0],
-                senses = ['G']
-            )
+        print(m, n)
         return problem
 
     def solve(self):
-        problem = self.generate_linear_program()
-        problem.write(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_program.lp'))
-        problem.solve()
-        solution = problem.solution.get_values()
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_solution.json'), 'w') as json_file:
-            json.dump({'variables': problem.solution.get_values()}, json_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_merge.bed'), 'w') as bed_file:
-            for track in self.tracks:
-                tokens = track.split('_')
-                s = int(round(2 * solution[self.tracks[track]]))
-                s = '(0, 0)' if s == 2 else '(1, 0)' if s == 1 else '(1, 1)'
-                bed_file.write(tokens[0] + '\t' + #0
-                            tokens[1] + '\t' + #1
-                            tokens[2] + '\t' + #2
-                            s + '\t' + #3
-                            str(solution[self.tracks[track]]) + '\t' + #4
-                            #str(len(track['inner_kmers'])) + '\t' + #5
-                            self.batch_file_prefix + '\n') #6
-        x = []
-        with open(os.path.join(self.get_current_job_directory(), 'no_signal.bed'), 'w') as bed_file:
-            for track in self.all_tracks:
-                if not track in self.tracks:
-                    tokens = track.split('_')
-                    x.append(int(tokens[2]) - int(tokens[1]))
-                    bed_file.write(tokens[0] + '\t' + #0
-                                tokens[1] + '\t' + #1
-                                tokens[2] + '\n') #2
-        visualizer.histogram(x = x, name = 'events_without_signal_length_distribution', x_label = 'event length', y_label = 'number of events', step = 1, path = self.get_current_job_directory())
+        programming.IntegerProgrammingJob.solve(self)
         for track in self.tracks:
             self.tracks[track] = {'unique_inner_kmers': {}, 'non_unique_inner_kmers': {}, 'gapped_kmers': {}}
         for kmer in self.unique_inner_kmers:

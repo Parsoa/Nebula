@@ -60,35 +60,38 @@ class StructuralVariation(object):
         if begin > end:
             print(yellow('Event too short, no inner kmers exist'))
             return {}
-        inner_seq = self.sequence[begin : end]
+        inner_seq = self.sequence[begin : end + c.ksize - 1]
+        #print(inner_seq)
+        #print(len(inner_seq))
         inner_kmers = c_extract_canonical_kmers(c.ksize, counter, count, overlap, inner_seq)
+        #return inner_kmers
         if len(inner_kmers) <= n:
             return inner_kmers
         else:
             items = sorted(inner_kmers.items(), key = lambda item: item[1])[0:n]
             return {item[0]: item[1] for item in items}
 
-    def get_near_boundary_inner_kmers(self, counter = lambda x: 1, count = 1):
-        c = config.Configuration()
-        begin = (c.radius + c.ksize + c.read_length + self.slack)
-        end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack)
-        if begin > end:
-            return {}
-        inner_seq = self.sequence[begin : end]
-        if end - begin < 6 * self.slack:
-            return c_extract_kmers(c.ksize, counter, count, inner_seq)
-        else:
-            return c_extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
+    #def get_near_boundary_inner_kmers(self, counter = lambda x: 1, count = 1):
+    #    c = config.Configuration()
+    #    begin = (c.radius + c.ksize + c.read_length + self.slack)
+    #    end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack)
+    #    if begin > end:
+    #        return {}
+    #    inner_seq = self.sequence[begin : end]
+    #    if end - begin < 6 * self.slack:
+    #        return c_extract_kmers(c.ksize, counter, count, inner_seq)
+    #    else:
+    #        return c_extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
 
-    # <L><Slack><K><R>|Event boundary|<R><Slack><L> ... <L><Slack><R>|Event Boundary|<R><K><Slack><L>
-    def get_local_unique_kmers(self, counter):
-        c = config.Configuration()
-        left_end = self.sequence[:self.slack + c.read_length]
-        right_end = self.sequence[-self.slack - c.read_length:]
-        #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
-        left_local_unique_kmers = extract_kmers(c.ksize, left_end)
-        right_local_unique_kmers = extract_kmers(c.ksize, right_end)
-        return right_local_unique_kmers, left_local_unique_kmers
+    ## <L><Slack><K><R>|Event boundary|<R><Slack><L> ... <L><Slack><R>|Event Boundary|<R><K><Slack><L>
+    #def get_local_unique_kmers(self, counter):
+    #    c = config.Configuration()
+    #    left_end = self.sequence[:self.slack + c.read_length]
+    #    right_end = self.sequence[-self.slack - c.read_length:]
+    #    #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
+    #    left_local_unique_kmers = extract_kmers(c.ksize, left_end)
+    #    right_local_unique_kmers = extract_kmers(c.ksize, right_end)
+    #    return right_local_unique_kmers, left_local_unique_kmers
 
     def get_boundary_kmers(self, begin, end, counter, count):
         pass
@@ -162,6 +165,7 @@ class Deletion(StructuralVariation):
         if begin > end:
             return None, None
         #
+        #print(green(seq[:c.ksize]), white(seq[c.ksize:-c.ksize]), green(seq[-c.ksize:]))
         seq = seq[:c.ksize] + seq[-c.ksize:]
         boundary_kmers = c_extract_canonical_kmers(c.ksize, counter, 0, True, seq)
         return boundary_kmers, seq

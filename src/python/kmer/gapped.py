@@ -197,7 +197,7 @@ class CountUniqueGappedKmersJob(counter.BaseExactCountingJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = CountUniqueGappedKmersJob(job_name = 'CountUniqueGappedKmersJob_', previous_job_name = 'UniqueGappedKmersJob_', category = 'programming', **kwargs)
+        job = CountUniqueGappedKmersJob(job_name = 'CountUniqueGappedKmersJob_', previous_job_name = 'UniqueGappedKmersJob_', category = 'programming', kmer_type = 'unique_gapped', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -222,13 +222,6 @@ class CountUniqueGappedKmersJob(counter.BaseExactCountingJob):
                     if kmers['outer'][kmer]['unique'] and kmers['outer'][kmer]['score'] == 0:
                         k = canonicalize(kmer)
                         self.kmers[k] = {'track': track, 'side': 'outer', 'count': 0}
-                with open(os.path.join(self.get_current_job_directory(), 'unique_gapped_kmers_' + track + '.json'), 'w') as track_file:
-                    json.dump(kmers, track_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            t = {}
-            for track in tracks:
-                t[track] = os.path.join(self.get_current_job_directory(), 'unique_gapped_kmers_' + track + '.json')
-            json.dump(t, json_file, indent = 4, sort_keys = True)
         self.round_robin()
 
     def transform(self):
@@ -240,9 +233,20 @@ class CountUniqueGappedKmersJob(counter.BaseExactCountingJob):
                     self.kmers[kmer]['count'] += 1
 
     def reduce(self):
-        kmers = self.merge_counts()
+        self.kmers = self.merge_counts()
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(kmers, json_file, indent = 4, sort_keys = True)
+            json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
+        # output kmers per track
+        for kmer in self.kmers:
+            track = self.kmers[kmer]['track']
+            if not track in self.tracks:
+                self.tracks[track] = {'inner': {}, 'outer': {}}
+            self.tracks[track][self.kmers[kmer]['side']][kmer] = self.kmers[kmer]
+        for track in self.tracks:
+            with open(os.path.join(self.get_current_job_directory(), self.kmer_type + '_kmers_' + track + '.json'), 'w') as json_file:
+                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: self.kmer_type + '_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -256,24 +260,12 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'gapped_kmers', **kwargs)
+        job = GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'gapped_kmers', kmer_type = 'gapped', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        tracks = self.load_previous_job_results()
-        self.round_robin(tracks)
-        print(self.get_previous_job_directory())
-        if c.simulation:
-            self.counts_provider = counttable.DictionaryCountsProvider(json.load(open(os.path.join(self.get_previous_job_directory(), 'kmers.json'))))
-        else:
-            self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-        self.load_reference_counts_provider()
-        self.gapped_kmers = {}
 
     def transform(self, track, track_name):
         with open(track, 'r') as json_file:
@@ -284,69 +276,30 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     kmers['outer'].pop(kmer, None)
             for side in ['inner', 'outer']:
                 for kmer in kmers[side]:
-                    if not kmer in self.gapped_kmers:
+                    if not kmer in self.lp_kmers:
                         cc = self.counts_provider.get_kmer_count(str(kmer))
                         if cc:
-                            self.gapped_kmers[kmer] = {
+                            self.lp_kmers[kmer] = {
                                 'side': side,
                                 'type': 'gapped',
                                 'count': cc,
                                 'tracks': {},
                                 'reference': 1,
                             }
-                    if kmer in self.gapped_kmers:
-                        self.gapped_kmers[kmer]['tracks'][track_name] = kmers[side][kmer]['track']
+                    if kmer in self.lp_kmers:
+                        self.lp_kmers[kmer]['tracks'][track_name] = kmers[side][kmer]['track']
         path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(
                 {
-                    'inner': {kmer: self.gapped_kmers[kmer] for kmer in list(filter(lambda kmer: kmer in self.gapped_kmers, kmers['inner']))},
-                    'outer': {kmer: self.gapped_kmers[kmer] for kmer in list(filter(lambda kmer: kmer in self.gapped_kmers, kmers['outer']))},
+                    'inner': {kmer: self.lp_kmers[kmer] for kmer in list(filter(lambda kmer: kmer in self.lp_kmers, kmers['inner']))},
+                    'outer': {kmer: self.lp_kmers[kmer] for kmer in list(filter(lambda kmer: kmer in self.lp_kmers, kmers['outer']))},
                 }, json_file, indent = 4, sort_keys = True)
         return path
 
-    def output_batch(self, batch):
-        json_file = open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(self.index) + '.json'), 'w')
-        json.dump(self.gapped_kmers, json_file, sort_keys = True, indent = 4)
-        json_file.close()
-        exit()
-
-    def reduce(self):
-        c = config.Configuration()
-        self.index_kmers()
-        self.index_tracks()
-        self.calculate_residual_coverage()
-        print('exporting kmers...')
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
-        print('generating linear program...')
-        self.solve()
-
-    def index_kmers(self):
-        c = config.Configuration()
-        self.tracks = {}
-        self.kmers = []
-        index = {}
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(i) + '.json')
-            if not os.path.isfile(path):
-                continue
-            print(path)
-            with open(path, 'r') as json_file:
-                kmers = json.load(json_file)
-                for kmer in kmers:
-                    if not kmer in index:
-                        index[kmer] = len(self.kmers)
-                        self.kmers.append(copy.deepcopy(kmers[kmer]))
-                        self.kmers[len(self.kmers) - 1]['kmer'] = kmer
-                        for track in kmers[kmer]['tracks']:
-                            self.tracks[track] = True
-        print(green(len(self.kmers)), 'kmers')
-        return self.kmers
-
     def calculate_residual_coverage(self):
         c = config.Configuration()
-        for kmer in self.kmers:
+        for kmer in self.lp_kmers:
             kmer['residue'] = 0
             kmer['coverage'] = 42#c.coverage
 
@@ -354,10 +307,6 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
         c = config.Configuration()
         problem = cplex.Cplex()
         problem.objective.set_sense(problem.objective.sense.minimize)
-        self.incorporate_gapped_kmers(problem)
-        return problem
-
-    def incorporate_gapped_kmers(self, problem):
         # the coverage of each event
         for track in self.tracks:
             tokens = track.split('_')
@@ -365,20 +314,20 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 ub = [1.0],
             )
         # the real-valued error parameter for inner_kmer
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.kmers)],
-            lb = [(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.kmers]
+        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            lb = [(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.lp_kmers]
         )
         # absolute value of the inner_kmer error parameter
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.kmers)],
-            obj = [1.0] * len(self.kmers),
+        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            obj = [1.0] * len(self.lp_kmers),
         )
         # constraints
         n = 0
         start = time.time()
-        for index, kmer in enumerate(self.kmers):
+        for index, kmer in enumerate(self.lp_kmers):
             if kmer['side'] == 'outer':
                 # (1 - T)xR + E = C -> -TxR + E = C - R
-                ind = list(map(lambda track: self.tracks[track], kmer['tracks']))
+                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
@@ -392,7 +341,7 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 )
             else:
                 # TxR + E = C
-                ind = list(map(lambda track: self.tracks[track], kmer['tracks']))
+                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
@@ -404,54 +353,13 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = [len(self.tracks) + len(self.kmers) + index, len(self.tracks) + index],
-                    val = [1.0, 1.0],
-                )],
-                rhs = [0],
-                senses = ['G']
-            )
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = [len(self.tracks) + len(self.kmers) + index, len(self.tracks) + index],
-                    val = [1.0, -1.0],
-                )],
-                rhs = [0],
-                senses = ['G']
-            )
+            self.add_error_absolute_value_constraints(problem, index)
             n = n + 1
             if n % 1000 == 0:
                 t = time.time()
-                p = float(n) / len(self.kmers)
+                p = float(n) / len(self.lp_kmers)
                 eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
         return problem
-
-    def solve(self):
-        problem = self.generate_linear_program()
-        problem.write(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_program.lp'))
-        problem.solve()
-        solution = problem.solution.get_values()
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_solution.json'), 'w') as json_file:
-            json.dump({'variables': problem.solution.get_values()}, json_file, indent = 4, sort_keys = True)
-        obj = 0
-        #for i in range(len(self.tracks), len(self.tracks) + len(self.inner_kmers)):
-        #    obj += abs(solution[i])
-        #max_error = sum(list(map(lambda kmer: max(abs(kmer['count'] - kmer['coverage'] * kmer['residue']), abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']))), self.kmers)))
-        #print('error ratio:', float(obj) / max_error)
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_merge.bed'), 'w') as bed_file:
-            for track in self.tracks:
-                tokens = track.split('_')
-                index = self.tracks[track]
-                s = int(round(2 * solution[index]))
-                s = '(0, 0)' if s == 2 else '(1, 0)' if s == 1 else '(1, 1)'
-                bed_file.write(tokens[0] + '\t' + #0
-                            tokens[1] + '\t' + #1
-                            tokens[2] + '\t' + #2
-                            s + '\t' + #3
-                            str(solution[index]) + '\t' + #4
-                            #str(len(track['inner_kmers'])) + '\t' + #5
-                            self.batch_file_prefix + '\n') #6
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

@@ -42,7 +42,6 @@ def on_exit(job):
 class Job(object):
 
     def __init__(self, job_name, previous_job_name, category = 'output', **kwargs):
-        self.job_name = job_name
         self.previous_job_name = previous_job_name
         self.category = category
         self.index = -1
@@ -53,6 +52,7 @@ class Job(object):
         self.run_for_certain_batches_only = False
         self.resume_from_reduce = False
         for k, v in kwargs.items():
+            print('adding attr', green(k))
             setattr(self, k, v)
 
     def prepare(self):
@@ -164,7 +164,7 @@ class Job(object):
     # This MUST call exit()
     def output_batch(self, batch):
         n = 0
-        json_file = open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(self.index) + '.json'), 'w')
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)
         json_file.close()
         exit()
@@ -260,15 +260,13 @@ class Job(object):
                 '../../../simulation/' + bed_file_name + '/' + str(c.simulation) + '/'))
         else:
             return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../' + self.category + '/' + bed_file_name + '/' + str(c.ksize) + '/'))
+                '../../../' + self.__category + '/' + bed_file_name + '/' + str(c.ksize) + '/'))
 
     def get_previous_job_directory(self):
-        # get rid of the final _
-        return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1]))
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.__previous_job.__name))
 
     def get_current_job_directory(self):
-        # get rid of the final _
-        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1]))
+        return os.path.abspath(os.path.join(self.get_output_directory(), self.__name))
 
     def get_simulation_directory(self):
         c = config.Configuration()
@@ -293,29 +291,32 @@ class Job(object):
 
 class BaseGenotypingJob(Job):
 
-    def get_output_directory(self):
-        c = config.Configuration()
-        if c.simulation:
-            return Job.get_output_directory(self)
-        else:
-            fastq_file_name = c.fastq_file.split('/')[-1][::-1].split('.')[-1][::-1]
-            return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../' + self.category + '/genotyping/' + fastq_file_name))
+    def prepare(self):
+        pass
 
-    def get_current_job_directory(self):
-        c = config.Configuration()
-        if c.simulation:
-            return Job.get_current_job_directory(self)
-        else:
-            bed_file_name = c.bed_file.split('/')[-1]
-            return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], bed_file_name))
+    #def get_output_directory(self):
+    #    c = config.Configuration()
+    #    if c.simulation:
+    #        return Job.get_output_directory(self)
+    #    else:
+    #        fastq_file_name = c.fastq_file.split('/')[-1][::-1].split('.')[-1][::-1]
+    #        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+    #            '../../../' + self.category + '/genotyping/' + fastq_file_name))
 
-    def get_previous_job_directory(self):
-        c = config.Configuration()
-        print(c.simulation)
-        if c.simulation:
-            return Job.get_previous_job_directory(self)
-        else:
-            bed_file_name = c.bed_file.split('/')[-1]
-            return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1], bed_file_name))
+    #def get_current_job_directory(self):
+    #    c = config.Configuration()
+    #    if c.simulation:
+    #        return Job.get_current_job_directory(self)
+    #    else:
+    #        bed_file_name = c.bed_file.split('/')[-1]
+    #        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], bed_file_name))
+
+    #def get_previous_job_directory(self):
+    #    c = config.Configuration()
+    #    print(c.simulation)
+    #    if c.simulation:
+    #        return Job.get_previous_job_directory(self)
+    #    else:
+    #        bed_file_name = c.bed_file.split('/')[-1]
+    #        return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1], bed_file_name))
 
