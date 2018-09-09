@@ -22,7 +22,7 @@ from kmer import (
     counttable,
 )
 
-from kmer.sv import StructuralVariation, Inversion, Deletion, SNP
+from kmer.sv import StructuralVariation, Inversion, Deletion
 from kmer.kmers import *
 from kmer.commons import *
 print = pretty_print
@@ -41,18 +41,14 @@ def on_exit(job):
 
 class Job(object):
 
-    def __init__(self, job_name, previous_job_name, category = 'output', **kwargs):
-        self.previous_job_name = previous_job_name
-        self.category = category
+    def __init__(self, **kwargs):
         self.index = -1
         self.batch = {}
-        self.batch_file_prefix = 'batch'
-        self.previous_job_batch_file_prefix = 'batch'
         self.children = {}
         self.run_for_certain_batches_only = False
         self.resume_from_reduce = False
         for k, v in kwargs.items():
-            print('adding attr', green(k))
+            print('adding attr', green(k), blue(v))
             setattr(self, k, v)
 
     def prepare(self):
@@ -92,9 +88,7 @@ class Job(object):
         self.round_robin(tracks)
 
     def load_previous_job_results(self):
-        print(self.get_previous_job_directory())
-        path = os.path.join(self.get_previous_job_directory(), self.previous_job_batch_file_prefix + '_merge.json')
-        print(path)
+        path = os.path.join(self.get_previous_job_directory(),  'batch_merge.json')
         with open(path, 'r') as json_file:
             return json.load(json_file)
 
@@ -154,8 +148,6 @@ class Job(object):
         for track in remove:
             batch.pop(track, None)
         # if there is no output, don't write anything
-        if not batch:
-            exit()
         self.output_batch(batch)
 
     def transform(self, track, track_name):
@@ -176,7 +168,7 @@ class Job(object):
             (pid, e) = os.wait()
             index = self.children[pid]
             self.children.pop(pid, None)
-            if os.path.isfile(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(index) + '.json')):
+            if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
             else:
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
@@ -186,17 +178,20 @@ class Job(object):
         c = config.Configuration()
         output = {}
         for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(i) + '.json')
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             if os.path.isfile(path):
                 with open(path, 'r') as json_file:
                     batch = json.load(json_file)
                     output.update(batch)
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_merge.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump(output, json_file, sort_keys = True, indent = 4)
         return output
 
     def load_output_batch(self, index):
-        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(index) + '.json')
+        path = os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')
+        if not os.path.isfile(path):
+            print(yellow('didn\'t find batch', index))
+            return {}
         with open(path, 'r') as json_file:
             output = json.load(json_file)
             return output
@@ -257,22 +252,25 @@ class Job(object):
         bed_file_name = c.bed_file.split('/')[-1]
         if c.simulation:
             return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../simulation/' + bed_file_name + '/' + str(c.simulation) + '/'))
+                '../../../simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/' + str(c.ksize) + 'k/'))
         else:
             return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../' + self.__category + '/' + bed_file_name + '/' + str(c.ksize) + '/'))
+                '../../../' + _category + '/' + bed_file_name + '/' + str(c.ksize) + '/'))
 
     def get_previous_job_directory(self):
-        return os.path.abspath(os.path.join(self.get_output_directory(), self.__previous_job.__name))
+        if self._previous_job:
+            return os.path.abspath(os.path.join(self.get_output_directory(), self._previous_job._name))
+        else:
+            return self.get_current_job_directory()
 
     def get_current_job_directory(self):
-        return os.path.abspath(os.path.join(self.get_output_directory(), self.__name))
+        return os.path.abspath(os.path.join(self.get_output_directory(), self._name))
 
     def get_simulation_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../simulation/' + bed_file_name + '/' + str(c.simulation) + '/Simulation/'))
+            '../../../simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/' + str(c.ksize) + 'k/Simulation/'))
 
     def create_output_directories(self):
         dir = self.get_output_directory()

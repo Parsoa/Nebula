@@ -17,7 +17,6 @@ import subprocess
 
 from kmer import (
     bed,
-    sets,
     counttable,
     map_reduce,
     statistics,
@@ -38,13 +37,17 @@ import pybedtools
 
 class Simulation(map_reduce.Job):
 
+    _name = 'Simulation'
+    _category = 'simulation'
+    _previous_job = None
+
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
     @staticmethod
     def launch(**kwargs):
-        job = Simulation(job_name = 'Simulation_', previous_job_name = '', category = 'simulation', **kwargs)
+        job = Simulation(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -106,19 +109,20 @@ class Simulation(map_reduce.Job):
 
     def load_structural_variations(self):
         c = config.Configuration()
+        print(c.bed_file)
         bedtools = pybedtools.BedTool(c.bed_file)
         # split events into batches
         n = 0
         tracks = []
         for track in bedtools:
-            if track.chrom != c.chrom:
-                continue
+            n += 1
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
             # too large, skip
             if track.end - track.start > 1000000:
                 print(red('skipping', name))
                 continue
             tracks.append(track)
+        print(n)
         tracks = sorted(tracks, key = lambda x: x.start)
         print('Total number of deletions:', len(tracks))
         return self.filter_overlapping_intervals(tracks)
@@ -182,10 +186,7 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), name + '.fa'), 'w') as fasta_file:
             fasta_file.write('>' + chrom + '\n')
-            if chrom == c.chrom:
-                seq = self.apply_events_to_chromosome(chrom, events)
-            else:
-                seq = self.chrom[chrom]
+            seq = self.apply_events_to_chromosome(chrom, events)
             l = len(seq)
             n = 100
             num_lines = l / n

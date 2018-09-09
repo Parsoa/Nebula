@@ -7,6 +7,7 @@ cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv2/bin/activate
 cd src/python
 source BED.sh
+source FASTQ.sh
 source Jellyfish.sh
 echo "$@"
-python -m kmer.gapped --job ExtractGappedKmersJob --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --reference $REF --readlength 100 --insertsize 500 $SIM --gap 5 "$@"
+python -m kmer.gapped --job $JOB --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --reference $REF --jellyfish $JLY $RJF --fastq $FSQ --readlength 100 --insertsize 500 --gap 5 --ksize $KSZ $SIM $DESCP "$@"

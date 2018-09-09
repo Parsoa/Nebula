@@ -26,6 +26,7 @@ from kmer import (
 
 from kmer.kmers import *
 from kmer.commons import *
+from kmer.chromosomes import *
 print = pretty_print
 
 import acora
@@ -47,9 +48,9 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
     # Launcher
     # ============================================================================================================================ #
 
-    __name = 'ExtractLociIndicatorKmersJob'
-    __category = 'programming'
-    __previous_job = None
+    _name = 'ExtractLociIndicatorKmersJob'
+    _category = 'programming'
+    _previous_job = programming.ExtractInnerKmersJob
 
     @staticmethod
     def launch(**kwargs):
@@ -63,85 +64,80 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         self.load_reference_counts_provider()
-        self.bedtools = {str(track): track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))}
-        self.round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000)
-        #self.chroms = extract_whole_genome()
+        self.chroms = extract_whole_genome()
+        self.tracks = self.load_previous_job_results()
+        self.inner_kmers = {}
+        for track in self.tracks:
+            print(track)
+            with open(self.tracks[track], 'r') as json_file:
+                kmers = json.load(json_file)['inner_kmers']
+            for kmer in kmers:
+                if not kmer in self.inner_kmers:
+                    self.inner_kmers[kmer] = {
+                        'reference': kmers[kmer]['reference'],
+                        'tracks': {},
+                        'loci': {}
+                    }
+                self.inner_kmers[kmer]['tracks'][track] = kmers[kmer]['track']
+        print('Finding loci for', green(len(self.inner_kmers)), 'kmers')
+        self.round_robin(self.chroms)
 
-    def transform(self, track, track_name):
+    def transform(self, sequence, chrom):
         c = config.Configuration()
-        sv = self.get_sv_type()(bed.track_from_name(track_name))
-        _inner_kmers = sv.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10000000, n = 1000)
-        novel_kmers, _ = sv.get_boundary_kmers(begin = 0, end = 0, counter = self.reference_counts_provider.get_kmer_count, count = 0)
-        #print(len(_inner_kmers), len(novel_kmers))
-        l = len(_inner_kmers)
-        _inner_kmers = {kmer: _inner_kmers[kmer] for kmer in filter(lambda k: k not in novel_kmers and reverse_complement(k) not in novel_kmers, _inner_kmers)}
-        if l != len(_inner_kmers):
-            print(yellow(track_name))
-        inner_kmers = {}
-        for kmer in _inner_kmers:
-            r = self.reference_counts_provider.get_kmer_count(kmer)
-            if r == 1:
-                continue
-            inner_kmers[kmer] = {}
-            #inner_kmers[kmer]['loci'] = self.find_kmer_loci(kmer, track_name)
-            #inner_kmers[kmer]['reference'] = r 
-            #inner_kmers[kmer]['track'] = _inner_kmers[kmer]
-        if len(inner_kmers) == 0:
-            path = os.path.join(self.get_current_job_directory(), 'no_inner_kmers_' + track_name  + '.json') 
-            #with open(path, 'w') as json_file:
-            #    json.dump({'inner_kmers': inner_kmers}, json_file, sort_keys = True, indent = 4)
-            return None
-        else:
-            path = os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track_name  + '.json') 
-            #with open(path, 'w') as json_file:
-            #    json.dump({'inner_kmers': inner_kmers}, json_file, sort_keys = True, indent = 4)
-            return 'inner_kmers_' + track_name  + '.json'
+        index = 0
+        slack = (c.read_length - c.ksize) / 2
+        print(cyan(chrom, len(sequence)))
+        t = time.time()
+        for kmer in stream_canonical_kmers(c.ksize, sequence):
+            if kmer in self.inner_kmers:
+                locus = chrom + '_' + str(index)
+                self.inner_kmers[kmer]['loci'][locus] = {
+                        'seq': {
+                            'all': sequence[index - slack: index + c.ksize + slack],
+                            'left': sequence[index - slack : index],
+                            'right': sequence[index + c.ksize: index + c.ksize + slack]
+                        }
+                    }
+                self.inner_kmers[kmer]['loci'][locus]['kmers'] = {
+                    'left': extract_canonical_kmers(c.ksize, self.inner_kmers[kmer]['loci'][locus]['seq']['left']),
+                    'right': extract_canonical_kmers(c.ksize, self.inner_kmers[kmer]['loci'][locus]['seq']['right'])
+                }
+            index += 1
+            if index % 10000 == 0:
+                s = time.time()
+                p = (len(sequence) - index) / float(len(sequence))
+                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+        return None
 
-    def find_kmer_loci(self, kmer, track_name):
-        loci = {}
-        track = bed.track_from_name(track_name)
-        for chrom in self.chroms:
-            t = self.find_all(self.chroms[chrom], kmer)
-            t += self.find_all(self.chroms[chrom], reverse_complement(kmer))
-            for position in t:
-                name = chrom + '_' + str(position)
-                slack = (c.read_length - c.ksize) / 2
-                loci[name] = {}
-                loci[name]['seq'] = {}
-                loci[name]['seq']['all'] = self.chroms[chrom][position - slack : position + c.ksize + slack]
-                loci[name]['seq']['left'] = self.chroms[chrom][position - slack : position]
-                loci[name]['seq']['right'] = self.chroms[chrom][position + c.ksize : position + c.ksize + slack]
-                loci[name]['kmers'] = {}
-                loci[name]['kmers']['left'] = extract_canonical_kmers(c.ksize, loci[name]['seq']['left'])
-                loci[name]['kmers']['right'] = extract_canonical_kmers(c.ksize, loci[name]['seq']['right'])
-                #o[name]['unique_kmers'] = { 'right': {}, 'left': {} }
-        #kmers = {}
-        #for i in o:
-        #    for side in o[i]['kmers']:
-        #        for kmer in o[i]['kmers'][side]:
-        #            if not kmer in kmers:
-        #                kmers[kmer] = {}
-        #            kmers[kmer][i] = True
-        #for i in o:
-        #    for side in o[i]['kmers']:
-        #        for kmer in o[i]['kmers'][side]:
-        #            if kmer in kmers and len(kmers[kmer]) == 1:
-        #                o[i]['unique_kmers'][side][kmer] = True
-        return loci
-
-    def find_all(self, string, substring):
-        l = []
-        index = -1
-        while True:
-            index = string.find(substring, index + 1)
-            if index == -1:  
-                break
-            l.append(index)
-        return l
+    def output_batch(self, batch):
+        n = 0
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.inner_kmers, json_file, sort_keys = True, indent = 4)
+        json_file.close()
+        exit()
 
     def reduce(self):
-        self.tracks = map_reduce.Job.reduce(self)
-        #self.plot_kmer_reference_count()
+        for i in range(0, self.num_threads):
+            print('adding batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
+            if not os.path.isfile(path):
+                print(red('couldn\'t find batch'), i, red('results will be unreliable'))
+                continue
+            with open (path, 'r') as json_file:
+                batch = json.load(json_file)
+                for kmer in batch:
+                    self.inner_kmers[kmer]['loci'].update(batch[kmer]['loci'])
+        for track in self.tracks:
+            self.tracks[track] = {}
+        for kmer in self.inner_kmers:
+            for track in self.inner_kmers[kmer]['tracks']:
+                self.tracks[track][kmer] = self.inner_kmers[kmer]
+        for track in self.tracks:
+            with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as track_file:
+                json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
 
     def plot_kmer_reference_count(self):
         x = []
@@ -165,9 +161,9 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
     # Launcher
     # ============================================================================================================================ #
 
-    __name = 'CountLociIndicatorKmersJob'
-    __category = 'programming'
-    __previous_job = ExtractLociIndicatorKmersJob
+    _name = 'CountLociIndicatorKmersJob'
+    _category = 'programming'
+    _previous_job = ExtractLociIndicatorKmersJob
 
     @staticmethod
     def launch(**kwargs):
@@ -185,7 +181,7 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
         for track in tracks:
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
-                kmers = json.load(json_file)['inner_kmers']
+                kmers = json.load(json_file)
                 t = bed.track_from_name(track)
                 for kmer in kmers:
                     seed = sum(list(map(lambda s: ord(s), kmer)))
@@ -199,17 +195,21 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
                         self.kmers[kmer]['reference'] = kmers[kmer]['reference']
                         self.kmers[kmer]['interest_kmers'] = {}
                         self.kmers[kmer]['loci'] = kmers[kmer]['loci']
+                        self.kmers[kmer]['tracks'] = kmers[kmer]['tracks']
                         for locus in self.kmers[kmer]['loci']:
                             self.kmers[kmer]['loci'][locus]['kmers'] = {k: True for k in self.kmers[kmer]['loci'][locus]['kmers']['left'].keys() + self.kmers[kmer]['loci'][locus]['kmers']['right'].keys()}
                             self.kmers[kmer]['loci'][locus]['mask'] = [
                                 self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['left'], seed),
                                 self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['right'], seed)
                             ]
-                    self.kmers[kmer]['tracks'][track] = kmers[kmer]['track']
+                    n = 0
                     for locus in self.kmers[kmer]['loci']:
                         tokens = locus.split('_')
-                        if tokens[0] == t.chrom and int(tokens[1]) >= t.start and int(tokens[1]) < t.end:
+                        if tokens[0] == t.chrom and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
                             self.kmers[kmer]['interest_kmers'].update(self.kmers[kmer]['loci'][locus]['kmers'])
+                            n += 1
+                    if n == 0:
+                        print(yellow(track, locus))
         x = []
         for kmer in self.kmers:
             self.kmers[kmer]['indicator_kmers'] = {}
@@ -311,10 +311,15 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
 
 class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
+    _name = 'LociIndicatorKmersIntegerProgrammingJob'
+    _category = 'programming'
+    _previous_job = CountLociIndicatorKmersJob
+    _kmer_type = ''
+
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = LociIndicatorKmersIntegerProgrammingJob(job_name = 'LociIndicatorKmersIntegerProgrammingJob_', previous_job_name = 'CountLociIndicatorKmersJob_', category = 'programming', batch_file_prefix = 'indicator_kmers', kmer_type = 'non_unique_inner', **kwargs)
+        job = LociIndicatorKmersIntegerProgrammingJob(kmer_type = 'non_unique_inner', **kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -335,7 +340,7 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
                     n = 0
                     for locus in k['loci']:
                         tokens = locus.split('_')
-                        if tokens[0] == t.chrom and int(tokens[1]) >= t.start and int(tokens[1]) < t.end:
+                        if tokens[0] == t.chrom and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
                             n += 1
                     self.lp_kmers[kmer] = {}
                     self.lp_kmers[kmer]['type'] = self.kmer_type
@@ -349,12 +354,9 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
             if not kmers: 
                 print('no inner kmers found for', red(track_name))
                 return None
-        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + track_name + '.json')
+        path = os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track_name + '.json')
         with open(path, 'w') as json_file:
-            json.dump(
-                {
-                    self.kmer_type + '_kmers': {kmer: self.lp_kmers[kmer] for kmer in kmers},
-                }, json_file, indent = 4, sort_keys = True)
+            json.dump({kmer: self.lp_kmers[kmer] for kmer in kmers}, json_file, indent = 4, sort_keys = True)
         return path
 
 # ============================================================================================================================ #
@@ -382,11 +384,11 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
         c = config.Configuration()
         with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             kmers = json.load(json_file)
-        self.homozygous = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'homozygous.bed'))], key = lambda track: track.start)
+        self.homozygous = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'homozygous.bed'))], key = lambda track: track.begin)
         self.homozygous_t = {re.sub(r'\s+', '_', str(track).strip()).strip(): True for track in self.homozygous}
-        self.heterozygous = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'heterozygous.bed'))], key = lambda track: track.start)
+        self.heterozygous = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'heterozygous.bed'))], key = lambda track: track.begin)
         self.heterozygous_t = {re.sub(r'\s+', '_', str(track).strip()).strip(): True for track in self.heterozygous} 
-        self.present = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'present.bed'))], key = lambda track: track.start)
+        self.present = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'present.bed'))], key = lambda track: track.begin)
         self.kmers = {}
         for kmer in kmers:
             if len(kmers[kmer]['tracks']) != 1:
@@ -402,7 +404,7 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
                 t = bed.track_from_name(track)
                 for locus in kmers[kmer]['loci'].keys():
                     tokens = locus.split('_')
-                    if tokens[0] == t.chrom and int(tokens[1]) >= t.start and int(tokens[1]) <= t.end - c.ksize:
+                    if tokens[0] == t.chrom and int(tokens[1]) >= t.begin and int(tokens[1]) <= t.end - c.ksize:
                         locus_1, locus_2 = self.convert_loci(locus, track)
                         if locus_1:
                             self.kmers[kmer]['loci']['1'][locus_1] = 0
@@ -421,15 +423,15 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
         tokens = locus.split('_')
         if tokens[0] != 'chr2':
             return locus, locus
-        start = int(tokens[1])
-        offset_1 = sum(list(map(lambda y: y.end - y.start, list(filter(lambda x: x.end < start, self.present)))))
-        offset_2 = sum(list(map(lambda y: y.end - y.start, list(filter(lambda x: x.end < start, self.homozygous)))))
+        begin = int(tokens[1])
+        offset_1 = sum(list(map(lambda y: y.end - y.begin, list(filter(lambda x: x.end < begin, self.present)))))
+        offset_2 = sum(list(map(lambda y: y.end - y.begin, list(filter(lambda x: x.end < begin, self.homozygous)))))
         if track in self.homozygous_t:
             return None, None
         if track in self.heterozygous_t:
-            return None, tokens[0] + '_' + str(start - offset_2)
+            return None, tokens[0] + '_' + str(begin - offset_2)
         else:
-            return tokens[0] + '_' + str(start - offset_1), tokens[0] + '_' + str(start - offset_2)
+            return tokens[0] + '_' + str(begin - offset_1), tokens[0] + '_' + str(begin - offset_2)
 
     def process_read(self, read, name, track_name):
         c = config.Configuration()
@@ -437,7 +439,7 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
         strand = '1' if '_1.1' in track_name else '2'
         tokens = name.split('_')
         chrom = tokens[0]
-        start = int(tokens[1])
+        begin = int(tokens[1])
         end = int(tokens[2])
         kmers = extract_canonical_kmers(c.ksize, read)
         for kmer in kmers:
@@ -446,7 +448,7 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
                 for locus in self.kmers[kmer]['loci'][strand]:
                     tokens = locus.split('_')
                     if tokens[0] == chrom:
-                        if int(tokens[1]) >= start and int(tokens[1]) < end:
+                        if int(tokens[1]) >= begin and int(tokens[1]) < end:
                             self.kmers[kmer]['loci'][strand][locus] += kmers[kmer]
                             break
                 self.kmers[kmer]['total'] += kmers[kmer]

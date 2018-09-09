@@ -58,7 +58,7 @@ def parse_args():
     # the path to a previously generated khmer counttable without the .ct extension
     parser.add_argument("--khmer")
     # length of the kmers 
-    parser.add_argument("--ksize", type = int)
+    parser.add_argument("--ksize", default = '31k')
     # specifies that this counttable should return dummy values
     parser.add_argument("--dummy", action='store_true')
     # the chromosome to simulate
@@ -88,9 +88,11 @@ def parse_args():
     # the outer insert size of the paired end reads 
     parser.add_argument("--insertsize", type = int, default = 1000)
     # indicates if this is part of a simulation
-    parser.add_argument("--simulation", type = int, default = 0)
-    # the size of the reads in the FASTQ file 
+    parser.add_argument("--simulation", default = '30x')
+    # the size of the reads in the fastq file 
     parser.add_argument("--readlength", type = int, default = 100)
+    # description of this simulation 
+    parser.add_argument("--description")
     # whether the simulation should be heterozygous
     parser.add_argument("--heterozygous", action = 'store_true')
     args = parser.parse_args()
@@ -115,7 +117,7 @@ def configure(args):
         debug = args.debug,
         exons = args.exons,
         khmer = args.khmer,
-        ksize = args.ksize if args.ksize else 31,
+        ksize = int(args.ksize[:-1]),
         genome = args.genome,
         radius = args.radius,
         random = args.random,
@@ -125,9 +127,10 @@ def configure(args):
         jellyfish = args.jellyfish, 
         reference = args.reference,
         fastq_file = os.path.abspath(args.fastq),
-        simulation = args.simulation,
+        simulation = int(args.simulation[:-1]),
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
+        description = args.description,
         max_threads = 1 if args.debug else args.threads,
         insert_size = args.insertsize,
         read_length = args.readlength,

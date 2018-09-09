@@ -4,23 +4,15 @@ import copy
 import time
 
 from kmer import (
-    bed,
     config
 )
 
 from kmer.kmers import *
 from kmer.commons import *
+from kmer.chromosomes import *
 print = pretty_print
 
 import colorama
-
-class SNP(object):
-
-    def __init__(self, chrom, begin, end, variants):
-        self.chrom = chrom
-        self.begin = begin
-        self.end = end
-        self.variants = variants.strip().split('/')
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -29,29 +21,24 @@ class SNP(object):
 class StructuralVariation(object):
 
     def __init__(self, track):
-        self.track = track
+        self.chrom = track.chrom
+        self.begin = track.start
+        self.end = track.end
         self.inner_kmers = None
         self.extract_base_sequence()
-
-    def find_snps_within_boundaries(self, snps):
-        pass
 
     # the begin position itself is not included in the sequence
     # the end position is included in the sequence
     # the origin will be -1, -1
     def extract_base_sequence(self):
         c = config.Configuration()
-        track = copy.deepcopy(self.track)
         # this is the largest sequence that we will ever need for this track
         # <- k bp -><- R bp -><-actual sequence-><- R bp -><- k bp ->
         self.slack = c.insert_size - 2 * c.radius - c.ksize - 2 * c.read_length
-        track.start = track.start - c.radius - c.ksize - c.read_length - self.slack
-        track.end   = track.end   + c.radius + c.ksize + c.read_length + self.slack
-        #self.sequence = bed.extract_sequence(track)
-        #print(green(self.sequence))
-        chromosome = extract_chromosome(track.chrom)
-        self.sequence = chromosome[track.start: track.end]
-        #print(blue(self.sequence))
+        begin = self.begin - c.radius - c.ksize - c.read_length - self.slack
+        end = self.end   + c.radius + c.ksize + c.read_length + self.slack
+        chromosome = extract_chromosome(self.chrom)
+        self.sequence = chromosome[begin: end]
 
     def get_inner_kmers(self, counter, count, n, begin = 0, end = 0, overlap = True, canonical = True):
         c = config.Configuration()
@@ -70,28 +57,6 @@ class StructuralVariation(object):
         else:
             items = sorted(inner_kmers.items(), key = lambda item: item[1])[0:n]
             return {item[0]: item[1] for item in items}
-
-    #def get_near_boundary_inner_kmers(self, counter = lambda x: 1, count = 1):
-    #    c = config.Configuration()
-    #    begin = (c.radius + c.ksize + c.read_length + self.slack)
-    #    end = (len(self.sequence) - c.radius - c.ksize - c.read_length - self.slack)
-    #    if begin > end:
-    #        return {}
-    #    inner_seq = self.sequence[begin : end]
-    #    if end - begin < 6 * self.slack:
-    #        return c_extract_kmers(c.ksize, counter, count, inner_seq)
-    #    else:
-    #        return c_extract_kmers(c.ksize, counter, count, inner_seq[: 3 * self.slack], inner_seq[-3 * self.slack :])
-
-    ## <L><Slack><K><R>|Event boundary|<R><Slack><L> ... <L><Slack><R>|Event Boundary|<R><K><Slack><L>
-    #def get_local_unique_kmers(self, counter):
-    #    c = config.Configuration()
-    #    left_end = self.sequence[:self.slack + c.read_length]
-    #    right_end = self.sequence[-self.slack - c.read_length:]
-    #    #print(green(self.sequence[:self.slack + c.read_length]) + cyan(self.sequence[self.slack + c.read_length: begin]) + white(self.sequence[begin : end]) + cyan(self.sequence[end : end + c.radius + c.ksize]) + green(self.sequence[end + c.radius + c.ksize :]))
-    #    left_local_unique_kmers = extract_kmers(c.ksize, left_end)
-    #    right_local_unique_kmers = extract_kmers(c.ksize, right_end)
-    #    return right_local_unique_kmers, left_local_unique_kmers
 
     def get_boundary_kmers(self, begin, end, counter, count):
         pass

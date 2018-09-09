@@ -13,84 +13,16 @@ import random
 import argparse
 import traceback
 import statistics as stats
-import SocketServer as socketserver
 
 from kmer import (
-    bed,
-    sets,
     config,
 )
 
 from kmer.commons import *
 
-import socket
-import struct
-
 # ============================================================================================================================ #
 # kmer helpers
 # ============================================================================================================================ #
-
-chroms = {}
-
-@Memoize
-def extract_chromosome(chromosome):
-    if chromosome in chroms:
-        print(yellow('loading from cache'))
-        return chroms[chromosome]
-    c = config.Configuration()
-    sequence = ''
-    ref = open(c.reference_genome)
-    line = ref.readline().lower().strip()
-    found = False
-    while True:
-        if line.startswith('>chr'):
-            chrom = line[line.find('>') + 1:]
-            if chrom == chromosome:
-                print('extracting ' + chrom)
-                while True:
-                    line = ref.readline().lower().strip()
-                    if line.startswith('>') or len(line) == 0:
-                        print(line)
-                        return sequence
-                    sequence += line.upper()
-        line = ref.readline().lower().strip()
-        if len(line) == 0:
-            break
-
-def extract_chromosomes(chromosomes):
-    c = config.Configuration()
-    sequence = ''
-    ref = open(c.reference_genome)
-    line = ref.readline().lower().strip()
-    found = False
-    while True:
-        if line.startswith('>chr'):
-            chrom = line[line.find('>') + 1:]
-            if chrom in chromosomes:
-                print('extracting ' + chrom)
-                while True:
-                    line = ref.readline().lower().strip()
-                    if line.startswith('>') or len(line) == 0:
-                        print(line)
-                        yield sequence, chrom
-                        sequence = ''
-                        found = True
-                        break
-                    sequence += line.upper()
-        if found:
-            found = False
-            continue
-        line = ref.readline().lower().strip()
-        if len(line) == 0:
-            break
-
-def extract_whole_genome():
-    c = ['chr' + str(x) for x in range(1, 23)]
-    c.append('chrx')
-    c.append('chry')
-    for seq, chrom in extract_chromosomes(c):
-        chroms[chrom] = seq
-    return chroms
 
 def canonicalize(seq):
     seq = seq.upper()
@@ -138,6 +70,12 @@ def extract_canonical_gapped_kmers(*args):
                 kmers[kmer] = 0
             kmers[kmer] += 1
     return kmers
+
+def stream_canonical_kmers(k = 31, *args):
+    for s in args:
+        for i in range(0, len(s) - k + 1):
+            kmer = s[i : i + k]
+            yield canonicalize(kmer)
 
 def find_kmer(k, kmers):
     rc = reverse_complement(k)

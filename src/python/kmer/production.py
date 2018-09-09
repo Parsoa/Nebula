@@ -45,6 +45,10 @@ from Bio import pairwise2
 
 class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
+    __name = 'MixIntegerProgrammingJob'
+    __category = 'programming'
+    __previous_job = None
+
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
@@ -52,7 +56,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = MixIntegerProgrammingJob(job_name = 'MixGappedInnerKmersIntegerProgrammingJob_', previous_job_name = '', category = 'programming', batch_file_prefix = 'batch',
+        job = MixIntegerProgrammingJob(
             include_gapped = True,
             include_unique_inner = True,
             include_non_unique_inner = True,
@@ -64,15 +68,15 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
     # ============================================================================================================================ #
 
     def prepare(self):
-        self.job_name = 'Mix'
+        __name = 'Mix'
         if self.include_gapped:
-            self.job_name += 'Gapped'
+            __name += 'Gapped'
         if self.include_unique_inner:
-            self.job_name += 'UniqueInner'
+            __name += 'UniqueInner'
         if self.include_non_unique_inner:
-            self.job_name += 'NoneUniqueInner'
-        self.job_name += 'KmersIntegerProgrammingJob_'
-        print(self.job_name)
+            __name += 'NoneUniqueInner'
+        __name += 'KmersIntegerProgrammingJob_'
+        print(__name)
 
     def execute(self):
         c = config.Configuration()
@@ -112,7 +116,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 self.gapped_kmers = payload['gapped_kmers']
                 self.gapped_tracks = payload['tracks']
             return
-        self.gapped_kmers_solver = gapped.GappedKmersIntegerProgrammingJob(job_name = 'GappedKmersIntegerProgrammingJob_', previous_job_name = 'CountUniqueGappedKmersJob_', category = 'programming', batch_file_prefix = 'gapped_kmers', kmer_type = 'gapped')
+        self.gapped_kmers_solver = gapped.GappedKmersIntegerProgrammingJob()
         self.gapped_kmers_solver.create_output_directories()
         self.gapped_kmers_solver.load_inputs()
         self.gapped_kmers_solver.distribute_workload()
@@ -136,7 +140,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 self.unique_inner_kmers = payload['unique_inner_kmers']
                 self.unique_inner_tracks = payload['tracks']
             return
-        self.unique_inner_kmers_solver = programming.IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_' if c.simulation else 'ExtractInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers', kmer_type = 'unique_inner')
+        self.unique_inner_kmers_solver = programming.IntegerProgrammingJob()
         self.unique_inner_kmers_solver.create_output_directories()
         self.unique_inner_kmers_solver.load_inputs()
         self.unique_inner_kmers_solver.distribute_workload()
@@ -160,7 +164,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 self.non_unique_inner_kmers = payload['non_unique_inner_kmers']
                 self.non_unique_inner_tracks = payload['tracks']
             return
-        self.non_unique_inner_kmers_solver = reduction.LociIndicatorKmersIntegerProgrammingJob(job_name = 'LociIndicatorKmersIntegerProgrammingJob_', previous_job_name = 'CountLociIndicatorKmersJob_', category = 'programming', batch_file_prefix = 'indicator_kmers', kmer_type = 'non_unique_inner')
+        self.non_unique_inner_kmers_solver = reduction.LociIndicatorKmersIntegerProgrammingJob()
         self.non_unique_inner_kmers_solver.create_output_directories()
         self.non_unique_inner_kmers_solver.load_inputs()
         self.non_unique_inner_kmers_solver.distribute_workload()

@@ -13,7 +13,6 @@ import operator
 import traceback
 
 from kmer import (
-    bed,
     config,
     counter,
     simulator,
@@ -25,6 +24,7 @@ from kmer import (
 
 from kmer.kmers import *
 from kmer.commons import *
+from kmer.chromosomes import *
 print = pretty_print
 
 import acora
@@ -42,13 +42,17 @@ from Bio import pairwise2
 
 class ExtractInnerKmersJob(map_reduce.Job):
 
+    _name = 'ExtractInnerKmersJob'
+    _category = 'programming'
+    _previous_job = None
+
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
     @staticmethod
     def launch(**kwargs):
-        job = ExtractInnerKmersJob(job_name = 'ExtractInnerKmersJob_', previous_job_name = 'MostLikelyBreakPointsJob_', category = 'programming', **kwargs)
+        job = ExtractInnerKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -57,15 +61,16 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
-        self.bedtools = {str(track): track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))}
-        self.round_robin(self.bedtools, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.start > 1000000) 
+        extract_whole_genome()
+        self.load_reference_counts_provider()
+        self.tracks = {str(track): self.get_sv_type()(track) for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))}
+        self.round_robin(self.tracks, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.begin > 1000000)
 
     def transform(self, track, track_name):
+        print(cyan(track_name))
         c = config.Configuration()
-        sv = self.get_sv_type()(bed.track_from_name(track_name))
-        inner_kmers = sv.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10, n = 1000, overlap = False, canonical = True)
-        novel_kmers = sv.get_boundary_kmers(begin = 0, end = 0, counter = self.reference_counts_provider.get_kmer_count, count = 1)
+        inner_kmers = track.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10, n = 1000, overlap = False, canonical = True)
+        novel_kmers = track.get_boundary_kmers(begin = 0, end = 0, counter = self.reference_counts_provider.get_kmer_count, count = 0)
         l = len(inner_kmers)
         inner_kmers = {kmer: inner_kmers[kmer] for kmer in filter(lambda k: k not in novel_kmers and reverse_complement(k) not in novel_kmers, inner_kmers)}
         if l != len(inner_kmers):
@@ -89,7 +94,11 @@ class ExtractInnerKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class CountInnerKmersJob(counter.SimulationExactCountingJob):
+class CountInnerKmersJob(counter.BaseExactCountingJob):
+    
+    _name = 'CountInnerKmersJob'
+    _category = 'programming'
+    _previous_job = ExtractInnerKmersJob
 
     # ============================================================================================================================ #
     # Launcher
@@ -97,7 +106,7 @@ class CountInnerKmersJob(counter.SimulationExactCountingJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = CountInnerKmersJob(job_name = 'LocationAwareCountInnerKmersJob_', previous_job_name = 'ExtractInnerKmersJob_', category = 'programming', **kwargs)
+        job = CountInnerKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -108,35 +117,15 @@ class CountInnerKmersJob(counter.SimulationExactCountingJob):
         c = config.Configuration()
         self.kmers = {}
         self.tracks = self.load_previous_job_results()
-        index = {'inner_kmers': {}, 'novel_kmers': {}}
         for track in self.tracks:
             print(track)
             with open(self.tracks[track], 'r') as json_file:
                 kmers = json.load(json_file)
-                #for kmer in kmers['inner_kmers']:
-                #    if not kmer in self.kmers:
-                #        self.kmers[kmer] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
-                #        self.kmers[reverse_complement(kmer)] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
                 for kmer in kmers['unique_inner_kmers']:
                     if not kmer in self.kmers:
                         self.kmers[kmer] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
                         self.kmers[reverse_complement(kmer)] = {'count': 0, 'track': track, 'reference': kmers['inner_kmers'][kmer]['reference']}
         self.round_robin()
-
-    # delete this once done
-    def transform(self, track, track_name):
-        c = config.Configuration()
-        self.fastq_file = open(track, 'r')
-        for read, name in self.parse_fastq():
-            kmers = extract_canonical_kmers(read)
-            name = name[1:]
-            tokens = name.split('_')
-            for kmer in kmers:
-                if kmer in self.kmers:
-                    t = bed.track_from_name(self.kmers[kmer]['track'])
-                    if tokens[0] == t.chrom and int(tokens[1]) >= t.start and int(tokens[1]) < t.end:
-                        print(self.kmers[kmer]['track'], name)
-                        self.kmers[kmer]['count'] += 1
 
     def reduce(self):
         self.kmers = self.merge_counts()
@@ -163,10 +152,15 @@ class CountInnerKmersJob(counter.SimulationExactCountingJob):
 
 class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
+    _name = 'IntegerProgrammingJob'
+    _category = 'programming'
+    _previous_job = CountInnerKmersJob
+    _kmer_type = 'unique_inner'
+
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = IntegerProgrammingJob(job_name = 'IntegerProgrammingJob_', previous_job_name = 'CountInnerKmersJob_', category = 'programming', batch_file_prefix = 'unique_inner_kmers', kmer_type = 'unique_inner',  **kwargs)
+        job = IntegerProgrammingJob(*kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -187,30 +181,28 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def transform(self, track, track_name):
         with open(track, 'r') as json_file:
-            kmers = json.load(json_file)[self.kmer_type + '_kmers']
+            kmers = json.load(json_file)
             if len(kmers) == 0:
                 print('no unique inner kmers found for', red(track_name))
                 return None
             for kmer in kmers:
                 count = self.counts_provider.get_kmer_count(str(kmer))
                 self.lp_kmers[kmer] = {
-                    'type': self.kmer_type,
+                    'type': self._kmer_type,
                     'count': count,
                     'tracks': {track_name: kmers[kmer]['track']},
                     'reference': self.reference_counts_provider.get_kmer_count(kmer)
                 }
             novel_kmers = {}
-        path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + track_name + '.json')
+        path = os.path.join(self.get_current_job_directory(), 'unique_inner_kmers_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(
-                {
-                    self.kmer_type + '_kmers': {kmer: self.lp_kmers[kmer] for kmer in kmers},
-                }, json_file, indent = 4, sort_keys = True)
+                {kmer: self.lp_kmers[kmer] for kmer in kmers}, json_file, indent = 4, sort_keys = True)
         return path
 
     def output_batch(self, batch):
-        json_file = open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(self.index) + '.json'), 'w')
-        json.dump({self.kmer_type + '_kmers': self.lp_kmers}, json_file, sort_keys = True, indent = 4)
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.lp_kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
         exit()
 
@@ -220,8 +212,8 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.index_tracks()
         self.calculate_residual_coverage()
         print('exporting kmers...')
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_kmers.json'), 'w') as json_file:
-            json.dump({self.kmer_type + '_kmers': self.lp_kmers}, json_file, indent = 4, sort_keys = True)
+        with open(os.path.join(self.get_current_job_directory(), 'lp_kmers.json'), 'w') as json_file:
+            json.dump(self.lp_kmers, json_file, indent = 4, sort_keys = True)
         print('generating linear program...')
         self.solve()
 
@@ -231,19 +223,19 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.lp_kmers = []
         index = {}
         for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_' + str(i) + '.json')
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             if not os.path.isfile(path):
                 continue
             print(path)
             with open(path, 'r') as json_file:
                 kmers = json.load(json_file)
-                print(len(kmers[self.kmer_type + '_kmers']))
-                for kmer in kmers[self.kmer_type + '_kmers']:
+                print(len(kmers))
+                for kmer in kmers:
                     if not kmer in index:
                         index[kmer] = len(self.lp_kmers)
-                        self.lp_kmers.append(copy.deepcopy(kmers[self.kmer_type + '_kmers'][kmer]))
+                        self.lp_kmers.append(copy.deepcopy(kmers[kmer]))
                         self.lp_kmers[len(self.lp_kmers) - 1]['kmer'] = kmer
-                        for track in kmers[self.kmer_type + '_kmers'][kmer]['tracks']:
+                        for track in kmers[kmer]['tracks']:
                             if not track in self.tracks:
                                 self.tracks[track] = {}
         print(green(len(self.lp_kmers)), 'kmers')
@@ -335,17 +327,17 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def solve(self):
         problem = self.generate_linear_program()
-        problem.write(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_program.lp'))
+        problem.write(os.path.join(self.get_current_job_directory(), 'program.lp'))
         problem.solve()
         solution = problem.solution.get_values()
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_solution.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'solution.json'), 'w') as json_file:
             json.dump({'variables': problem.solution.get_values()}, json_file, indent = 4, sort_keys = True)
         #obj = 0
         #for i in range(len(self.tracks), len(self.tracks) + len(self.inner_kmers)):
         #    obj += abs(solution[i])
         #max_error = sum(list(map(lambda kmer: max(abs(kmer['count'] - kmer['coverage'] * kmer['residue']), abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']))), self.inner_kmers)))
         #print('error ratio:', float(obj) / max_error)
-        with open(os.path.join(self.get_current_job_directory(), self.batch_file_prefix + '_merge.bed'), 'w') as bed_file:
+        with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in self.tracks:
                 tokens = track.split('_')
                 index = self.tracks[track]['index']
@@ -355,9 +347,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                             tokens[1] + '\t' + #1
                             tokens[2] + '\t' + #2
                             s + '\t' + #3
-                            str(solution[index]) + '\t' + #4
-                            #str(len(track['inner_kmers'])) + '\t' + #5
-                            self.batch_file_prefix + '\n') #6
+                            str(solution[index]) + '\n') #4
 
     def find_tracks_with_no_signal(self):
         bedtools = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))], key = lambda track: track.start)
@@ -380,8 +370,9 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         visualizer.histogram(x = x, name = 'events_without_signal_length_distribution', x_label = 'event length', y_label = 'number of events', step = 1, path = self.get_current_job_directory())
 
     def plot(self, _):
-        counts = [kmer['count'] for kmer in self.lp_kmers]
-        visualizer.histogram(counts, self.batch_file_prefix, self.get_current_job_directory(), x_label = 'number of times kmer appears in sample', y_label = 'number of kmers')
+        pass
+        #counts = [kmer['count'] for kmer in self.lp_kmers]
+        #visualizer.histogram(counts, self.batch_file_prefix, self.get_current_job_directory(), x_label = 'number of times kmer appears in sample', y_label = 'number of kmers')
 
     def get_previous_job_directory(self):
         c = config.Configuration()

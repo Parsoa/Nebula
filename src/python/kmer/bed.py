@@ -6,13 +6,10 @@ import json
 import time
 
 from kmer import (
-    sets,
     config,
-    commons,
 )
 
 import colorama
-import pybedtools
 
 print('importing bed.py')
 # ============================================================================================================================ #
@@ -21,48 +18,15 @@ print('importing bed.py')
 
 class BedTrack:
 
-    def __init__(self, chrom, start, end):
+    def __init__(self, chrom, begin, end):
         self.chrom = chrom
-        self.start = start
+        self.begin = begin
         self.end = end
-        self.name = chrom + ':' + str(start) + '-' + str(end)
-
-    def __eq__(self, other):
-        if isinstance(self, other.__class__):
-            return self.__dict__ == other.__dict__
-        return False
 
 # ============================================================================================================================ #
 # BED Tracks
 # ============================================================================================================================ #
 
-def read_tracks(path):
-    c = config.Configuration()
-    bedtools = pybedtools.BedTool(path)
-    return {str(track.chrom) + '_' + str(track.start) + '_' + str(track.end): track for track in bedtools}
-
 def track_from_name(name):
-    tokens = name.split('_')
+    tokens = name.lower().split('_')
     return BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
-
-def parse_bed_file(f):
-    line = f.readline()
-    while line:
-        tokens = line.split()
-        yield tokens
-        line = f.readline()
-
-def reverse_complement_sequence(seq):
-    return complement_sequence(seq[::-1])
-
-def complement_sequence(seq):
-    # A-> C and C->A
-    seq = seq.replace('A', 'Z')
-    seq = seq.replace('T', 'A')
-    seq = seq.replace('Z', 'T')
-    #
-    seq = seq.replace('G', 'Z')
-    seq = seq.replace('C', 'G')
-    seq = seq.replace('Z', 'C')
-    #
-    return seq

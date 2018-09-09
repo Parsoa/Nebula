@@ -107,7 +107,7 @@ class BaseExactCountingJob(map_reduce.Job):
         kmers = extract_kmers(c.ksize, read)
         for kmer in kmers:
             if kmer in self.kmers: 
-                self.kmers[kmer]['count'] += 1
+                self.kmers[kmer]['count'] += kmers[kmer]
 
     def merge_counts(self, *keywords):
         c = config.Configuration()
