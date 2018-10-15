@@ -94,7 +94,6 @@ class BaseExactCountingJob(map_reduce.Job):
         self.fastq_file = open(c.fastq_file, 'r')
         self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
         self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
-        # this forked process will exit at the end of the following function call
         self.transform()
         self.output_batch(self.kmers)
 
@@ -104,35 +103,11 @@ class BaseExactCountingJob(map_reduce.Job):
             self.process_read(read, name)
 
     def process_read(self, read, name):
+        c = config.Configuration()
         kmers = extract_kmers(c.ksize, read)
         for kmer in kmers:
             if kmer in self.kmers: 
                 self.kmers[kmer]['count'] += kmers[kmer]
-
-    def merge_counts(self, *keywords):
-        c = config.Configuration()
-        print('merging kmer counts ...')
-        kmers = {}
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            if not os.path.isfile(path):
-                print(red('couldn\'t find batch'), i, red('results will be unreliable'))
-                continue
-            with open (path, 'r') as json_file:
-                batch = json.load(json_file)
-                for kmer in batch:
-                    k = find_kmer(kmer, kmers)
-                    if k:
-                        kmers[k]['count'] += batch[kmer]['count']
-                        for keyword in keywords:
-                            if keyword in kmers[k]:
-                                kmers[k][keyword] += batch[kmer][keyword]
-                    else:
-                        kmers[kmer] = batch[kmer]
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(kmers, json_file, indent = 4, sort_keys = True)
-        return kmers
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -214,34 +189,11 @@ class SimulationExactCountingJob(BaseExactCountingJob):
         c = config.Configuration()
         self.fastq_file = open(track, 'r')
         for read, name in self.parse_fastq():
-            self.process_read(read, name, track_name)
+            self.process_read(read, name)
     
-    def process_read(self, read, name, track_name):
-            kmers = extract_kmers(c.ksize, read)
-            for kmer in kmers:
-                if kmer in self.kmers: 
-                    self.kmers[kmer]['count'] += 1
+    def process_read(self, read, name):
+        kmers = extract_kmers(c.ksize, read)
+        for kmer in kmers:
+            if kmer in self.kmers: 
+                self.kmers[kmer]['count'] += 1
 
-    #def calculate_offsets(self, bed):
-    #    c = config.Configuration()
-    #    self.offset = {}
-    #    a = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed')], key = lambda track: track.start)
-    #    homo = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'homozygous.bed')], key = lambda track: track.start)
-    #    hetero = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'heterozygous.bed')], key = lambda track: track.start)
-    #    present = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'present.bed')], key = lambda track: track.start)
-    #    for index, track in enumerate(a):
-    #        tokens = track.split('_')
-    #        chrom = tokens[0]
-    #        if not chrom in self.offset:
-    #            self.offset[chrom] = []
-    #        d_1 = 0
-    #        for t in present:
-    #            if t.start > track.end:
-    #                break
-    #            d_1 += t.end - t.start 
-    #        d_2 = 0
-    #        for t in homo:
-    #            if t.start > track.end:
-    #                break
-    #            d_2 += t.end - t.start
-    #        self.offset.append({'1': d_1, '2': d_2})

@@ -168,7 +168,11 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         c = config.Configuration()
         tracks = self.load_previous_job_results()
         self.round_robin(tracks)
-        self.counts_provider = counttable.DictionaryCountsProvider(json.load(open(os.path.join(self.get_previous_job_directory(), 'kmers.json'))))
+        print(self.get_previous_job_directory())
+        if c.simulation:
+            self.counts_provider = counttable.DictionaryCountsProvider(json.load(open(os.path.join(self.get_previous_job_directory(), 'kmers.json'))))
+        else:
+            self.counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
         self.lp_kmers = {}
 
     def transform(self, track, track_name):
@@ -218,11 +222,10 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
             if not os.path.isfile(path):
                 continue
-            #print(path)
+            print(path)
             with open(path, 'r') as json_file:
                 kmers = json.load(json_file)
-                #print(len(kmers))
-                n = 0
+                print(len(kmers))
                 for kmer in kmers:
                     if not kmer in index:
                         index[kmer] = len(self.lp_kmers)
@@ -231,10 +234,9 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                         for track in kmers[kmer]['tracks']:
                             if not track in self.tracks:
                                 self.tracks[track] = {}
-                        n += 1
         print(green(len(self.lp_kmers)), 'kmers')
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(self.lp_kmers, json_file, indent = 4)
+            json.dump(self.lp_kmers, self.json_file, indent = 4)
         return self.lp_kmers
 
     def index_tracks(self):
@@ -248,8 +250,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 self.tracks[track]['kmers'].append(index)
         print(len(self.tracks), 'tracks')
         self.find_tracks_with_no_signal()
-        with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, indent = 4)
         return self.tracks
 
     # the portion of a kmer's coverage in reference genome that is outside deletions
@@ -277,26 +277,26 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         # the real-valued error parameter for inner_kmer
         problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
             ub = [kmer['count'] - kmer['coverage'] * kmer['residue'] for kmer in self.lp_kmers],
-            lb = [kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']) for kmer in self.lp_kmers],
+            lb = [kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']) for kmer in self.lp_kmers]
         )
         # absolute value of the inner_kmer error parameter
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
             obj = [1.0] * len(self.lp_kmers),
         )
-        #self.add_snp_linear_constraint(problem)
+        self.add_snp_linear_constraint(problem)
         n = 0
         start = time.time()
         offset = len(self.tracks) + 2 * len(self.lp_kmers)
         for index, kmer in enumerate(self.lp_kmers):
             # TxR + E = C - 
-            #ref = kmer['reference']
+            ref = kmer['reference']
             ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
-            #ind += [offset + i for i in range(0, ref)] #SNP
+            ind += [offset + i for i in range(0, ref)] #SNP
             ind.append(len(self.tracks) + index) # Objective
             val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
-            #val += [-kmer['coverage']] * ref #SNP
+            val += [-kmer['coverage']] * ref #SNP
             val.append(1.0) #Objective
-            #offset += ref
+            offset += ref
             problem.linear_constraints.add(
                 lin_expr = [cplex.SparsePair(
                     ind = ind,
@@ -305,15 +305,15 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                 senses = ['E']
             )
-            #val = [-v for v in val[:-1]]
-            #val.append(1.0)
-            #problem.linear_constraints.add(
-            #    lin_expr = [cplex.SparsePair(
+            #problem.indicator_constraints.add(
+            #    indvar = len(self.tracks) + 2 * len(self.lp_kmers) + index,
+            #    complemented = 1,
+            #    lin_expr = cplex.SparsePair(
             #        ind = ind,
             #        val = val,
-            #    )],
-            #    rhs = [-kmer['count'] + kmer['coverage'] * kmer['residue']],
-            #    senses = ['E']
+            #    ),
+            #    rhs = kmer['count'] - kmer['coverage'] * kmer['residue'],
+            #    sense = 'E'
             #)
             self.add_error_absolute_value_constraints(problem, index)
             n = n + 1
@@ -405,14 +405,12 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 index = self.tracks[track]['index']
                 s = int(round(2 * solution[index]))
                 g = '(0, 0)' if s == 2 else '(1, 0)' if s == 1 else '(1, 1)'
-                #s = 2 * solution[index]
-                #g = '(0, 0)' if s >= 1.33 else '(1, 0)' if s >= 0.66 else '(1, 1)'
-                #d = abs(s - 2 * solution[index]) / (1.0 if s == 1 else 0.5)
+                d = abs(s - 2 * solution[index]) / (1.0 if s == 1 else 0.5)
                 bed_file.write(tokens[0] + '\t' + #0
                             tokens[1] + '\t' + #1
                             tokens[2] + '\t' + #2
                             str(g) + '\t' + #3
-                            #str(d) + '\t' + #4
+                            str(d) + '\t' + #4
                             str(solution[index]) + '\n') #4
 
     def find_tracks_with_no_signal(self):

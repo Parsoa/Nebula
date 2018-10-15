@@ -22,7 +22,7 @@ class StructuralVariation(object):
 
     def __init__(self, track):
         self.chrom = track.chrom
-        self.begin = track.start
+        self.begin = track.begin
         self.end = track.end
         self.inner_kmers = None
         self.extract_base_sequence()
@@ -50,6 +50,7 @@ class StructuralVariation(object):
         inner_seq = self.sequence[begin : end + c.ksize - 1]
         #print(inner_seq)
         #print(len(inner_seq))
+        print('getting inner kmers')
         inner_kmers = c_extract_canonical_kmers(c.ksize, counter, count, overlap, inner_seq)
         #return inner_kmers
         if len(inner_kmers) <= n:
@@ -69,23 +70,40 @@ class StructuralVariation(object):
         inner_gapped_kmers = {}
         g = c.gap / 2
         k = (c.ksize / 2) * 2
-        b = self.sequence[begin - c.ksize: begin + c.ksize]
-        for i in range(0, c.gap):
-            kmer = self.sequence[begin - i - 15: begin - i + 5 + 15]
-            #kmer = kmer[:15] + kmer[20:]
-            inner_gapped_kmers[kmer] = True
-        e = self.sequence[end - c.ksize: end + c.ksize]
-        for i in range(0, c.gap):
-            kmer = self.sequence[end - 1 - i - 15: end - 1 - i + 5 + 15]
-            #kmer = kmer[:15] + kmer[20:]
-            inner_gapped_kmers[kmer] = True
-        seq = self.sequence[: begin] + self.sequence[end :]
-        base = c.radius + c.ksize + c.read_length + self.slack
-        for i in range(0, c.gap):
-            kmer = seq[base - i - 15: base - i + 5 + 15]
-            #kmer = kmer[:15] + kmer[20:]
-            outer_gapped_kmers[kmer] = True
-        return {'inner': inner_gapped_kmers, 'outer': outer_gapped_kmers, 'begin': b, 'end': e}
+        # each half is 15 bases plus 10 bases in between, say nearly 45: 25 bases remain for each end
+        b = self.sequence[begin - 15 - 2 - 25: begin + 3 + 15 + 25]
+        kmer = self.sequence[begin - 15 - 2: begin + 3 + 15]
+        prefix = self.sequence[begin - 15 - 2 - 25: begin - 15 - 2]
+        suffix = self.sequence[begin + 3 + 15: begin + 3 + 15 + 25]
+        inner_gapped_kmers[kmer] = {'indicators': self.generate_kmer_mask(prefix, suffix), 'prefix': prefix, 'suffix': suffix}
+        #
+        e = self.sequence[end - 15 - 2 - 25: end + 3 + 15 + 25]
+        kmer = self.sequence[end - 15 - 2: end + 3 + 15]
+        prefix = self.sequence[end - 15 - 2 - 25: end - 15 - 2]
+        suffix = self.sequence[end + 3 + 15: end + 3 + 15 + 25]
+        inner_gapped_kmers[kmer] = {'indicators': self.generate_kmer_mask(prefix, suffix), 'prefix': prefix, 'suffix': suffix}
+        #
+        kmer = self.sequence[begin - 2 - 15: begin + 3] + self.sequence[end - 2: end + 3 + 15]
+        prefix = self.sequence[begin - 15 - 2 - 25: begin - 15 - 2]
+        suffix = self.sequence[end + 3 + 15: end + 3 + 15 + 25]
+        outer_gapped_kmers[kmer] = {'indicators': self.generate_kmer_mask(prefix, suffix), 'prefix': prefix, 'suffix': suffix}
+        return {'inner': inner_gapped_kmers, 'outer': outer_gapped_kmers, 'begin': b, 'end': e, 'sequence': self.sequence}
+
+    def generate_kmer_mask(self, left, right):
+        c = config.Configuration()
+        masks = {}
+        for seq in [left, right]:
+            for j in range(0, 5):
+                indices = []
+                while len(indices) != 21:
+                    i = random.randint(0, len(seq) - 1)
+                    if not i in indices:
+                        indices.append(i)
+                indices = sorted(indices)
+                indices.insert(0, '')
+                mask = reduce(lambda x, y: x + seq[y], indices)
+                masks[mask] = True
+        return masks
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

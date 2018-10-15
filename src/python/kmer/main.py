@@ -5,8 +5,11 @@ from kmer import (
     map_reduce,
 )
 
+from kmer.depth import *
 from kmer.gapped import *
 from kmer.reduction import *
+from kmer.simulator import *
+from kmer.production import *
 from kmer.programming import *
 
 # ============================================================================================================================ #

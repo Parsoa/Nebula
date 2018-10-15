@@ -18,6 +18,7 @@ from kmer import (
     config,
 )
 
+from kmer.debug import *
 from kmer.commons import *
 
 # ============================================================================================================================ #
@@ -30,13 +31,15 @@ def canonicalize(seq):
     return seq if seq < reverse_complement else reverse_complement
 
 def c_extract_canonical_kmers(k = 31, counter = lambda x: 1, count = 1, overlap = True, *args):
+    print('Overlap', overlap)
     c = config.Configuration()
     kmers = {}
     for s in args:
         i = 0
         while i <= len(s) - k and i >= 0:
             kmer = canonicalize(s[i : i + k])
-            if counter(kmer) > count:
+            cc = counter(kmer)
+            if cc > count:
                 i += 1
                 continue
             if not kmer in kmers:
@@ -69,6 +72,16 @@ def extract_canonical_gapped_kmers(*args):
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
+    return kmers
+
+def index_canonical_kmers(k = 31, *args):
+    kmers = {}
+    index = 0
+    for kmer in stream_canonical_kmers(k, *args):
+        if not kmer in kmers:
+            kmers[kmer] = []
+        kmers[kmer].append(index)
+        index += 1
     return kmers
 
 def stream_canonical_kmers(k = 31, *args):
@@ -117,6 +130,16 @@ def stream_kmers(k = 31, *args):
             kmer = s[i : i + k]
             yield kmer
 
+def index_kmers(k = 31, *args):
+    kmers = {}
+    index = 0
+    for kmer in stream_kmers(k, *args):
+        if not kmer in kmers:
+            kmers[kmer] = []
+        kmers[kmer].append(index)
+        index += 1
+    return kmers
+
 def reverse_complement(seq):
     return complement_sequence(seq[::-1])
 
@@ -136,5 +159,26 @@ def complement_sequence(seq):
     return seq
 
 def is_subsequence(x, y):
+    if len(y) < len(x):
+        return False
     it = iter(y)
+    #debug_log('Checking', green(x), 'substring of', blue(y))
     return all(c in it for c in x)
+
+def is_canonical_subsequence(x, y):
+    if len(y) < len(x):
+        return False
+    it = iter(y)
+    #debug_log('Checking', green(x), 'substring of', blue(y))
+    return is_subsequence(reverse_complement(x), y) or is_subsequence(x, y)
+    #return all(c in it for c in x) or all(c in it for c in reverse_complement(x))
+
+def find_all(string, substring):
+    l = []
+    index = -1
+    while True:
+        index = string.find(substring, index + 1)
+        if index == -1:
+            break
+        l.append(index)
+    return l

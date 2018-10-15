@@ -28,10 +28,9 @@ from kmer import (
 
 from kmer.kmers import *
 from kmer.commons import *
+from kmer.chromosomes import *
 print = pretty_print
 
-import acora
-import cplex
 import numpy
 import pybedtools
 
@@ -43,11 +42,23 @@ from Bio import pairwise2
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+class MixExtractKmersJob(map_reduce.Job):
+
+    _name = 'MixExtractKmersJob'
+    _category = 'programming'
+    _previous_job = None
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
-    __name = 'MixIntegerProgrammingJob'
-    __category = 'programming'
-    __previous_job = None
+    _name = 'MixIntegerProgrammingJob'
+    _category = 'programming'
+    _previous_job = None
 
     # ============================================================================================================================ #
     # Launcher
@@ -58,7 +69,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         c = config.Configuration()
         job = MixIntegerProgrammingJob(
             include_gapped = True,
-            include_unique_inner = True,
+            include_unique_inner = False,
             include_non_unique_inner = True,
         )
         job.execute()
@@ -68,28 +79,27 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
     # ============================================================================================================================ #
 
     def prepare(self):
-        __name = 'Mix'
+        self._name = 'Mix'
         if self.include_gapped:
-            __name += 'Gapped'
+            self._name += 'Gapped'
         if self.include_unique_inner:
-            __name += 'UniqueInner'
+            self._name += 'UniqueInner'
         if self.include_non_unique_inner:
-            __name += 'NoneUniqueInner'
-        __name += 'KmersIntegerProgrammingJob_'
-        print(__name)
+            self._name += 'NoneUniqueInner'
+        self._name += 'KmersIntegerProgrammingJob'
+        print(self._name)
 
     def execute(self):
         c = config.Configuration()
         self.prepare()
+        #extract_whole_genome()
         self.create_output_directories()
-        self.bedtools = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))], key = lambda track: track.start)
-        self.all_tracks = {}
-        n = 0
-        for b in self.bedtools:
-            track = re.sub(r'\s+', '_', str(b).strip()).strip()
-            print(track)
-            self.all_tracks[track] = n
-            n += 1
+        #self.tracks = self.load_tracks()
+        #self.all_tracks = {}
+        #n = 0
+        #for track in self.tracks:
+        #    self.all_tracks[track] = n
+        #    n += 1
         self.gapped_kmers = []
         self.gapped_tracks = {}
         self.unique_inner_kmers = []
@@ -188,7 +198,11 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         n = 0
         tmp = sorted([t for t in self.tracks])
         for track in tmp:
-            self.tracks[track] = {'index': n, 'unique_inner': 0, 'gapped': 0, 'non_unique_inner': 0}
+            self.tracks[track] = {'index': n,
+                'unique_inner': self.unique_inner_tracks[track]['kmers'] if track in self.unique_inner_tracks else [],
+                'gapped': self.gapped_tracks[track]['kmer'] if track in self.gapped_tracks else [],
+                'non_unique_inner': self.non_unique_inner_tracks[track]['kmer'] if track in self.non_unique_inner_tracks else [] 
+            }
             n += 1
         self.lp_kmers = self.unique_inner_kmers + self.gapped_kmers + self.non_unique_inner_kmers
         #self.lp_kmers = self.non_unique_inner_kmers
@@ -212,6 +226,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     def generate_linear_program(self):
         c = config.Configuration()
+        import cplex
         problem = cplex.Cplex()
         problem.objective.set_sense(problem.objective.sense.minimize)
         for track in self.tracks:
@@ -225,42 +240,54 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         )
         # absolute value of the kmer error parameter
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            obj = [1.0 / kmer['reference'] for index, kmer in enumerate(self.lp_kmers)]
+            obj = [1.0 / kmer['reference'] if kmer['type'] != gapped else 10 for index, kmer in enumerate(self.lp_kmers)]
         )
         m = 0
         n = 0
         for index, kmer in enumerate(self.lp_kmers):
             self.add_error_absolute_value_constraints(problem, index)
-            #if kmer['type'] == 'non_unique_inner':
-            #    if len(filter(lambda track: track not in self.tracks, kmer['tracks'])) != 0:
-            #        problem.linear_constraints.add(
-            #            lin_expr = [cplex.SparsePair(
-            #                ind = [len(self.tracks) + index],
-            #                val = [1.0],
-            #            )],
-            #            rhs = [0],
-            #            senses = ['E']
-            #        )
-            #        problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
-            #        continue
             if kmer['type'] == 'non_unique_inner':
-                if len(kmer['tracks']) == 1:
-                    track = kmer['tracks'].keys()[0]
-                    if self.tracks[track]['gapped'] + self.tracks[track]['unique_inner'] > 5:
-                        m += 1
-                        problem.linear_constraints.add(
-                            lin_expr = [cplex.SparsePair(
-                                ind = [len(self.tracks) + index],
-                                val = [1.0],
-                            )],
-                            rhs = [0],
-                            senses = ['E']
-                        )
-                        problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
-                        continue
-                    else:
-                        n += 1
-                        print(yellow(track))
+                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+                ind.append(len(self.tracks) + index) # Objective
+                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+                val.append(1.0) #Objective
+                problem.linear_constraints.add(
+                    lin_expr = [cplex.SparsePair(
+                        ind = ind,
+                        val = val,
+                    )],
+                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
+                    senses = ['E']
+                )
+                #if len(filter(lambda track: track not in self.tracks, kmer['tracks'])) != 0:
+                #    problem.linear_constraints.add(
+                #        lin_expr = [cplex.SparsePair(
+                #            ind = [len(self.tracks) + index],
+                #            val = [1.0],
+                #        )],
+                #        rhs = [0],
+                #        senses = ['E']
+                #    )
+                #    problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
+                #    continue
+            #if kmer['type'] == 'non_unique_inner':
+            #    if len(kmer['tracks']) == 1:
+            #        track = kmer['tracks'].keys()[0]
+            #        if self.tracks[track]['gapped'] + self.tracks[track]['unique_inner'] > 5:
+            #            m += 1
+            #            problem.linear_constraints.add(
+            #                lin_expr = [cplex.SparsePair(
+            #                    ind = [len(self.tracks) + index],
+            #                    val = [1.0],
+            #                )],
+            #                rhs = [0],
+            #                senses = ['E']
+            #            )
+            #            problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
+            #            continue
+            #        else:
+            #            n += 1
+            #            print(yellow(track))
             for track in kmer['tracks']:
                 self.tracks[track][kmer['type']] += 1
             if kmer['type'] == 'gapped' and kmer['side'] == 'outer':
@@ -268,7 +295,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-                val.append(1.0)
+                val.append(5.0)
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,

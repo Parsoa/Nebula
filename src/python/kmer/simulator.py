@@ -25,6 +25,7 @@ from kmer import (
 
 from kmer.kmers import *
 from kmer.commons import *
+from kmer.chromosomes import *
 print = pretty_print
 
 import pybedtools
@@ -62,6 +63,7 @@ class Simulation(map_reduce.Job):
             self.SVs = self.generate_random_intervals(ref, 1000)
         else:
             self.SVs = self.load_structural_variations()
+            random.seed(c.seed)
         self.export_bed(self.SVs, 'all')
         n = len(self.SVs) / 2
         r = sorted(random.sample(xrange(len(self.SVs)), n))
@@ -99,11 +101,11 @@ class Simulation(map_reduce.Job):
         intervals = []
         offset = 100000
         for i in range(0, n):
-            start = random.randint(offset, l - offset)
-            end = start + random.randint(100, 2000)
-            interval = pybedtools.Interval(chrom = c.chrom, start = start, end = end)
+            begin = random.randint(offset, l - offset)
+            end = begin + random.randint(100, 2000)
+            interval = pybedtools.Interval(chrom = c.chrom, begin = begin, end = end)
             intervals.append(interval)
-        intervals = sorted(intervals, key = lambda x: x.start)
+        intervals = sorted(intervals, key = lambda x: x.begin)
         intervals = self.filter_overlapping_intervals(intervals)
         return intervals
 
@@ -117,13 +119,16 @@ class Simulation(map_reduce.Job):
         for track in bedtools:
             n += 1
             name = re.sub(r'\s+', '_', str(track).strip()).strip()
+            track = bed.track_from_name(name)
+            track.left_drift = random.randint(0, 4) - 2
+            track.right_drift = random.randint(0, 4) - 2
             # too large, skip
-            if track.end - track.start > 1000000:
+            if track.end - track.begin > 1000000:
                 print(red('skipping', name))
                 continue
             tracks.append(track)
         print(n)
-        tracks = sorted(tracks, key = lambda x: x.start)
+        tracks = sorted(tracks, key = lambda x: x.begin)
         print('Total number of deletions:', len(tracks))
         return self.filter_overlapping_intervals(tracks)
 
@@ -133,7 +138,7 @@ class Simulation(map_reduce.Job):
         while i < len(intervals):
             for j in range(i + 1, len(intervals)):
                 # j is contained inside i
-                if intervals[j].start <= intervals[i].end:
+                if intervals[j].begin + intervals[j].left_drift <= intervals[i].end + intervals[i].right_drift:
                     remove.append(j)
                     print(red(str(intervals[j])), 'overlaps', blue(str(intervals[i])))
                     continue
@@ -152,7 +157,8 @@ class Simulation(map_reduce.Job):
         print('Exporting BED file:', green(name + '.bed'))
         with open(os.path.join(self.get_current_job_directory(), name + '.bed'), 'w') as bed_file:
             for interval in intervals:
-                bed_file.write(str(interval.chrom) + '\t' + str(interval.start) + '\t' + str(interval.end) + '\n')
+                bed_file.write(str(interval.chrom) + '\t' + str(interval.begin) + '\t' + str(interval.end) + '\t' +
+                    str(interval.left_drift) + '\t' + str(interval.right_drift) + '\n')
 
     def select_events(self, SVs):
         c = config.Configuration()
@@ -160,26 +166,23 @@ class Simulation(map_reduce.Job):
         # select a set of commons SVs to be applied to both strands
         n = len(SVs) / 2
         print('Homozygous SVs:', blue(n))
-        SVs = sorted(SVs, key = lambda x: x.start)
+        SVs = sorted(SVs, key = lambda x: x.begin)
         homozygous = [ SVs[i] for i in sorted(random.sample(range(len(SVs)), n)) ]
         heterozygous = []
         for sv in SVs:
             if not sv in homozygous:
                 heterozygous.append(sv)
         # sort
-        homozygous = sorted(homozygous, key = lambda x: x.start)
-        heterozygous = sorted(heterozygous, key = lambda x: x.start)
+        homozygous = sorted(homozygous, key = lambda x: x.begin)
+        heterozygous = sorted(heterozygous, key = lambda x: x.begin)
         return homozygous, heterozygous
 
     def transform(self, seq, chrom):
         print('simulating', chrom)
         self.export_chromosome_fasta(chrom, self.present, chrom + '_strand_1')
         self.export_chromosome_fasta(chrom, self.homozygous, chrom + '_strand_2')
-        # export a couple of fastq files for each strand, will this work?
         self.export_fastq(seq, chrom + '_strand_1')
         self.export_fastq(seq, chrom + '_strand_2')
-        #self.merge_fastq_files(chrom, chrom + '_strand_1.1', chrom + '_strand_2.2')
-        #self.merge_fastq_files(chrom + '_strand_2')
 
     def export_chromosome_fasta(self, chrom, events, name):
         print('Exporting FASTA file:', green(name + '.fa')) 
@@ -200,13 +203,10 @@ class Simulation(map_reduce.Job):
         previous = 0
         index = {}
         for i, sv in enumerate(SVs):
-            left = sv.start
-            #print(previous, '\t', left)
+            left = sv.begin + sv.left_drift
             s = self.chrom[chrom][previous:left]
             seq += s
-            previous = sv.end
-            index[real - sv.end] = [real - sv.start]
-        #print(previous)
+            previous = sv.end + sv.right_drift
         seq += chrom[previous:]
         return seq
 
@@ -218,20 +218,8 @@ class Simulation(map_reduce.Job):
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
-        command =  "wgsim -d400 -N{} -1100 -2100 -r0 -R0 -e0 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
+        command =  "wgsim -d400 -N{} -1100 -2100 -r0 -R0 -e0.001 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
-
-    def merge_fastq_files(self, name, *args):
-        print('Merging fastq files', name)
-        with open(os.path.join(self.get_current_job_directory(), name + '.fq'), 'w') as out_file:
-            for arg in args:
-                with open(os.path.join(self.get_current_job_directory(), arg + '.fq'), 'r') as in_file:
-                    line = in_file.readline()
-                    while line:
-                        out_file.write(line)
-                        line = in_file.readline()
-        #os.rename(os.path.join(self.get_current_job_directory(), name + '.1.fq'), os.path.join(self.get_current_job_directory(), name + '.fq'))
-        #os.remove(os.path.join(self.get_current_job_directory(), name + '.2.fq'))
 
     def reduce(self):
         self.chrom = ['chr' + c for c in [str(x) for x in range(1, 23)]]
@@ -239,6 +227,7 @@ class Simulation(map_reduce.Job):
         self.chrom.append('chry')
         self.export_reference_genome()
         self.export_reference_jellyfish_table()
+        self.merge_fastq_files()
 
     def export_reference_genome(self):
         c = config.Configuration()
@@ -262,7 +251,18 @@ class Simulation(map_reduce.Job):
         print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
-    def export_jellyfish_table(self, channel, *args):
+    def merge_fastq_files(self):
+        c = config.Configuration()
+        FNULL = open(os.devnull, 'w')
+        print('Mixing FASTQ files...')
+        command = 'cat '
+        command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
+        command += ' > '
+        command += os.path.join(self.get_current_job_directory(), 'test.fq')
+        print(command)
+        output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+
+    def export_fastq_jellyfish_table(self, channel, *args):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
         print('Generating Jellyfish table')

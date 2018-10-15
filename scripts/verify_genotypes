@@ -1,21 +1,12 @@
 #!/bin/bash
-P=$(pwd)
-echo $P
-SIM=$(echo $P | awk '{ if ($0 ~ /.*mulation.*/) { print "--simulation" } else { print "" } }')
-echo $SIM
-BED=$(echo $P | awk -F/ '{ if ($0 ~ /.*mulation.*/) { print $7 } else { print $10 } }')
-echo $BED
-REF=$(echo $BED | awk -F. '{ if ($0 ~ /.*hg38.*/) { print "hg38" } else { print "hg19" } }')
-echo $REF
-GEN=$(echo $P | awk -F/ '{ if ($0 ~ /.*mulation.*/) { print "SIM" } else { print $8 } }')
-echo $GEN
-BED_GENOME=$(echo $BED | awk -F "." '{print $1}')
-echo $BED_GENOME
-EVENT=$(pwd | awk -F "/" '{ if ($0 ~ /'.*DEL.*'/) { print "DEL" } else { print "INV" } }' | xargs)
-echo $EVENT
+source PWD.sh
+source BED.sh
+source SIM.sh
 DATA="/share/hormozdiarilab/Codes/NebulousSerendipity/data/"
-TARGET=$GEN.$REF.$EVENT.bed
-echo $TARGET
+BED_GENOME=$(echo $BED | awk -F. "{ print $1 }")
+echo $BED_GENOME
+TARGET_BED="$GEN.All.$(echo $BED | sed 's|[^.]*\.||')"
+echo $TARGET_BED
 ################################################################################
 awk 'BEGIN {FS = "\t"} /^[^(]*\(0, 0\).*/ ' *merge*.bed > 00.bed
 awk 'BEGIN {FS = "\t"} /^[^(]*(\(1, 1\)|\(1, 0\)).*/ ' *merge*.bed > present.bed
@@ -27,7 +18,7 @@ awk 'BEGIN {FS = "\t"} /^.*\(4, 4\).*/ ' *merge*.bed > 44.bed
 ################################################################################
 if [ "$SIM" == "--simulation" ]; then
     echo "Simulation"
-    SIM="/share/hormozdiarilab/Codes/NebulousSerendipity/simulation/$BED/31/Simulation/"
+    SIM="../Simulation/"
     bedtools intersect -a 11.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
     bedtools intersect -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
     bedtools intersect -a 00.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
@@ -48,8 +39,22 @@ if [ "$SIM" == "--simulation" ]; then
     cat 10_as_00.bed > false_negative.bed
     cat 11_as_00.bed >> false_negative.bed
 ################################################################################
-elif [ "$BED_GENOME" == "$GENOME" ]; then
-    echo $DATA$BED
+else
+    echo $DATA$TARGET_BED
+    grep "1|0" $DATA$TARGET_BED > heterozygous.bed
+    grep "0|1" $DATA$TARGET_BED >> heterozygous.bed
+    grep "1|1" $DATA$TARGET_BED > homozygous.bed
+    grep "0|0" $DATA$TARGET_BED > absent.bed
+    bedtools intersect -a 11.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
+    bedtools intersect -a 10.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
+    bedtools intersect -a 00.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
+    bedtools intersect -a 11.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
+    bedtools intersect -a 10.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
+    bedtools intersect -a 00.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_00.bed
+    bedtools intersect -a 11.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_11.bed
+    bedtools intersect -a 10.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_10.bed
+    bedtools intersect -a 00.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_00.bed
+    #
     bedtools intersect -a 00.bed -b $DATA$BED -f 1.0 > false_negative.bed
     sort -n -k2 -o false_negative.bed false_negative.bed
 
@@ -61,27 +66,5 @@ elif [ "$BED_GENOME" == "$GENOME" ]; then
 
     bedtools intersect -a present.bed -b $DATA$BED -f 1.0 -v > false_positive.bed
     sort -n -k2 -o false_positive.bed false_positive.bed
-else
-    echo HERE
-    ################################################################################
-    bedtools intersect -a $DATA$BED -b $DATA$TARGET -wa -f 0.9 | sort -u > $DATA$BED"_in_"$TARGET
-    bedtools intersect -a $DATA$BED -b $DATA$TARGET -wa -f 0.9 -v | sort -u > $DATA$BED"_not_in_"$TARGET
-    bedtools intersect -a $DATA$BED -b $DATA$TARGET -wa -F 0.9 | sort -u > $DATA$BED"_from_"$TARGET
-    bedtools intersect -a $DATA$BED -b $DATA$TARGET -wa -F 0.9 -v | sort -u > $DATA$BED"_not_from_"$TARGET
-    ################################################################################
-    bedtools intersect -a 11.bed -b $DATA$BED"_in_"$TARGET -wa -f 1.0 | sort -u > 11_or_01_as_11.bed
-    bedtools intersect -a 10.bed -b $DATA$BED"_in_"$TARGET -wa -f 1.0 | sort -u > 11_or_01_as_10.bed
-    bedtools intersect -a 00.bed -b $DATA$BED"_in_"$TARGET -wa -f 1.0 | sort -u > 11_or_01_as_00.bed
-    bedtools intersect -a 00.bed -b $DATA$BED"_not_in_"$TARGET -wa -f 1.0 | sort -u > 00_as_00.bed
-    bedtools intersect -a 11.bed -b $DATA$BED"_not_in_"$TARGET -wa -f 1.0 | sort -u > 00_as_11.bed
-    bedtools intersect -a 10.bed -b $DATA$BED"_not_in_"$TARGET -wa -f 1.0 | sort -u > 00_as_10.bed
-    ################################################################################
-    cat 11_or_01_as_11.bed > true_positive.bed
-    cat 11_or_01_as_10.bed >> true_positive.bed
-    cat 11_or_01_as_00.bed > false_negative.bed
-    cat 00_as_11.bed > false_positive.bed
-    cat 00_as_10.bed >> false_positive.bed
-    cat 00_as_00.bed > true_negative.bed
-    ################################################################################
 fi
 wc -l *.bed

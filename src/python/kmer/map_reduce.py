@@ -18,6 +18,7 @@ import traceback
 from shutil import copyfile
 
 from kmer import (
+    bed,
     config,
     counttable,
 )
@@ -215,6 +216,13 @@ class Job(object):
     # misc helpers
     # ============================================================================================================================ #
 
+    def load_tracks(self):
+        c = config.Configuration()
+        if c.simulation:
+            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(os.path.join(self.get_simulation_directory(), 'all.bed'))}
+        else:
+            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(c.bed_file)}
+
     def get_sv_type(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
@@ -243,6 +251,31 @@ class Job(object):
         else:
             return os.path.join(c.jellyfish_base, c.reference, 'mer_counts_' + str(g + k) + '.jf')
 
+    def merge_counts(self, *keywords):
+        c = config.Configuration()
+        print('merging kmer counts ...')
+        kmers = {}
+        for i in range(0, self.num_threads):
+            print('adding batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
+            if not os.path.isfile(path):
+                print(red('couldn\'t find batch'), i, red('results will be unreliable'))
+                continue
+            with open (path, 'r') as json_file:
+                batch = json.load(json_file)
+                for kmer in batch:
+                    k = find_kmer(kmer, kmers)
+                    if k:
+                        kmers[k]['count'] += batch[kmer]['count']
+                        for keyword in keywords:
+                            if keyword in kmers[k]:
+                                kmers[k][keyword] += batch[kmer][keyword]
+                    else:
+                        kmers[kmer] = batch[kmer]
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(kmers, json_file, indent = 4, sort_keys = True)
+        return kmers
+
     # ============================================================================================================================ #
     # filesystem helpers
     # ============================================================================================================================ #
@@ -255,7 +288,7 @@ class Job(object):
                 '../../../simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/' + str(c.ksize) + 'k/'))
         else:
             return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../' + _category + '/' + bed_file_name + '/' + str(c.ksize) + '/'))
+                '../../../' + self._category + '/' + bed_file_name + '/' + str(c.ksize) + 'k/'))
 
     def get_previous_job_directory(self):
         if self._previous_job:
@@ -274,6 +307,7 @@ class Job(object):
 
     def create_output_directories(self):
         dir = self.get_output_directory()
+        print(yellow(dir))
         if not os.path.exists(dir):
             os.makedirs(dir)
         dir = self.get_current_job_directory()
@@ -287,34 +321,45 @@ class Job(object):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseGenotypingJob(Job):
+class FirstGenotypingJob(Job):
 
-    def prepare(self):
-        pass
+    def get_output_directory(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        if c.simulation:
+            return Job.get_output_directory(self)
+        else:
+            return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                '../../../' + self._category + '/genotyping/' + c.genome))
 
-    #def get_output_directory(self):
-    #    c = config.Configuration()
-    #    if c.simulation:
-    #        return Job.get_output_directory(self)
-    #    else:
-    #        fastq_file_name = c.fastq_file.split('/')[-1][::-1].split('.')[-1][::-1]
-    #        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-    #            '../../../' + self.category + '/genotyping/' + fastq_file_name))
+    def get_current_job_directory(self):
+        c = config.Configuration()
+        if c.simulation:
+            return Job.get_current_job_directory(self)
+        else:
+            bed_file_name = c.bed_file.split('/')[-1]
+            return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._name))
 
-    #def get_current_job_directory(self):
-    #    c = config.Configuration()
-    #    if c.simulation:
-    #        return Job.get_current_job_directory(self)
-    #    else:
-    #        bed_file_name = c.bed_file.split('/')[-1]
-    #        return os.path.abspath(os.path.join(self.get_output_directory(), self.job_name[:-1], bed_file_name))
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        d = Job.get_output_directory(self)
+        print(d)
+        bed_file_name = c.bed_file.split('/')[-1]
+        return os.path.abspath(os.path.join(d, self._previous_job._name))
 
-    #def get_previous_job_directory(self):
-    #    c = config.Configuration()
-    #    print(c.simulation)
-    #    if c.simulation:
-    #        return Job.get_previous_job_directory(self)
-    #    else:
-    #        bed_file_name = c.bed_file.split('/')[-1]
-    #        return os.path.abspath(os.path.join(self.get_output_directory(), self.previous_job_name[:-1], bed_file_name))
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# Base class for every job that is a direct part of the genotyping process
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class BaseGenotypingJob(FirstGenotypingJob):
+
+    def get_previous_job_directory(self):
+        c = config.Configuration()
+        if c.simulation:
+            return Job.get_previous_job_directory(self)
+        else:
+            bed_file_name = c.bed_file.split('/')[-1]
+            return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._previous_job._name))
 

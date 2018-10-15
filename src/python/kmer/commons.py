@@ -61,9 +61,12 @@ def magenta(*args):
 
 def pretty_print(*args):
     def inner(*vargs):
-        return ''.join(functools.reduce(lambda x, y: x + str(y) + ' ', vargs))
+        return ''.join(functools.reduce(lambda x, y: x + str(y) +  colorama.Fore.WHITE + ' ', vargs))
     print(inner(colorama.Fore.WHITE, *args))
 
 def json_print(d):
     print(json.dumps(d, sort_keys = True, indent = 4, separators = (',', ': ')))
+
+def jsonify(s):
+    return json.dumps(s, sort_keys = True, indent = 4, separators = (',', ': '))
 

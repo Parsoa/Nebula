@@ -24,13 +24,12 @@ from kmer import (
     programming,
 )
 
+from kmer.debug import *
 from kmer.kmers import *
 from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
-import acora
-import cplex
 import numpy
 import pybedtools
 
@@ -69,16 +68,17 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
         self.inner_kmers = {}
         for track in self.tracks:
             print(track)
-            with open(self.tracks[track], 'r') as json_file:
-                kmers = json.load(json_file)['inner_kmers']
-            for kmer in kmers:
-                if not kmer in self.inner_kmers:
-                    self.inner_kmers[kmer] = {
-                        'reference': kmers[kmer]['reference'],
-                        'tracks': {},
-                        'loci': {}
-                    }
-                self.inner_kmers[kmer]['tracks'][track] = kmers[kmer]['track']
+            with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
+                kmers = json.load(json_file)
+            for kmer_type in ['non_unique_inner_kmers', 'unique_inner_kmers']:
+                for kmer in kmers[kmer_type]:
+                    if not kmer in self.inner_kmers:
+                        self.inner_kmers[kmer] = {
+                            'reference': kmers[kmer_type][kmer]['reference'],
+                            'tracks': {},
+                            'loci': {}
+                        }
+                    self.inner_kmers[kmer]['tracks'][track] = kmers[kmer_type][kmer]['track']
         print('Finding loci for', green(len(self.inner_kmers)), 'kmers')
         self.round_robin(self.chroms)
 
@@ -92,12 +92,12 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
             if kmer in self.inner_kmers:
                 locus = chrom + '_' + str(index)
                 self.inner_kmers[kmer]['loci'][locus] = {
-                        'seq': {
-                            'all': sequence[index - slack: index + c.ksize + slack],
-                            'left': sequence[index - slack : index],
-                            'right': sequence[index + c.ksize: index + c.ksize + slack]
-                        }
+                    'seq': {
+                        'all': sequence[index - slack: index + c.ksize + slack],
+                        'left': sequence[index - slack : index],
+                        'right': sequence[index + c.ksize: index + c.ksize + slack]
                     }
+                }
                 self.inner_kmers[kmer]['loci'][locus]['kmers'] = {
                     'left': extract_canonical_kmers(c.ksize, self.inner_kmers[kmer]['loci'][locus]['seq']['left']),
                     'right': extract_canonical_kmers(c.ksize, self.inner_kmers[kmer]['loci'][locus]['seq']['right'])
@@ -155,7 +155,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
+class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -178,7 +178,10 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
         c = config.Configuration()
         self.kmers = {}
         tracks = self.load_previous_job_results()
+        print(len(tracks))
+        u = 0
         for track in tracks:
+            break
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
@@ -194,30 +197,33 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
                         self.kmers[kmer]['tracks'] = {}
                         self.kmers[kmer]['reference'] = kmers[kmer]['reference']
                         self.kmers[kmer]['interest_kmers'] = {}
+                        self.kmers[kmer]['interest_masks'] = {}
                         self.kmers[kmer]['loci'] = kmers[kmer]['loci']
                         self.kmers[kmer]['tracks'] = kmers[kmer]['tracks']
                         for locus in self.kmers[kmer]['loci']:
                             self.kmers[kmer]['loci'][locus]['kmers'] = {k: True for k in self.kmers[kmer]['loci'][locus]['kmers']['left'].keys() + self.kmers[kmer]['loci'][locus]['kmers']['right'].keys()}
-                            self.kmers[kmer]['loci'][locus]['mask'] = [
-                                self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['left'], seed),
-                                self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['right'], seed)
-                            ]
+                            self.kmers[kmer]['loci'][locus]['masks'] = self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['left'], self.kmers[kmer]['loci'][locus]['seq']['right'], seed)
                     n = 0
                     for locus in self.kmers[kmer]['loci']:
                         tokens = locus.split('_')
                         if tokens[0] == t.chrom and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
                             self.kmers[kmer]['interest_kmers'].update(self.kmers[kmer]['loci'][locus]['kmers'])
+                            self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
                             n += 1
                     if n == 0:
                         print(yellow(track, locus))
+            print(u)
+            u += 1
         x = []
         for kmer in self.kmers:
             self.kmers[kmer]['indicator_kmers'] = {}
             self.kmers[kmer]['non_indicator_kmers'] = {}
+            self.kmers[kmer]['non_indicator_masks'] = {}
             n = 0
             for locus in self.kmers[kmer]['loci'].keys():
                 l = len(list(filter(lambda x: x in self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])))
-                if l != 0:
+                m = len(list(filter(lambda x: x in self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])))
+                if l != 0 or m != 0:
                     for ukmer in self.kmers[kmer]['loci'][locus]['kmers']:
                         self.kmers[kmer]['indicator_kmers'][ukmer] = True
                     n += 1
@@ -227,24 +233,30 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
                     self.kmers[kmer]['loci'].pop(locus, None)
             x.append(n)
             self.kmers[kmer].pop('interest_kmers', None)
-        visualizer.histogram(x = x, name = 'kmer_frequency_after_reduction', path = self.get_current_job_directory(), x_label = 'frequency', y_label = 'number of kmers', step = 1)
+        #visualizer.histogram(x = x, name = 'kmer_frequency_after_reduction', path = self.get_current_job_directory(), x_label = 'frequency', y_label = 'number of kmers', step = 1)
         print('Counting', green(len(self.kmers)), 'kmers')
         self.round_robin()
 
-    def generate_kmer_mask(self, kmer, seq, seed):
+    def generate_kmer_mask(self, kmer, left, right, seed):
         c = config.Configuration()
         random.seed(seed)
-        indices = []
-        while len(indices) != c.ksize - 2:
-            i = random.randint(0, len(seq) - 1)
-            if not i in indices:
-                indices.append(i)
-        indices = sorted(indices)
-        indices.insert(0, '')
-        #print(indices)
-        mask = reduce(lambda x, y: x + seq[y], indices)
-        #print(seq, mask)
-        return mask
+        masks = {}
+        for seq in [left, right]:
+            for j in range(0, 5):
+                indices = []
+                while len(indices) != c.ksize - 2:
+                    i = random.randint(0, len(seq) - 1)
+                    if not i in indices:
+                        indices.append(i)
+                indices = sorted(indices)
+                indices.insert(0, '')
+                #print(indices)
+                mask = reduce(lambda x, y: x + seq[y], indices)
+                #print(seq, mask)
+                masks[mask] = True
+        debug_log(jsonify(masks))
+        debug_breakpoint()
+        return masks
 
     # So either a locus has unique indicator kmers or it doesn't
     # if it doesn't then it means some or all of it's kmers are shared with other loci of the same kmer
@@ -252,28 +264,48 @@ class CountLociIndicatorKmersJob(counter.BaseExactCountingJob):
     # Read errors and SNPs when a target has unique kmers will also be handled by the second loop
     def process_read(self, read, name):
         c = config.Configuration()
-        kmers = extract_canonical_kmers(c.ksize, read)
-        found = False
-        for kmer in kmers:
-            if kmer in self.kmers:
-                self.kmers[kmer]['total'] += kmers[kmer]
-                for ukmer in kmers:
-                    if ukmer in self.kmers[kmer]['indicator_kmers']:
-                        self.kmers[kmer]['count'] += kmers[kmer]
+        slack = (c.read_length - c.ksize) / 2
+        #kmers = extract_canonical_kmers(c.ksize, read)
+        i = 0
+        l = len(read)
+        while i <= l - c.ksize:
+            kmer = canonicalize(read[i: i + c.ksize])
+            if not kmer in self.kmers:
+                i += 1
+                continue
+            left = read[:i][-slack:]
+            right = read[i + c.ksize:][:slack]
+            found = False
+            for locus in self.kmers[kmer]['loci']:
+                for mask in self.kmers[kmer]['loci'][locus]['masks']:
+                    if is_canonical_subsequence(mask, left) or is_canonical_subsequence(mask, right):
+                        self.kmers[kmer]['count'] += 1
                         found = True
                         break
                 if found:
-                    continue
-                i = read.find(kmer)
-                if i == -1:
-                    i = read.find(reverse_complement(kmer))
-                left = read[:i]
-                right = read[i + c.ksize:]
-                for locus in self.kmers[kmer]['loci']:
-                    for mask in self.kmers[kmer]['loci'][locus]['mask']:
-                        if is_subsequence(mask, left) or is_subsequence(mask, right):
-                            self.kmers[kmer]['doubt'] += kmers[kmer]
-                            break
+                    break
+            i += 1
+        #for kmer in kmers:
+        #    if kmer in self.kmers:
+        #        #self.kmers[kmer]['total'] += kmers[kmer]
+        #        #for ukmer in kmers:
+        #        #    if ukmer in self.kmers[kmer]['indicator_kmers']:
+        #        #        self.kmers[kmer]['count'] += kmers[kmer]
+        #        #        found = True
+        #        #        break
+        #        #if found:
+        #        #    continue
+        #        i = read.find(kmer)
+        #        if i == -1:
+        #            i = read.find(reverse_complement(kmer))
+        #        left = read[:i][-slack:]
+        #        right = read[i + c.ksize:][:slack]
+        #        for locus in self.kmers[kmer]['loci']:
+        #            if list(filter(lambda mask: is_canonical_subsequence(mask, left) or is_canonical_subsequence(mask, right), self.kmers[kmer]['loci'][locus]['masks'])):
+        #                self.kmers[kmer]['count'] += kmers[kmer]
+        #                break
+        #                #debug_log(left, green(read[i: i + c.ksize]), right, yellow(mask), self.kmers[kmer]['loci'][locus]['seq']['left'], self.kmers[kmer]['loci'][locus]['seq']['right'])
+        #                #debug_breakpoint()
 
     def reduce(self):
         if not self.resume_from_reduce:
@@ -314,12 +346,12 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
     _name = 'LociIndicatorKmersIntegerProgrammingJob'
     _category = 'programming'
     _previous_job = CountLociIndicatorKmersJob
-    _kmer_type = ''
+    _kmer_type = 'non_unique_inner'
 
     @staticmethod
     def launch(**kwargs):
         c = config.Configuration()
-        job = LociIndicatorKmersIntegerProgrammingJob(kmer_type = 'non_unique_inner', **kwargs)
+        job = LociIndicatorKmersIntegerProgrammingJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -327,30 +359,44 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
     # ============================================================================================================================ #
 
     def transform(self, track, track_name):
+        c = config.Configuration()
         print(green(track_name))
         t = bed.track_from_name(track_name)
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
-            for kmer in kmers.keys():
-                k = self.counts_provider.get_kmer(kmer)
-                if k and track_name in k['tracks']:
-                    if kmers[kmer]['reference'] > 10:
-                        kmers.pop(kmer, None)
-                        continue
-                    n = 0
-                    for locus in k['loci']:
-                        tokens = locus.split('_')
-                        if tokens[0] == t.chrom and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
+            tokens = track_name.split('_')
+            a = int(tokens[1])
+            b = int(tokens[2])
+            #if abs(b - a) < 1000:
+            #    return None
+            #if len(kmers) <= 3:
+            #    return None
+            keys = list(kmers.keys())
+            for kmer in keys:
+                #k = self.counts_provider.get_kmer(kmer)
+                #f len(kmers[kmer]['loci']) > 1:
+                #    kmers.pop(kmer, None)
+                #    continue
+                n = 0
+                for locus in kmers[kmer]['loci']:
+                    tokens = locus.split('_')
+                    if tokens[0] == t.chrom and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
+                        if int(tokens[1]) <= t.begin + c.ksize or int(tokens[1]) >= t.end - c.ksize:
+                            # ignore this kmer
+                            kmers.pop(kmer, None)
                             n += 1
-                    self.lp_kmers[kmer] = {}
-                    self.lp_kmers[kmer]['type'] = self.kmer_type
-                    self.lp_kmers[kmer]['count'] = k['count']
-                    self.lp_kmers[kmer]['doubt'] = k['doubt']
-                    self.lp_kmers[kmer]['total'] = k['total']
-                    self.lp_kmers[kmer]['reference'] = len(kmers[kmer]['loci'])
-                    self.lp_kmers[kmer]['tracks'] = kmers[kmer]['tracks']
-                else:
-                    kmers.pop(kmer, None)
+                            continue
+                if n!= 0:
+                    continue
+                self.lp_kmers[kmer] = {}
+                self.lp_kmers[kmer]['type'] = self._kmer_type
+                self.lp_kmers[kmer]['count'] = kmers[kmer]['count']# + k['doubt']
+                self.lp_kmers[kmer]['doubt'] = kmers[kmer]['doubt']
+                self.lp_kmers[kmer]['total'] = kmers[kmer]['total']
+                self.lp_kmers[kmer]['reference'] = len(kmers[kmer]['loci'])
+                self.lp_kmers[kmer]['reduction'] = kmers[kmer]['reference']
+                self.lp_kmers[kmer]['tracks'] = kmers[kmer]['tracks']
+                self.lp_kmers[kmer]['loci'] = list(map(lambda l: l, kmers[kmer]['loci']))
             if not kmers: 
                 print('no inner kmers found for', red(track_name))
                 return None

@@ -88,7 +88,7 @@ def parse_args():
     # the outer insert size of the paired end reads 
     parser.add_argument("--insertsize", type = int, default = 1000)
     # indicates if this is part of a simulation
-    parser.add_argument("--simulation", default = '30x')
+    parser.add_argument("--simulation", default = None)
     # the size of the reads in the fastq file 
     parser.add_argument("--readlength", type = int, default = 100)
     # description of this simulation 
@@ -127,7 +127,7 @@ def configure(args):
         jellyfish = args.jellyfish, 
         reference = args.reference,
         fastq_file = os.path.abspath(args.fastq),
-        simulation = int(args.simulation[:-1]),
+        simulation = int(args.simulation[:-1]) if args.simulation else None,
         genome_hg19 = genome_hg19,
         genome_hg38 = genome_hg38,
         description = args.description,
