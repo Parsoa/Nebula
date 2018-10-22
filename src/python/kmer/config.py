@@ -95,6 +95,8 @@ def parse_args():
     parser.add_argument("--description")
     # whether the simulation should be heterozygous
     parser.add_argument("--heterozygous", action = 'store_true')
+    # whether to use C acceleration 
+    parser.add_argument("--accelerate", action = 'store_true')
     args = parser.parse_args()
     #
     return args
@@ -126,6 +128,7 @@ def configure(args):
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
         reference = args.reference,
+        accelerate = args.accelerate,
         fastq_file = os.path.abspath(args.fastq),
         simulation = int(args.simulation[:-1]) if args.simulation else None,
         genome_hg19 = genome_hg19,

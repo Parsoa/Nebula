@@ -12,6 +12,7 @@ import time
 import argparse
 import operator
 import traceback
+import subprocess
 
 from kmer import (
     bed,
@@ -321,7 +322,7 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
         visualizer.histogram(x = y, name = 'number of novel outer isomers', x_label = 'percentage of novel or unique isomers', y_label = 'number of kmers', path = self.get_current_job_directory())
         self.round_robin()
 
-    def process_read(self, read, name):
+    def process_read(self, read, name, index):
         c = config.Configuration()
         kmers = index_kmers(15, read)
         for kmer in kmers:
@@ -454,7 +455,9 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
         tracks = self.load_previous_job_results()
         self.half_mers = {}
         bed_file_name = c.bed_file.split('/')[-1]
+        n = 0
         for track in tracks:
+            n += 1
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
@@ -478,9 +481,25 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
                             if not right in self.half_mers:
                                 self.half_mers[right] = {}
                             self.half_mers[right][left] = kmer
+        with open(os.path.join(self.get_current_job_directory(), 'half_mers.json'), 'w') as json_file:
+            json.dump(self.half_mers, json_file, indent = 4)
+        print(len(self.kmers), 'kmers')
+        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
         self.round_robin()
 
-    def process_read(self, read, name):
+    def transform(self):
+        c = config.Configuration()
+        if c.accelerate:
+            output = subprocess.call(os.path.join(os.getcwd(), "kmer", "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "1", shell = True)
+            exit()
+        else:
+            with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'r') as json_file:
+                self.kmers = json.load(json_file)
+            for read, name, index in self.parse_fastq():
+                self.process_read(read, name, index)
+
+    def process_read(self, read, name, index):
         c = config.Configuration()
         kmers = index_kmers(15, read)
         for kmer in kmers:
@@ -496,31 +515,54 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
                                 self.kmers[full]['count'] += 1
                                 prefix = read[:a][-25:]
                                 suffix = read[b + 15:][:25]
-                                if list(filter(lambda mask: is_canonical_subsequence(mask, read[:a][-25:]) or is_canonical_subsequence(mask, read[b + 15:][:25]), self.kmers[full]['masks'])):
-                                    self.kmers[full]['doubt'] += 1
-                                else:
-                                    #print(self.kmers[full]['masks'])
-                                    #print([reverse_complement(x) for x in self.kmers[full]['masks']])
-                                    #print(green(prefix), kmer, other, green(suffix))
-                                    #print(read)
-                                    debug_breakpoint()
+                                debug_print(kmer)
+                                debug_print(other)
+                                debug_print(full)
+                                #debug_print(prefix)
+                                #debug_print(suffix)
+                                debug_print(index)
+                                debug_breakpoint()
+                                #if list(filter(lambda mask: is_canonical_subsequence(mask, read[:a][-25:]) or is_canonical_subsequence(mask, read[b + 15:][:25]), self.kmers[full]['masks'])):
+                                #    self.kmers[full]['doubt'] += 1
+                                #else:
+                                #    #print(self.kmers[full]['masks'])
+                                #    #print([reverse_complement(x) for x in self.kmers[full]['masks']])
+                                #    #print(green(prefix), kmer, other, green(suffix))
+                                #    #print(read)
+                                #    debug_breakpoint()
 
     def reduce(self):
         c = config.Configuration()
         self.kmers = {}
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                batch = json.load(json_file)
-                for kmer in batch:
-                    if kmer in self.kmers:
-                        self.kmers[kmer]['count'] += batch[kmer]['count']
-                        self.kmers[kmer]['doubt'] += batch[kmer]['doubt']
-                    else:
-                        self.kmers[kmer] = batch[kmer]
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
+        if c.accelerate:
+            for i in range(0, self.num_threads):
+                print('adding batch', i)
+                path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
+                with open (path, 'r') as json_file:
+                    line = json_file.readline()
+                    while line:
+                        kmer = line[:line.find(':')]
+                        count = int(line[line.find(':') + 1:])
+                        canon = canonicalize(kmer)
+                        self.kmers[canon]['count'] += count / 2
+                        line = json_file.readline()
+            print('exporting C kmers...')
+            with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+                json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
+        else:
+            for i in range(0, self.num_threads):
+                print('adding batch', i)
+                path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
+                with open (path, 'r') as json_file:
+                    batch = json.load(json_file)
+                    for kmer in batch:
+                        if kmer in self.kmers:
+                            self.kmers[kmer]['count'] += batch[kmer]['count']
+                            self.kmers[kmer]['doubt'] += batch[kmer]['doubt']
+                        else:
+                            self.kmers[kmer] = batch[kmer]
+            with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+                json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         # output kmers per track
         self.tracks = {}
         for kmer in self.kmers:

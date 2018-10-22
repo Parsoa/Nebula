@@ -50,6 +50,7 @@ class BaseExactCountingJob(map_reduce.Job):
         ahead = self.fastq_file.readline().upper().strip()
         n = 0
         m = 0
+        u = 0
         t = time.time()
         while ahead:
             #print(state, line)
@@ -64,6 +65,7 @@ class BaseExactCountingJob(map_reduce.Job):
                 state = THIRD_LINE
                 seq = line[:-1] # ignore the EOL character
                 n += 1
+                u += 1
                 if n == 100000:
                     n = 0
                     m += 1
@@ -72,7 +74,7 @@ class BaseExactCountingJob(map_reduce.Job):
                     p = c / float(self.fastq_file_chunk_size)
                     e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
                     print('{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-                yield seq, name
+                yield seq, name, u
             elif state == THIRD_LINE:
                 state = QUALITY_LINE
             elif state == QUALITY_LINE:
@@ -99,8 +101,8 @@ class BaseExactCountingJob(map_reduce.Job):
 
     def transform(self):
         c = config.Configuration()
-        for read, name in self.parse_fastq():
-            self.process_read(read, name)
+        for read, name, index in self.parse_fastq():
+            self.process_read(read, name, index)
 
     def process_read(self, read, name):
         c = config.Configuration()

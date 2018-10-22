@@ -39,3 +39,8 @@ def debug_log(*args):
         print(magenta('BEGIN DEBUG ***********************************************************************************************'))
         print(*args)
         print(magenta('END DEBUG ***********************************************************************************************'))
+
+def debug_print(*args):
+    c = config.Configuration()
+    if c.debug:
+        print(*args)

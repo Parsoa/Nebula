@@ -71,6 +71,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
             include_gapped = True,
             include_unique_inner = False,
             include_non_unique_inner = True,
+            **kwargs
         )
         job.execute()
 
@@ -200,8 +201,8 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         for track in tmp:
             self.tracks[track] = {'index': n,
                 'unique_inner': self.unique_inner_tracks[track]['kmers'] if track in self.unique_inner_tracks else [],
-                'gapped': self.gapped_tracks[track]['kmer'] if track in self.gapped_tracks else [],
-                'non_unique_inner': self.non_unique_inner_tracks[track]['kmer'] if track in self.non_unique_inner_tracks else [] 
+                'gapped': self.gapped_tracks[track]['kmers'] if track in self.gapped_tracks else [],
+                'non_unique_inner': self.non_unique_inner_tracks[track]['kmers'] if track in self.non_unique_inner_tracks else [] 
             }
             n += 1
         self.lp_kmers = self.unique_inner_kmers + self.gapped_kmers + self.non_unique_inner_kmers
@@ -247,6 +248,10 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         for index, kmer in enumerate(self.lp_kmers):
             self.add_error_absolute_value_constraints(problem, index)
             if kmer['type'] == 'non_unique_inner':
+                if len(kmer['tracks']) == 1:
+                    track = kmer['tracks'].keys()[0]
+                if len(self.tracks[track]['gapped']) != 0:
+                    continue
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
                 ind.append(len(self.tracks) + index) # Objective
                 val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
@@ -259,43 +264,12 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
-                #if len(filter(lambda track: track not in self.tracks, kmer['tracks'])) != 0:
-                #    problem.linear_constraints.add(
-                #        lin_expr = [cplex.SparsePair(
-                #            ind = [len(self.tracks) + index],
-                #            val = [1.0],
-                #        )],
-                #        rhs = [0],
-                #        senses = ['E']
-                #    )
-                #    problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
-                #    continue
-            #if kmer['type'] == 'non_unique_inner':
-            #    if len(kmer['tracks']) == 1:
-            #        track = kmer['tracks'].keys()[0]
-            #        if self.tracks[track]['gapped'] + self.tracks[track]['unique_inner'] > 5:
-            #            m += 1
-            #            problem.linear_constraints.add(
-            #                lin_expr = [cplex.SparsePair(
-            #                    ind = [len(self.tracks) + index],
-            #                    val = [1.0],
-            #                )],
-            #                rhs = [0],
-            #                senses = ['E']
-            #            )
-            #            problem.variables.set_lower_bounds(len(self.tracks) + index, 0)
-            #            continue
-            #        else:
-            #            n += 1
-            #            print(yellow(track))
-            for track in kmer['tracks']:
-                self.tracks[track][kmer['type']] += 1
             if kmer['type'] == 'gapped' and kmer['side'] == 'outer':
                 # (1 - T)xR + E = C -> -TxR + E = C - R
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-                val.append(5.0)
+                val.append(1.0)
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
@@ -304,20 +278,20 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     rhs = [kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
                     senses = ['E']
                 )
-            else:
-                # TxR + E = C
-                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                ind.append(len(self.tracks) + index)
-                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-                val.append(1.0)
-                problem.linear_constraints.add(
-                    lin_expr = [cplex.SparsePair(
-                        ind = ind,
-                        val = val,
-                    )],
-                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
-                    senses = ['E']
-                )
+            #else:
+            #    # TxR + E = C
+            #    ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+            #    ind.append(len(self.tracks) + index)
+            #    val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
+            #    val.append(1.0)
+            #    problem.linear_constraints.add(
+            #        lin_expr = [cplex.SparsePair(
+            #            ind = ind,
+            #            val = val,
+            #        )],
+            #        rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
+            #        senses = ['E']
+            #    )
         print(m, n)
         return problem
 

@@ -14,7 +14,7 @@ if __name__ == '__main__':
                 tokens = line.split()
                 name = tokens[0] + '_' + tokens[1] + '_' + tokens[2] + '.bed'
                 with open(name, 'w') as t:
-                    t.write(tokens[0] + '\t' + tokens[1] + '\t' + tokens[2] + '\t' + tokens[6] + '\n')
+                    t.write(tokens[0] + '\t' + tokens[1] + '\t' + tokens[2] + '\n')
                 command = '/home/pkhorsand/local/bin/liftOver ' + name + ' /afs/genomecenter.ucdavis.edu/home/pkhorsand/hg19ToHg38.over.chain res.bed un.bed'
                 print command
                 output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)

@@ -399,9 +399,13 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         #    obj += abs(solution[i])
         #max_error = sum(list(map(lambda kmer: max(abs(kmer['count'] - kmer['coverage'] * kmer['residue']), abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']))), self.inner_kmers)))
         #print('error ratio:', float(obj) / max_error)
+        l = []
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in self.tracks:
                 tokens = track.split('_')
+                start = int(tokens[1])
+                end = int(tokens[2])
+                l.append(end - start)
                 index = self.tracks[track]['index']
                 s = int(round(2 * solution[index]))
                 g = '(0, 0)' if s == 2 else '(1, 0)' if s == 1 else '(1, 1)'
@@ -414,6 +418,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                             str(g) + '\t' + #3
                             #str(d) + '\t' + #4
                             str(solution[index]) + '\n') #4
+        visualizer.histogram(l, "event lenght", self.get_current_job_directory(), "event lenght", "number of events")
 
     def find_tracks_with_no_signal(self):
         c = config.Configuration()
