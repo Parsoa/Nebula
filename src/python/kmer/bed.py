@@ -44,9 +44,11 @@ def load_tracks_from_file(path, keywords = []):
         while line:
             tokens = line.split()
             kwargs = {}
-            for index, key in enumerate(keywords):
+            for index, pair in enumerate(keywords):
                 if index + 3 < len(tokens):
-                    kwargs[key] = tokens[3 + index]
+                    kwargs[pair[0]] = tokens[3 + index]
+                else:
+                    kwargs[pair[0]] = pair[1]
             track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[2]), **kwargs)
             tracks.append(track)
             line = f.readline()

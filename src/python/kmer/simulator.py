@@ -58,18 +58,13 @@ class Simulation(map_reduce.Job):
         if c.seed:
             random.seed(c.seed)
         if c.random:
-            self.SVs = self.generate_random_intervals(ref, 1000)
-            n = len(self.SVs) / 2
-            r = sorted(random.sample(xrange(len(self.SVs)), n))
-            a = list(filter(lambda i: i not in r, range(len(self.SVs))))
-            self.absent = [ self.SVs[i] for i in a ]
-            self.present = [ self.SVs[i] for i in r ]
+            self.tracks = self.generate_random_intervals(ref, 1000)
         else:
-            self.SVs = self.load_structural_variations()
-        self.export_bed(self.SVs, 'all')
+            self.tracks = self.load_structural_variations()
+        self.assign_event_zygosities()
+        self.export_bed(self.tracks, 'all')
         self.export_bed(self.absent, 'absent')
         self.export_bed(self.present, 'present')
-        self.homozygous, self.heterozygous = self.select_events(self.present)
         self.export_bed(self.homozygous, 'homozygous')
         self.export_bed(self.heterozygous, 'heterozygous')
         #
@@ -95,30 +90,30 @@ class Simulation(map_reduce.Job):
         random.seed(c.seed)
         print('generating', n, 'random events')
         l = len(self.ref)
-        intervals = []
+        tracks = []
         offset = 100000
         for i in range(0, n):
             begin = random.randint(offset, l - offset)
             end = begin + random.randint(100, 2000)
-            interval = bed.BedTrack(chrom = c.chrom, begin = begin, end = end)
-            intervals.append(interval)
-        intervals = sorted(intervals, key = lambda x: x.begin)
-        intervals = self.filter_overlapping_intervals(intervals)
-        return intervals
+            track = bed.BedTrack(chrom = c.chrom, begin = begin, end = end)
+            tracks.append(track)
+        return self.filter_overlapping_intervals(\
+                        sorted(tracks, key = lambda x: x.begin)\
+                    )\
 
     def load_structural_variations(self):
         c = config.Configuration()
-        print(c.bed_file)
-        # split events into batches
+        print('loading SVs from file', c.bed_file)
         tracks = []
-        for track in bed.load_tracks_from_file(c.bed_file, ['zygosity']):
+        for track in bed.load_tracks_from_file(c.bed_file, [('zygosity', None)]):
             if track.end - track.begin > 1000000:
                 print(red('too large, skipping', track))
                 continue
             tracks.append(track)
-        tracks = sorted(tracks, key = lambda x: x.begin)
-        print('Total number of deletions:', len(tracks))
-        return self.filter_overlapping_intervals(tracks)
+        print('Total number of tracks:', len(tracks))
+        return self.filter_overlapping_intervals(\
+                        sorted(tracks, key = lambda x: x.begin)\
+                    )\
 
     def filter_overlapping_intervals(self, intervals):
         remove = []
@@ -141,29 +136,69 @@ class Simulation(map_reduce.Job):
             n = n + 1
         return intervals
 
+    def assign_event_zygosities(self):
+        c = config.Configuration()
+        if c.random:
+            n = len(self.tracks) / 2
+            r = sorted(random.sample(xrange(len(self.tracks)), n))
+            a = list(filter(lambda i: i not in r, range(len(self.tracks))))
+            self.absent = [ self.tracks[i] for i in a ]
+            self.present = [ self.tracks[i] for i in r ]
+            self.homozygous, self.heterozygous = self.select_events(self.present)
+        else:
+            self.absent = []
+            self.present = []
+            self.homozygous = []
+            self.heterozygous = []
+            for track in self.tracks:
+                if track.zygosity:
+                    if track.zygosity == '1|0' or track.zygosity == '0|1':
+                        self.heterozygous.append(track)
+                        self.present.append(track)
+                    elif track.zygosity == '1|1':
+                        self.homozygous.append(track)
+                        self.present.append(track)
+                    else:
+                        self.absent.append(track)
+                else:
+                    r = random.randint(0, 2)
+                    if r == 2:
+                        self.absent.append(track)
+                    else:
+                        self.present.append(track)
+                        if r == 1:
+                            self.heterozygous.append(track)
+                        else:
+                            self.homozygous.append(track)
+        print(len(self.tracks), 'non-overlapping tracks')
+        print(len(self.absent), '0/0')
+        print(len(self.present), '1/1 or 1/0')
+        print(len(self.homozygous), '1/1')
+        print(len(self.heterozygous), '1/0')
+
+    #def select_events(self, SVs):
+    #    c = config.Configuration()
+    #    print('Present SVs:', blue(len(SVs)))
+    #    # select a set of commons SVs to be applied to both strands
+    #    n = len(SVs) / 2
+    #    print('Homozygous SVs:', blue(n))
+    #    SVs = sorted(SVs, key = lambda x: x.begin)
+    #    homozygous = [ SVs[i] for i in sorted(random.sample(range(len(SVs)), n)) ]
+    #    heterozygous = []
+    #    for sv in SVs:
+    #        if not sv in homozygous:
+    #            heterozygous.append(sv)
+    #    # sort
+    #    homozygous = sorted(homozygous, key = lambda x: x.begin)
+    #    heterozygous = sorted(heterozygous, key = lambda x: x.begin)
+    #    return homozygous, heterozygous
+
     def export_bed(self, intervals, name):
         print('Exporting BED file:', green(name + '.bed'))
         with open(os.path.join(self.get_current_job_directory(), name + '.bed'), 'w') as bed_file:
             for interval in intervals:
                 bed_file.write(str(interval.chrom) + '\t' + str(interval.begin) + '\t' + str(interval.end) + '\t' +
                     str(interval.left_drift) + '\t' + str(interval.right_drift) + '\n')
-
-    def select_events(self, SVs):
-        c = config.Configuration()
-        print('Present SVs:', blue(len(SVs)))
-        # select a set of commons SVs to be applied to both strands
-        n = len(SVs) / 2
-        print('Homozygous SVs:', blue(n))
-        SVs = sorted(SVs, key = lambda x: x.begin)
-        homozygous = [ SVs[i] for i in sorted(random.sample(range(len(SVs)), n)) ]
-        heterozygous = []
-        for sv in SVs:
-            if not sv in homozygous:
-                heterozygous.append(sv)
-        # sort
-        homozygous = sorted(homozygous, key = lambda x: x.begin)
-        heterozygous = sorted(heterozygous, key = lambda x: x.begin)
-        return homozygous, heterozygous
 
     def transform(self, seq, chrom):
         print('simulating', chrom)

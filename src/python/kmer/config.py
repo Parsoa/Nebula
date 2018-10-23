@@ -47,16 +47,10 @@ def parse_args():
     parser.add_argument("--gap", default = None, type = int)
     # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
     parser.add_argument("--snp")
-    # standard deviation to use for the normal distribution modeling kmers, separately calculated for each set of reads
-    parser.add_argument("--std", type = float)
     # the seed to use for random number generation 
     parser.add_argument("--seed", type = int)
     # triggers the debug mode 
     parser.add_argument("--debug", action = 'store_true')
-    # set of exons for coverage estimation 
-    parser.add_argument("--exons")
-    # the path to a previously generated khmer counttable without the .ct extension
-    parser.add_argument("--khmer")
     # length of the kmers 
     parser.add_argument("--ksize", default = '31k')
     # specifies that this counttable should return dummy values
@@ -97,6 +91,10 @@ def parse_args():
     parser.add_argument("--heterozygous", action = 'store_true')
     # whether to use C acceleration 
     parser.add_argument("--accelerate", action = 'store_true')
+    # rate of SNPs in simulation 
+    parser.add_argument("--mutation_rate", type = float, default = 0.0)
+    # rate of sequencing error in simulation
+    parser.add_argument("--sequencing_error_rate", type = float, default = 0.0)
     args = parser.parse_args()
     #
     return args
@@ -106,14 +104,11 @@ def configure(args):
     genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/GRC38.fasta'
     reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38 if args.reference == 'hg38' else args.reference
     max_threads = args.threads
-    khmer_table_size = 16e9
-    khmer_num_tables = 4
     # set up configuration
     Configuration(
         job = args.job,
         gap = args.gap,
         snp = args.snp,
-        std = args.std,
         seed = args.seed,
         chrom = args.chrom,
         debug = args.debug,
@@ -139,11 +134,10 @@ def configure(args):
         read_length = args.readlength,
         heterozygous = args.heterozygous,
         whole_genome = args.whole,
+        mutation_rate = args.mutation_rate,
         jellyfish_base = '/share/hormozdiarilab/Experiments/Jellyfish',
         reference_genome = reference_genome,
-        khmer_num_tables = khmer_num_tables,
-        khmer_table_size = khmer_table_size,
         output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../output')),
         resume_from_reduce = args.reduce,
-        count_server_port = 6985,
+        sequencing_error_rate = args.sequencing_error_rate
     )
