@@ -112,8 +112,6 @@ def configure(args):
         seed = args.seed,
         chrom = args.chrom,
         debug = args.debug,
-        exons = args.exons,
-        khmer = args.khmer,
         ksize = int(args.ksize[:-1]),
         genome = args.genome,
         radius = args.radius,

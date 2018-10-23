@@ -61,6 +61,7 @@ def extract_chromosomes(chromosomes):
     ref = open(c.reference_genome)
     line = ref.readline().lower().strip()
     found = False
+    m = 0
     while True:
         if line.startswith('>chr'):
             chrom = line[line.find('>') + 1:]
@@ -73,8 +74,12 @@ def extract_chromosomes(chromosomes):
                         yield sequence, chrom
                         sequence = ''
                         found = True
+                        m += 1
+                        if m == len(chromosomes):
+                            return
                         break
                     sequence += line.upper()
+        # this is to avoid skipping the last line we read for the previous chromosome (header of next)
         if found:
             found = False
             continue

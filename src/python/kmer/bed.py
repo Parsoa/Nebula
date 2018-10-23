@@ -21,13 +21,19 @@ class BedTrack:
         self.chrom = chrom
         self.begin = begin
         self.end = end
-        self.left_drift = 0
-        self.right_drift = 0
         for k, v in kwargs.items():
             setattr(self, k, v)
+        self.kwargs = kwargs
 
     def __str__(self):
         return self.chrom + '_' + str(self.begin) + '_' + str(self.end)
+
+    def export(self):
+        s = self.chrom + '\t' + str(self.begin) + '\t' + str(self.end)
+        for k, v in enumerate(self.kwargs):
+            s += '\t' + str(self.kwargs[v])
+        s += '\n'
+        return s
 
 # ============================================================================================================================ #
 # BED Tracks

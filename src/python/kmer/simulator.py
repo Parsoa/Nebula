@@ -69,18 +69,12 @@ class Simulation(map_reduce.Job):
         self.export_bed(self.heterozygous, 'heterozygous')
         #
         self.extract_whole_genome()
-        self.round_robin(self.chrom)
+        self.round_robin(self.chroms)
 
     def extract_whole_genome(self):
-        c = ['chr' + str(x) for x in range(1, 23)]
-        c.append('chrx')
-        c.append('chry')
-        self.chrom = {}
-        n = 0
-        for seq, chrom in extract_chromosomes(c):
-            print('got', chrom, len(seq), 'bases')
-            self.chrom[chrom] = seq
-            n += 1
+        self.chroms = extract_whole_genome()
+        for chrom, seq in self.chroms.iteritems():
+            print(chrom, 'with', len(seq), 'bases')
             with open(os.path.join(self.get_current_job_directory(), chrom + '.fa'), 'w') as chrom_file:
                 chrom_file.write('>' + chrom + '\n')
                 chrom_file.write(seq)
@@ -98,8 +92,8 @@ class Simulation(map_reduce.Job):
             track = bed.BedTrack(chrom = c.chrom, begin = begin, end = end)
             tracks.append(track)
         return self.filter_overlapping_intervals(\
-                        sorted(tracks, key = lambda x: x.begin)\
-                    )\
+                    sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
+                )
 
     def load_structural_variations(self):
         c = config.Configuration()
@@ -112,8 +106,8 @@ class Simulation(map_reduce.Job):
             tracks.append(track)
         print('Total number of tracks:', len(tracks))
         return self.filter_overlapping_intervals(\
-                        sorted(tracks, key = lambda x: x.begin)\
-                    )\
+                    sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
+                )
 
     def filter_overlapping_intervals(self, intervals):
         remove = []
@@ -121,7 +115,10 @@ class Simulation(map_reduce.Job):
         while i < len(intervals):
             for j in range(i + 1, len(intervals)):
                 # j is contained inside i
-                if intervals[j].begin + intervals[j].left_drift <= intervals[i].end + intervals[i].right_drift:
+                if intervals[j].chrom != intervals[i].chrom:
+                    i = j
+                    break
+                if intervals[j].begin <= intervals[i].end:
                     remove.append(j)
                     print(red(str(intervals[j])), 'overlaps', blue(str(intervals[i])))
                     continue
@@ -176,29 +173,11 @@ class Simulation(map_reduce.Job):
         print(len(self.homozygous), '1/1')
         print(len(self.heterozygous), '1/0')
 
-    #def select_events(self, SVs):
-    #    c = config.Configuration()
-    #    print('Present SVs:', blue(len(SVs)))
-    #    # select a set of commons SVs to be applied to both strands
-    #    n = len(SVs) / 2
-    #    print('Homozygous SVs:', blue(n))
-    #    SVs = sorted(SVs, key = lambda x: x.begin)
-    #    homozygous = [ SVs[i] for i in sorted(random.sample(range(len(SVs)), n)) ]
-    #    heterozygous = []
-    #    for sv in SVs:
-    #        if not sv in homozygous:
-    #            heterozygous.append(sv)
-    #    # sort
-    #    homozygous = sorted(homozygous, key = lambda x: x.begin)
-    #    heterozygous = sorted(heterozygous, key = lambda x: x.begin)
-    #    return homozygous, heterozygous
-
     def export_bed(self, intervals, name):
         print('Exporting BED file:', green(name + '.bed'))
         with open(os.path.join(self.get_current_job_directory(), name + '.bed'), 'w') as bed_file:
             for interval in intervals:
-                bed_file.write(str(interval.chrom) + '\t' + str(interval.begin) + '\t' + str(interval.end) + '\t' +
-                    str(interval.left_drift) + '\t' + str(interval.right_drift) + '\n')
+                bed_file.write(interval.export()) 
 
     def transform(self, seq, chrom):
         print('simulating', chrom)
@@ -220,16 +199,19 @@ class Simulation(map_reduce.Job):
                 line = seq[i * n : (i + 1) * n].upper() + '\n'
                 fasta_file.write(line)
 
-    def apply_events_to_chromosome(self, chrom, SVs):
+    def apply_events_to_chromosome(self, chrom, tracks):
         seq = ''
         real = 0
         previous = 0
         index = {}
-        for i, sv in enumerate(SVs):
-            left = sv.begin + sv.left_drift
-            s = self.chrom[chrom][previous:left]
+        for track in tracks:
+            print('applying', track, 'to', chrom)
+            if track.chrom != chrom:
+                break
+            left = track.begin
+            s = self.chroms[chrom][previous:left]
             seq += s
-            previous = sv.end + sv.right_drift
+            previous = track.end
         seq += chrom[previous:]
         return seq
 
@@ -241,13 +223,10 @@ class Simulation(map_reduce.Job):
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
-        command =  "wgsim -d400 -N{} -1100 -2100 -r0 -R0 -e0.001 {} {} {}".format(num_reads, fasta, fastq_1, fastq_2)
+        command =  "wgsim -d400 -N{} -1100 -2100 -r{} -R0 -e{} {} {} {}".format(num_reads, c.mutation_rate, c.sequencing_error_rate, fasta, fastq_1, fastq_2)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def reduce(self):
-        self.chrom = ['chr' + c for c in [str(x) for x in range(1, 23)]]
-        self.chrom.append('chrx')
-        self.chrom.append('chry')
         self.export_reference_genome()
         self.export_reference_jellyfish_table()
         self.merge_fastq_files()
@@ -255,8 +234,8 @@ class Simulation(map_reduce.Job):
     def export_reference_genome(self):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
-        command = 'cat '# + os.path.join(self.get_current_job_directory(), 'chr*.fq') + ' > ' + os.path.join(self.get_current_job_directory(), 'test.fq')
-        for chrom in self.chrom:
+        command = 'cat '
+        for chrom in self.chroms:
             path = os.path.join(self.get_current_job_directory(), chrom + '.fa')
             command += path + ' ' 
         path = os.path.join(self.get_current_job_directory(), 'reference.fa')
