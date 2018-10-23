@@ -65,8 +65,6 @@ def parse_args():
     parser.add_argument("--whole", action = 'store_true')
     # the name of the genome being genotyped or whatver 
     parser.add_argument("--genome")
-    # radius of the neighborhood considered for breakpoints 
-    parser.add_argument("--radius", type = int, default = 50)
     # whether to generate random events during simulation or not
     parser.add_argument("--random", action = 'store_true')
     # whether to resume this job from reduce or not
@@ -79,8 +77,6 @@ def parse_args():
     parser.add_argument("--jellyfish", nargs = '*')
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = 'hg19')
-    # the outer insert size of the paired end reads 
-    parser.add_argument("--insertsize", type = int, default = 1000)
     # indicates if this is part of a simulation
     parser.add_argument("--simulation", default = None)
     # the size of the reads in the fastq file 
@@ -114,7 +110,6 @@ def configure(args):
         debug = args.debug,
         ksize = int(args.ksize[:-1]),
         genome = args.genome,
-        radius = args.radius,
         random = args.random,
         bed_file = args.bed,
         coverage = round(1 * args.coverage) if args.simulation else (args.coverage),
@@ -128,7 +123,6 @@ def configure(args):
         genome_hg38 = genome_hg38,
         description = args.description,
         max_threads = 1 if args.debug else args.threads,
-        insert_size = args.insertsize,
         read_length = args.readlength,
         heterozygous = args.heterozygous,
         whole_genome = args.whole,

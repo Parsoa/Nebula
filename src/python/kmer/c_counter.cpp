@@ -9,11 +9,27 @@
 #include <unordered_map>
 #include <cstdint>
 #include <string>
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "json.hpp"
 
 using namespace std ;
 using json = nlohmann::json ;
+
+void handler(int sig) {
+    void *array[10];
+    size_t size;
+    // get void*'s for all entries on the stack
+    size = backtrace(array, 10);
+    // print out all the frames to stderr
+    fprintf(stderr, "Error: signal %d:\n", sig);
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+    exit(1);
+}
 
 // reduction
 std::unordered_map<std::string, std::unordered_map<std::string, void*>*> *kmers = new std::unordered_map<std::string, std::unordered_map<std::string, void*>*> ;
@@ -147,33 +163,42 @@ void process_read(char* read, int index) {
 }
 
 void process_gapped_read(char* read, int num) {
+    if (num != 686) {
+        return ;
+    }
+    cout << num << endl ;
     // get rid of the EOL
     int l = strlen(read) ;
     std::string seq(read) ;
     // index kmers
+    cout << seq << endl ;
     std::unordered_map<std::string, std::vector<int>> index ;
     for (int i = 0 ; i <= l - 1 - 15 ; i++) {
-        //cout << 1 << endl ;
+        cout << 1 << endl ;
         std::string k = seq.substr(i, 15) ;
+        cout << k << endl ;
         if (half_mers->find(k) == half_mers->end() and other_mers->find(k) == other_mers->end()) {
+            cout << "not found" << endl ;
             continue ;
         }
         if (index.find(k) == index.end()) {
+            cout << "adding to index" << endl ;
             index.emplace(std::make_pair(k, std::vector<int>(1, i))) ;
         } else {
-            //cout << 6 << endl ;
+            cout << 6 << endl ;
             index[k].push_back(i) ;
         }
     }
+    cout << index.size() << endl ;
     // for every half-mer in index
     for (std::unordered_map<string, std::vector<int>>::iterator it = index.begin(); it != index.end(); it++) {
-        //cout << 5 << endl ;
+        cout << 5 << endl ;
         auto half = half_mers->find(it->first) ;
-        //cout << 2 << endl ;
+        cout << 2 << endl ;
         if (half == half_mers->end()) {
             continue ;
         }
-        //cout << 3 << endl ;
+        cout << 3 << endl ;
         //for all second pairs of this half
         for(std::unordered_map<std::string, std::string>::iterator j = half->second->begin(); j != half->second->end(); j++){
             std::string kmer = j->second ;
@@ -181,7 +206,7 @@ void process_gapped_read(char* read, int num) {
             if (other != index.end()) {
                 for (std::vector<int>::iterator a = it->second.begin(); a != it->second.end(); a++) {
                     for (std::vector<int>::iterator b = other->second.begin(); b != other->second.end(); b++) {
-                        //cout << 4 << endl ;
+                        cout << 4 << endl ;
                         int d = *b - (*a + 15) ;
                         if (d == *gaps->at(kmer)) {
                             //cout << "count" << endl ;
@@ -273,9 +298,6 @@ void process_fastq(string fastq, string path, int index, int threads, int type) 
                 cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
                 cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size << endl ;
             }
-            //if (m == 1) {
-            //    break ;
-            //}
             if (type == 0) {
                 process_read(line, u) ;
             } else {
@@ -376,6 +398,7 @@ void transform_gapped(int index, string path, string fastq, int threads, int typ
 } 
 
 int main(int argc, char** argv) {
+    //signal(SIGSEGV, handler);
     string path(argv[2]) ;
     string fastq(argv[3]) ;
     int index = std::stoi(string(argv[1]), nullptr, 10) ;

@@ -27,10 +27,6 @@ from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
-import numpy
-
-from Bio import pairwise2
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -61,29 +57,24 @@ class ExtractInnerKmersJob(map_reduce.Job):
         extract_whole_genome()
         self.load_reference_counts_provider()
         self.tracks = self.load_tracks() 
-        self.round_robin(self.tracks, lambda track: re.sub(r'\s+', '_', str(track).strip()).strip(), lambda track: track.end - track.begin > 1000000)
+        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
 
     def transform(self, track, track_name):
         print(cyan(track_name))
         c = config.Configuration()
-        inner_kmers = track.get_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10, n = 1000, overlap = False, canonical = True)
-        novel_kmers = track.get_boundary_kmers(begin = 0, end = 0, counter = self.reference_counts_provider.get_kmer_count, count = 0)
-        l = len(inner_kmers)
-        inner_kmers = {kmer: inner_kmers[kmer] for kmer in filter(lambda k: k not in novel_kmers and reverse_complement(k) not in novel_kmers, inner_kmers)}
-        if l != len(inner_kmers):
-            print(yellow(track_name))
+        inner_kmers = track.extract_inner_kmers(counter = self.reference_counts_provider.get_kmer_count, count = 10, n = 1000, overlap = False, canonical = True)
         kmers = {
             'unique_inner_kmers': {kmer: {'track': inner_kmers[kmer], 'reference': self.reference_counts_provider.get_kmer_count(kmer)} for kmer in list(filter(lambda x: self.reference_counts_provider.get_kmer_count(x) == 1, inner_kmers))},
             'non_unique_inner_kmers': {kmer: {'track': inner_kmers[kmer], 'reference': self.reference_counts_provider.get_kmer_count(kmer)} for kmer in list(filter(lambda x: self.reference_counts_provider.get_kmer_count(x) > 1, inner_kmers))},
-            'novel_kmers': novel_kmers,
         }
         if len(inner_kmers) == 0:
             print(red('skipping', track_name, 'no inner kmers found'))
             return None
-        path = os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track_name  + '.json') 
+        name = 'inner_kmers_' + track_name  + '.json'
+        path = os.path.join(self.get_current_job_directory(), name) 
         with open(path, 'w') as json_file:
             json.dump(kmers, json_file, sort_keys = True, indent = 4)
-        return 'inner_kmers_' + track_name + '.json'
+        return name
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

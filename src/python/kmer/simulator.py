@@ -185,6 +185,7 @@ class Simulation(map_reduce.Job):
         self.export_chromosome_fasta(chrom, self.homozygous, chrom + '_strand_2')
         self.export_fastq(seq, chrom + '_strand_1')
         self.export_fastq(seq, chrom + '_strand_2')
+        exit()
 
     def export_chromosome_fasta(self, chrom, events, name):
         print('Exporting FASTA file:', green(name + '.fa')) 
@@ -201,18 +202,16 @@ class Simulation(map_reduce.Job):
 
     def apply_events_to_chromosome(self, chrom, tracks):
         seq = ''
-        real = 0
         previous = 0
-        index = {}
         for track in tracks:
-            print('applying', track, 'to', chrom)
             if track.chrom != chrom:
-                break
-            left = track.begin
-            s = self.chroms[chrom][previous:left]
+                print(yellow('skipping', track, 'to', chrom))
+                continue
+            print('applying', track, 'to', chrom)
+            s = self.chroms[chrom][previous:track.begin]
             seq += s
             previous = track.end
-        seq += chrom[previous:]
+        seq += self.chroms[chrom][previous:]
         return seq
 
     def export_fastq(self, seq, name):
@@ -224,6 +223,7 @@ class Simulation(map_reduce.Job):
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
         command =  "wgsim -d400 -N{} -1100 -2100 -r{} -R0 -e{} {} {} {}".format(num_reads, c.mutation_rate, c.sequencing_error_rate, fasta, fastq_1, fastq_2)
+        print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def reduce(self):

@@ -64,7 +64,7 @@ def extract_chromosomes(chromosomes):
     m = 0
     while True:
         if line.startswith('>chr'):
-            chrom = line[line.find('>') + 1:]
+            chrom = line[line.find('>') + 1:].lower()
             if chrom in chromosomes:
                 print('extracting ' + chrom)
                 while True:

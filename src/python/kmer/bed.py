@@ -18,7 +18,7 @@ from kmer.commons import *
 class BedTrack:
 
     def __init__(self, chrom, begin, end, **kwargs):
-        self.chrom = chrom
+        self.chrom = chrom.lower()
         self.begin = begin
         self.end = end
         for k, v in kwargs.items():

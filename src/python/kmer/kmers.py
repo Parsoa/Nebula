@@ -90,14 +90,6 @@ def stream_canonical_kmers(k = 31, *args):
             kmer = s[i : i + k]
             yield canonicalize(kmer)
 
-def find_kmer(k, kmers):
-    rc = reverse_complement(k)
-    if k in kmers:
-        return k
-    if rc in kmers:
-        return rc
-    return None
-
 def c_extract_kmers(k = 31, counter = lambda x: 1, count = 1, *args):
     c = config.Configuration()
     kmers = {}
@@ -139,6 +131,14 @@ def index_kmers(k = 31, *args):
         kmers[kmer].append(index)
         index += 1
     return kmers
+
+def find_kmer(k, kmers):
+    rc = reverse_complement(k)
+    if k in kmers:
+        return k
+    if rc in kmers:
+        return rc
+    return None
 
 def reverse_complement(seq):
     return complement_sequence(seq[::-1])
