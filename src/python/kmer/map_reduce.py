@@ -216,10 +216,10 @@ class Job(object):
     # misc helpers
     # ============================================================================================================================ #
 
-    def load_tracks(self):
+    def load_tracks(self, name = 'all.bed'):
         c = config.Configuration()
         if c.simulation:
-            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(os.path.join(self.get_simulation_directory(), 'all.bed'))}
+            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(os.path.join(self.get_simulation_directory(), name))}
         else:
             return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(c.bed_file)}
 

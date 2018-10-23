@@ -28,8 +28,6 @@ from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
-import pybedtools
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -61,15 +59,14 @@ class Simulation(map_reduce.Job):
             random.seed(c.seed)
         if c.random:
             self.SVs = self.generate_random_intervals(ref, 1000)
+            n = len(self.SVs) / 2
+            r = sorted(random.sample(xrange(len(self.SVs)), n))
+            a = list(filter(lambda i: i not in r, range(len(self.SVs))))
+            self.absent = [ self.SVs[i] for i in a ]
+            self.present = [ self.SVs[i] for i in r ]
         else:
             self.SVs = self.load_structural_variations()
-            random.seed(c.seed)
         self.export_bed(self.SVs, 'all')
-        n = len(self.SVs) / 2
-        r = sorted(random.sample(xrange(len(self.SVs)), n))
-        a = list(filter(lambda i: i not in r, range(len(self.SVs))))
-        self.absent = [ self.SVs[i] for i in a ]
-        self.present = [ self.SVs[i] for i in r ]
         self.export_bed(self.absent, 'absent')
         self.export_bed(self.present, 'present')
         self.homozygous, self.heterozygous = self.select_events(self.present)
@@ -103,7 +100,7 @@ class Simulation(map_reduce.Job):
         for i in range(0, n):
             begin = random.randint(offset, l - offset)
             end = begin + random.randint(100, 2000)
-            interval = pybedtools.Interval(chrom = c.chrom, begin = begin, end = end)
+            interval = bed.BedTrack(chrom = c.chrom, begin = begin, end = end)
             intervals.append(interval)
         intervals = sorted(intervals, key = lambda x: x.begin)
         intervals = self.filter_overlapping_intervals(intervals)
@@ -112,22 +109,13 @@ class Simulation(map_reduce.Job):
     def load_structural_variations(self):
         c = config.Configuration()
         print(c.bed_file)
-        bedtools = pybedtools.BedTool(c.bed_file)
         # split events into batches
-        n = 0
         tracks = []
-        for track in bedtools:
-            n += 1
-            name = re.sub(r'\s+', '_', str(track).strip()).strip()
-            track = bed.track_from_name(name)
-            track.left_drift = random.randint(0, 4) - 2
-            track.right_drift = random.randint(0, 4) - 2
-            # too large, skip
+        for track in bed.load_tracks_from_file(c.bed_file, ['zygosity']):
             if track.end - track.begin > 1000000:
-                print(red('skipping', name))
+                print(red('too large, skipping', track))
                 continue
             tracks.append(track)
-        print(n)
         tracks = sorted(tracks, key = lambda x: x.begin)
         print('Total number of deletions:', len(tracks))
         return self.filter_overlapping_intervals(tracks)
@@ -272,91 +260,6 @@ class Simulation(map_reduce.Job):
         command += ' -o ' + os.path.join(self.get_current_job_directory(), channel + '.jf')
         print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
-
-    # ============================================================================================================================ #
-    # Simulation
-    # ============================================================================================================================ #
-
-    #def prepare(self):
-    #    print('Simulation completed. Preparing statistics...')
-
-    #def load_inputs(self):
-    #    self.tracks_00 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'absent.bed'))}
-    #    self.tracks_10 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'heterozygous.bed'))}
-    #    self.tracks_11 = {re.sub(r'\s+', '_', str(track).strip()).strip(): track for track in pybedtools.BedTool(os.path.join(self.get_current_job_directory(), 'homozygous.bed'))}
-    #    self.tracks = {}
-    #    self.tracks.update(self.tracks_00)
-    #    self.tracks.update(self.tracks_10)
-    #    self.tracks.update(self.tracks_11)
-    #    self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-    #    self.counts_provider = counttable.JellyfishCountsProvider(os.path.join(self.get_current_job_directory(), 'test.jf'))
-    #    self.round_robin(self.tracks, filter_func = lambda track: track.end - track.start > 1000000) 
-
-    #def transform(self, track, track_name):
-    #    sv = self.get_sv_type()(track)
-    #    c = config.Configuration()
-    #    inner_kmers = sv.get_inner_kmers(self.reference_counts_provider.get_kmer_count, count = 1, n = 1000)
-    #    if len(inner_kmers) == 0:
-    #        return None
-    #    path = os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track_name  + '.json')
-    #    with open(path, 'w') as json_file:
-    #        json.dump({'inner_kmers': {kmer: self.counts_provider.get_kmer_count(kmer) for kmer in inner_kmers} }, json_file, sort_keys = True, indent = 4)
-    #    return path
-
-    #def reduce(self):
-    #    self.tracks = map_reduce.Job.reduce(self)
-    #    self.kmers_00 = {}
-    #    self.kmers_10 = {}
-    #    self.kmers_11 = {}
-    #    means_00 = []
-    #    means_10 = []
-    #    means_11 = []
-    #    print(cyan(len(self.tracks)), 'tracks')
-    #    for track in self.tracks:
-    #        with open(self.tracks[track], 'r') as json_file:
-    #            inner_kmers = json.load(json_file)['inner_kmers']
-    #            #print(len(inner_kmers))
-    #            if track in self.tracks_00:
-    #                means_00.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
-    #                for inner_kmer in inner_kmers:
-    #                    self.kmers_00[inner_kmer] = inner_kmers[inner_kmer]
-    #            if track in self.tracks_10:
-    #                means_10.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
-    #                for inner_kmer in inner_kmers:
-    #                    self.kmers_10[inner_kmer] = inner_kmers[inner_kmer]
-    #            if track in self.tracks_11:
-    #                means_11.append(statistics.mean([inner_kmers[inner_kmer] for inner_kmer in inner_kmers]))
-    #                for inner_kmer in inner_kmers:
-    #                    self.kmers_11[inner_kmer] = inner_kmers[inner_kmer]
-    #    print(green(len(self.tracks_00)), '00 tracks')
-    #    print(green(len(self.tracks_10)), '10 tracks')
-    #    print(green(len(self.tracks_11)), '11 tracks')
-    #    print(blue(len(self.kmers_00)), '00 kmers')
-    #    print(blue(len(self.kmers_10)), '10 kmers')
-    #    print(blue(len(self.kmers_11)), '11 kmers')
-    #    print(cyan(len(means_00)), '00 means')
-    #    print(cyan(len(means_10)), '10 means')
-    #    print(cyan(len(means_11)), '11 means')
-    #    visualizer.histogram([self.kmers_00[kmer] for kmer in self.kmers_00], '00 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
-    #    visualizer.histogram([self.kmers_10[kmer] for kmer in self.kmers_10], '10 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
-    #    visualizer.histogram([self.kmers_11[kmer] for kmer in self.kmers_11], '11 kmers', self.get_current_job_directory(), x_label = 'number of kmers', y_label = 'coverage', step = 1)
-    #    visualizer.histogram(means_00, 'mean coverage of 00 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
-    #    visualizer.histogram(means_10, 'mean coverage of 10 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
-    #    visualizer.histogram(means_11, 'mean coverage of 11 events', self.get_current_job_directory(), x_label = 'mean coverage', y_label = 'events', step = 1)
-
-    #def plot_reference_kmer_profile(self):
-    #    self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[0])
-    #    counts = []
-    #    n = 0
-    #    for kmer, count in self.reference_counts_provider.stream_kmers():
-    #        print(kmer, count)
-    #        counts.append(count)
-    #        n += 1
-    #        if n % 10000 == 1:
-    #            print(green(n), 'kmers counted')
-    #    counts = [counts[i] for i in random.sample(range(0, len(counts)), len(counts) / 10000)]
-    #    visualizer.histogram(counts, 'reference_genome_kmer_profile', self.get_current_job_directory(), 'kmer coverage', 'number of kmers')
-    #    exit()  
 
 # ============================================================================================================================ #
 # Main

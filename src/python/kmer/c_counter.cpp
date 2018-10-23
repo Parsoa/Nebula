@@ -20,7 +20,7 @@ std::unordered_map<std::string, std::unordered_map<std::string, void*>*> *kmers 
 // gapped
 std::unordered_map<std::string, std::unordered_map<std::string, string>*> *half_mers = new std::unordered_map<std::string, std::unordered_map<std::string, string>*> ;
 std::unordered_map<std::string, bool> *other_mers = new std::unordered_map<std::string, bool> ;
-std::unordered_map<std::string, int*, std::less<>> *counts = new std::unordered_map<std::string, int*, std::less<>> ;
+std::unordered_map<std::string, int*> *counts = new std::unordered_map<std::string, int*> ;
 std::unordered_map<std::string, int*> *gaps = new std::unordered_map<std::string, int*> ;
 std::unordered_map<std::string, std::vector<string>*> *masks = new std::unordered_map<std::string, std::vector<string>*> ;
 
@@ -149,15 +149,12 @@ void process_read(char* read, int index) {
 void process_gapped_read(char* read, int num) {
     // get rid of the EOL
     int l = strlen(read) ;
-    std::string_view seq(read) ;
+    std::string seq(read) ;
     // index kmers
     std::unordered_map<std::string, std::vector<int>> index ;
     for (int i = 0 ; i <= l - 1 - 15 ; i++) {
         //cout << 1 << endl ;
-        std::string_view k = seq.substr(i, 15) ;
-        if (counts->find(k) != counts->end()) {
-            cout << "here" << endl ;
-        }
+        std::string k = seq.substr(i, 15) ;
         if (half_mers->find(k) == half_mers->end() and other_mers->find(k) == other_mers->end()) {
             continue ;
         }
@@ -224,7 +221,7 @@ void process_fastq(string fastq, string path, int index, int threads, int type) 
     std::ifstream in(fastq, std::ifstream::ate | std::ifstream::binary) ;
     unsigned long size = (unsigned long) in.tellg() ;
     cout << "Size: " << size << endl ;
-    unsigned long chunk_size = size / threads ;
+    unsigned long chunk_size = size / 100 ;
     unsigned long offset = index * chunk_size ;
     cout << "Chunk size: " << chunk_size << endl ;
     cout << "Offset: " << offset << endl ;

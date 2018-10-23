@@ -32,7 +32,6 @@ from kmer.chromosomes import *
 print = pretty_print
 
 import numpy
-import pybedtools
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -544,7 +543,7 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
                         kmer = line[:line.find(':')]
                         count = int(line[line.find(':') + 1:])
                         canon = canonicalize(kmer)
-                        self.kmers[canon]['count'] += count / 2
+                        self.kmers[canon]['count'] += count
                         line = json_file.readline()
             print('exporting C kmers...')
             with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:

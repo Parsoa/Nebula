@@ -52,3 +52,5 @@ def load_tracks_from_file(path, keywords = []):
             line = f.readline()
     return tracks
 
+def load_tracks_from_file_as_dict(path, keywords = []):
+    return {str(track): track for track in load_tracks_from_file(path, keywords)}

@@ -28,7 +28,6 @@ from kmer.chromosomes import *
 print = pretty_print
 
 import numpy
-import pybedtools
 
 from Bio import pairwise2
 
@@ -394,11 +393,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         solution = problem.solution.get_values()
         with open(os.path.join(self.get_current_job_directory(), 'solution.json'), 'w') as json_file:
             json.dump({'variables': problem.solution.get_values()}, json_file, indent = 4, sort_keys = True)
-        #obj = 0
-        #for i in range(len(self.tracks), len(self.tracks) + len(self.inner_kmers)):
-        #    obj += abs(solution[i])
-        #max_error = sum(list(map(lambda kmer: max(abs(kmer['count'] - kmer['coverage'] * kmer['residue']), abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']))), self.inner_kmers)))
-        #print('error ratio:', float(obj) / max_error)
         l = []
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in self.tracks:
@@ -409,9 +403,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 index = self.tracks[track]['index']
                 s = int(round(2 * solution[index]))
                 g = '(0, 0)' if s == 2 else '(1, 0)' if s == 1 else '(1, 1)'
-                #s = 2 * solution[index]
-                #g = '(0, 0)' if s >= 1.33 else '(1, 0)' if s >= 0.66 else '(1, 1)'
-                #d = abs(s - 2 * solution[index]) / (1.0 if s == 1 else 0.5)
                 bed_file.write(tokens[0] + '\t' + #0
                             tokens[1] + '\t' + #1
                             tokens[2] + '\t' + #2
@@ -424,12 +415,9 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         c = config.Configuration()
         if not c.simulation:
             return
-        bedtools = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'all.bed'))], key = lambda track: track.start)
         all_tracks = {}
         n = 0
-        for b in bedtools:
-            track = re.sub(r'\s+', '_', str(b).strip()).strip()
-            print(track)
+        for track in self.load_tracks():
             all_tracks[track] = n
             n += 1
         x = []

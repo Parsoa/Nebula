@@ -32,7 +32,6 @@ from kmer.chromosomes import *
 print = pretty_print
 
 import numpy
-import pybedtools
 
 from Bio import pairwise2
 from ctypes import *
@@ -183,8 +182,8 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
         print(len(tracks))
         u = 0
         for track in tracks:
-            if c.debug or c.accelerate:
-                continue
+            #if c.debug or c.accelerate:
+            #    continue
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
@@ -237,9 +236,9 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
             x.append(n)
             self.kmers[kmer].pop('interest_kmers', None)
         print('Counting', green(len(self.kmers)), 'kmers')
-        if not c.debug and not c.accelerate:
-            with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
-                json.dump(self.kmers, json_file, indent = 4)
+        #if not c.debug and not c.accelerate:
+        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
         self.round_robin()
 
     def generate_kmer_mask(self, kmer, left, right, seed):
@@ -493,11 +492,9 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
         c = config.Configuration()
         with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             kmers = json.load(json_file)
-        self.homozygous = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'homozygous.bed'))], key = lambda track: track.begin)
-        self.homozygous_t = {re.sub(r'\s+', '_', str(track).strip()).strip(): True for track in self.homozygous}
-        self.heterozygous = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'heterozygous.bed'))], key = lambda track: track.begin)
-        self.heterozygous_t = {re.sub(r'\s+', '_', str(track).strip()).strip(): True for track in self.heterozygous} 
-        self.present = sorted([track for track in pybedtools.BedTool(os.path.join(self.get_simulation_directory(), 'present.bed'))], key = lambda track: track.begin)
+        self.present = self.load_tracks('present.bed')
+        self.homozygous = self.load_tracks('homozygous.bed') 
+        self.heterozygous = self.load_tracks('heterozygous.bed')
         self.kmers = {}
         for kmer in kmers:
             if len(kmers[kmer]['tracks']) != 1:
@@ -523,8 +520,8 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
                     else:
                         self.kmers[kmer]['loci'].pop(locus, None)
                 self.kmers[kmer]['track'] = track
-                self.kmers[kmer]['zygosity'] = 'homozygous' if track in self.homozygous_t\
-                    else 'heterozygous' if track in self.heterozygous_t\
+                self.kmers[kmer]['zygosity'] = 'homozygous' if track in self.homozygous\
+                    else 'heterozygous' if track in self.heterozygous\
                     else 'absent'
         self.round_robin()
 
@@ -533,11 +530,11 @@ class DebugCountLociIndicatorKmersJob(counter.SimulationExactCountingJob):
         if tokens[0] != 'chr2':
             return locus, locus
         begin = int(tokens[1])
-        offset_1 = sum(list(map(lambda y: y.end - y.begin, list(filter(lambda x: x.end < begin, self.present)))))
-        offset_2 = sum(list(map(lambda y: y.end - y.begin, list(filter(lambda x: x.end < begin, self.homozygous)))))
-        if track in self.homozygous_t:
+        offset_1 = sum(list(map(lambda y: y.end - y.begin, list(filter(lambda t1, x: x.end < begin, enumerate(self.present))))))
+        offset_2 = sum(list(map(lambda y: y.end - y.begin, list(filter(lambda t1, x: x.end < begin, enumerate(self.homozygous))))))
+        if track in self.homozygous:
             return None, None
-        if track in self.heterozygous_t:
+        if track in self.heterozygous:
             return None, tokens[0] + '_' + str(begin - offset_2)
         else:
             return tokens[0] + '_' + str(begin - offset_1), tokens[0] + '_' + str(begin - offset_2)

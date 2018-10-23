@@ -32,7 +32,6 @@ from kmer.chromosomes import *
 print = pretty_print
 
 import numpy
-import pybedtools
 
 from Bio import pairwise2
 
