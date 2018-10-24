@@ -31,8 +31,6 @@ from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
-import numpy
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -212,7 +210,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
         t = time.time()
         for k in range(30, 41):
             index = 0
-            for kmer in stream_canonical_kmers(k, sequence):
+            for kmer in stream_kmers(k, True, sequence):
                 index += 1
                 kmer = kmer[:15] + kmer[-15:]
                 if kmer in self.kmers:

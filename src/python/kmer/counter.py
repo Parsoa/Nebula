@@ -119,46 +119,6 @@ class BaseExactCountingJob(map_reduce.Job):
 
 class SimulationExactCountingJob(BaseExactCountingJob):
 
-    def parse_fastq(self):
-        name = None
-        #tracemalloc.start()
-        HEADER_LINE = 0
-        SEQUENCE_LINE = 1
-        THIRD_LINE = 2
-        QUALITY_LINE = 3
-        state = HEADER_LINE
-        # need to skip invalid lines
-        line = self.fastq_file.readline().upper().strip()
-        # for the very rare occasion that the first byte in a segment is a line feed
-        n = 0
-        m = 0
-        t = time.time()
-        part = self.fastq_file.name.split('/')[-1]
-        while line:
-            #print(state, line)
-            if state == HEADER_LINE:
-                name = line[:-1] # ignore the EOL character
-                state = SEQUENCE_LINE
-            elif state == SEQUENCE_LINE:
-                state = THIRD_LINE
-                seq = line[:-1] # ignore the EOL character
-                n += 1
-                if n == 100000:
-                    n = 0
-                    m += 1
-                    c = self.fastq_file.tell()
-                    s = time.time()
-                    p = c / float(os.path.getsize(self.fastq_file.name))
-                    e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                    print('{:30}'.format(part), '{:2d}'.format(self.index), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.8f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-                yield seq, name
-            elif state == THIRD_LINE:
-                state = QUALITY_LINE
-            elif state == QUALITY_LINE:
-                state = HEADER_LINE
-            line = self.fastq_file.readline()
-        print(self.index, ' end of input')
-
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
@@ -172,8 +132,9 @@ class SimulationExactCountingJob(BaseExactCountingJob):
         for chrom in chroms:
             for i in range (1, 3):
                 for j in range(1, 2):
-                    path = os.path.join(self.get_simulation_directory(), chrom + '_strand_' + str(i) + '.' + str(j) + '.fq')
-                    files[path] = path
+                    name = chrom + '_strand_' + str(i) + '.' + str(j) + '.fq'
+                    path = os.path.join(self.get_simulation_directory(), name)
+                    files[name] = path
                     print(path)
         map_reduce.Job.round_robin(self, files)
 
@@ -187,15 +148,10 @@ class SimulationExactCountingJob(BaseExactCountingJob):
                 traceback.print_exc()
         self.output_batch(self.kmers)
 
-    def transform(self, track, track_name):
+    def transform(self, file_path, file_name):
         c = config.Configuration()
-        self.fastq_file = open(track, 'r')
+        self.fastq_file = open(file_path, 'r')
+        self.fastq_file_chunk_size = os.path.getsize(self.fastq_file.name)
         for read, name in self.parse_fastq():
             self.process_read(read, name)
     
-    def process_read(self, read, name):
-        kmers = extract_kmers(c.ksize, read)
-        for kmer in kmers:
-            if kmer in self.kmers: 
-                self.kmers[kmer]['count'] += 1
-

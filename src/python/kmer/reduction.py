@@ -31,11 +31,6 @@ from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
-import numpy
-
-from Bio import pairwise2
-from ctypes import *
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -89,7 +84,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
         slack = (c.read_length - c.ksize) / 2
         print(cyan(chrom, len(sequence)))
         t = time.time()
-        for kmer in stream_canonical_kmers(c.ksize, sequence):
+        for kmer in stream_kmers(c.ksize, True, sequence):
             if kmer in self.inner_kmers:
                 locus = chrom + '_' + str(index)
                 self.inner_kmers[kmer]['loci'][locus] = {
@@ -100,8 +95,8 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
                     }
                 }
                 self.inner_kmers[kmer]['loci'][locus]['kmers'] = {
-                    'left': extract_canonical_kmers(c.ksize, self.inner_kmers[kmer]['loci'][locus]['seq']['left']),
-                    'right': extract_canonical_kmers(c.ksize, self.inner_kmers[kmer]['loci'][locus]['seq']['right'])
+                    'left': extract_kmers(c.ksize, True, self.inner_kmers[kmer]['loci'][locus]['seq']['left']),
+                    'right': extract_kmers(c.ksize, True, self.inner_kmers[kmer]['loci'][locus]['seq']['right'])
                 }
             index += 1
             if index % 10000 == 0:
@@ -376,8 +371,6 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
             self.kmers = self.merge_counts('total', 'doubt')
             with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
                 json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
-        #else:
-        #    self.kmers = json.load(open(os.path.join(self.get_current_job_directory(), 'kmers.json')))
         self.tracks = {}
         for kmer in self.kmers:
             for track in self.kmers[kmer]['tracks']:

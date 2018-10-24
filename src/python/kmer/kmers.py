@@ -30,14 +30,13 @@ def canonicalize(seq):
     reverse_complement = reverse_complement_sequence(seq)
     return seq if seq < reverse_complement else reverse_complement
 
-def c_extract_canonical_kmers(k = 31, counter = lambda x: 1, count = 1, overlap = True, *args):
-    print('Overlap', overlap)
+def c_extract_kmers(k = 31, counter = lambda x: 1, count = 1, overlap = True, canonical = True, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
         i = 0
         while i <= len(s) - k and i >= 0:
-            kmer = canonicalize(s[i : i + k])
+            kmer = canonicalize(s[i : i + k]) if canonical else s[i : i + k]
             cc = counter(kmer)
             if cc > count:
                 i += 1
@@ -51,81 +50,27 @@ def c_extract_canonical_kmers(k = 31, counter = lambda x: 1, count = 1, overlap 
                 i += 1
     return kmers
 
-def extract_canonical_kmers(k = 31, *args):
+def extract_kmers(k = 31, canonical = True, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
         for i in range(0, len(s) - k + 1):
-            kmer = canonicalize(s[i : i + k])
+            kmer = canonicalize(s[i : i + k]) if canonical else s[i : i + k]
             if not kmer in kmers:
                 kmers[kmer] = 0
             kmers[kmer] += 1
     return kmers
 
-def extract_canonical_gapped_kmers(*args):
-    c = config.Configuration()
-    kmers = {}
+def stream_kmers(k = 31, canonical = True, *args):
     for s in args:
-        for i in range(0, len(s) - 35 + 1):
-            kmer = canonicalize(s[i : i + 35])
-            kmer = kmer[:15] + kmer[20:]
-            if not kmer in kmers:
-                kmers[kmer] = 0
-            kmers[kmer] += 1
-    return kmers
+        for i in range(0, len(s) - k + 1):
+            kmer = s[i : i + k]
+            yield canonicalize(kmer) if canonical else kmer
 
-def index_canonical_kmers(k = 31, *args):
+def index_kmers(k = 31, canonical = True, *args):
     kmers = {}
     index = 0
-    for kmer in stream_canonical_kmers(k, *args):
-        if not kmer in kmers:
-            kmers[kmer] = []
-        kmers[kmer].append(index)
-        index += 1
-    return kmers
-
-def stream_canonical_kmers(k = 31, *args):
-    for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = s[i : i + k]
-            yield canonicalize(kmer)
-
-def c_extract_kmers(k = 31, counter = lambda x: 1, count = 1, *args):
-    c = config.Configuration()
-    kmers = {}
-    for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = s[i : i + k]
-            if counter(kmer) > count:
-                continue
-            k = find_kmer(kmer, kmers)
-            if not k:
-                kmers[kmer] = 1
-            else:
-                kmers[k] += 1
-    return kmers
-
-def extract_kmers(k = 31, *args):
-    c = config.Configuration()
-    kmers = {}
-    for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = s[i : i + k]
-            if not kmer in kmers:
-                kmers[kmer] = 0
-            kmers[kmer] += 1
-    return kmers
-
-def stream_kmers(k = 31, *args):
-    for s in args:
-        for i in range(0, len(s) - k + 1):
-            kmer = s[i : i + k]
-            yield kmer
-
-def index_kmers(k = 31, *args):
-    kmers = {}
-    index = 0
-    for kmer in stream_kmers(k, *args):
+    for kmer in stream_kmers(k, canonical, *args):
         if not kmer in kmers:
             kmers[kmer] = []
         kmers[kmer].append(index)

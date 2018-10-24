@@ -12,8 +12,6 @@ from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
-import colorama
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -29,12 +27,11 @@ class StructuralVariation(object):
 
     # the begin position itself is not included in the sequence
     # the end position is included in the sequence
-    # the origin will be -1, -1
     def extract_base_sequence(self):
         c = config.Configuration()
         # this is the largest sequence that we will ever need for this track
         # <- Slack -><-actual sequence-><- Slack ->
-        self.slack = 2 * c.ksize
+        self.slack = (c.read_length - c.ksize) / 2
         begin = self.begin - self.slack
         end = self.end + self.slack
         chromosome = extract_chromosome(self.chrom)
@@ -47,7 +44,7 @@ class StructuralVariation(object):
         inner_seq = self.sequence[begin : end + 1 - c.ksize]
         #print(inner_seq)
         #print(len(inner_seq))
-        inner_kmers = c_extract_canonical_kmers(c.ksize, counter, count, overlap, inner_seq)
+        inner_kmers = c_extract_kmers(c.ksize, counter, count, overlap, canonical, inner_seq)
         if len(inner_kmers) <= n:
             return inner_kmers
         else:
