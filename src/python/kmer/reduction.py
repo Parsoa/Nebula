@@ -308,11 +308,12 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
 
     def transform(self):
         c = config.Configuration()
+        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
         if c.accelerate:
             if c.debug:
-                output = subprocess.call('valgrind ' + os.path.join(os.getcwd(), "kmer", "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0", shell = True)
+                output = subprocess.call('valgrind ' + os.path.join(cpp_dir, "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0", shell = True)
             else:
-                output = subprocess.call(os.path.join(os.getcwd(), "kmer", "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0", shell = True)
+                output = subprocess.call(os.path.join(cpp_dir, "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0", shell = True)
             exit()
         else:
             with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'r') as json_file:
