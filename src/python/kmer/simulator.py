@@ -77,7 +77,8 @@ class Simulation(map_reduce.Job):
             print(chrom, 'with', len(seq), 'bases')
             with open(os.path.join(self.get_current_job_directory(), chrom + '.fa'), 'w') as chrom_file:
                 chrom_file.write('>' + chrom + '\n')
-                chrom_file.write(seq)
+                chrom_file.write(seq.strip())
+                chrom_file.write('\n')
 
     def generate_random_intervals(self, n):
         c = config.Configuration()
@@ -181,18 +182,34 @@ class Simulation(map_reduce.Job):
 
     def transform(self, seq, chrom):
         print('simulating', chrom)
-        self.export_chromosome_fasta(chrom, self.present, chrom + '_strand_1')
-        self.export_chromosome_fasta(chrom, self.homozygous, chrom + '_strand_2')
+        strand_1 = self.apply_events_to_chromosome(chrom, self.present)
+        strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
+        self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
+        self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
+        self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
         self.export_fastq(seq, chrom + '_strand_1')
         self.export_fastq(seq, chrom + '_strand_2')
         exit()
 
-    def export_chromosome_fasta(self, chrom, events, name):
+    def export_diploid_chromosome_fasta(self, chrom, strands):
+        print('Exporting FASTA file:', green(chrom + '.fa')) 
+        c = config.Configuration()
+        with open(os.path.join(self.get_current_job_directory(), chrom + '_diploid.fa'), 'w') as fasta_file:
+            for i in range(0, 2):
+                fasta_file.write('>' + chrom + '_' + str(i) + '\n')
+                seq = strands[i]
+                l = len(seq)
+                n = 100
+                num_lines = l / n
+                for i in range(0, num_lines):
+                    line = seq[i * n : (i + 1) * n].upper() + '\n'
+                    fasta_file.write(line)
+
+    def export_chromosome_fasta(self, chrom, seq, name):
         print('Exporting FASTA file:', green(name + '.fa')) 
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), name + '.fa'), 'w') as fasta_file:
             fasta_file.write('>' + chrom + '\n')
-            seq = self.apply_events_to_chromosome(chrom, events)
             l = len(seq)
             n = 100
             num_lines = l / n
@@ -205,7 +222,7 @@ class Simulation(map_reduce.Job):
         previous = 0
         for track in tracks:
             if track.chrom != chrom:
-                print(yellow('skipping', track, 'to', chrom))
+                print(yellow('skipping', track, 'on', chrom))
                 continue
             print('applying', track, 'to', chrom)
             s = self.chroms[chrom][previous:track.begin]
@@ -249,7 +266,7 @@ class Simulation(map_reduce.Job):
         print('Generating Jellyfish table')
         command = "jellyfish count -m " + str(c.ksize) + " -s 1000000000 -t 24 --canonical --out-counter-len 2 "
         command += os.path.join(self.get_current_job_directory(), 'reference.fa')
-        command += ' -o ' + os.path.join(self.get_current_job_directory(), 'reference_' + str(c.ksize) + '.jf')
+        command += ' -o ' + os.path.join(self.get_current_job_directory(), 'reference_' + str(c.ksize) + 'k.jf')
         print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 

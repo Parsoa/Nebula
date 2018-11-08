@@ -88,8 +88,11 @@ class Job(object):
         tracks = self.load_previous_job_results()
         self.round_robin(tracks)
 
-    def load_previous_job_results(self):
-        path = os.path.join(self.get_previous_job_directory(),  'batch_merge.json')
+    def load_previous_job_results(self, name = None):
+        if not name:
+            path = os.path.join(self.get_previous_job_directory(), 'batch_merge.json')
+        else:
+            path = os.path.join(os.path.join(self.get_current_job_directory(), '..', name), 'batch_merge.json')
         with open(path, 'r') as json_file:
             return json.load(json_file)
 
@@ -156,7 +159,6 @@ class Job(object):
 
     # This MUST call exit()
     def output_batch(self, batch):
-        n = 0
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)
         json_file.close()
@@ -188,6 +190,10 @@ class Job(object):
             json.dump(output, json_file, sort_keys = True, indent = 4)
         return output
 
+    def load_output(self):
+        for i in range(0, self.num_threads):
+            yield self.load_output_batch(i)
+
     def load_output_batch(self, index):
         path = os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')
         if not os.path.isfile(path):
@@ -218,10 +224,10 @@ class Job(object):
 
     def load_tracks(self, name = 'all.bed'):
         c = config.Configuration()
-        if c.simulation:
-            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(os.path.join(self.get_simulation_directory(), name))}
-        else:
-            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(c.bed_file)}
+        #if c.simulation:
+        #    return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(os.path.join(self.get_simulation_directory(), name))}
+        #else:
+        return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(c.bed_file)}
 
     def get_sv_type(self):
         c = config.Configuration()
@@ -234,22 +240,7 @@ class Job(object):
 
     def load_reference_counts_provider(self):
         c = config.Configuration()
-        if c.simulation:
-            path = os.path.join(self.get_simulation_directory(), 'reference_' + str(c.ksize) + '.jf')
-        else:
-            path = os.path.join(c.jellyfish_base, c.reference, 'mer_counts_' + str(c.ksize) + '.jf')
-        print('Reference kmer index:', green(path))
-        self.reference_counts_provider = counttable.JellyfishCountsProvider(path)
-
-    def get_gapped_reference_counts_provider(self):
-        c = config.Configuration()
-        g = c.gap
-        k = (c.ksize / 2) * 2
-        print(g, k)
-        if c.simulation:
-            return os.path.join(self.get_simulation_directory(), 'reference_' + str(g + k) + '.jf')
-        else:
-            return os.path.join(c.jellyfish_base, c.reference, 'mer_counts_' + str(g + k) + '.jf')
+        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
 
     def merge_counts(self, *keywords):
         c = config.Configuration()
@@ -287,14 +278,18 @@ class Job(object):
             return os.path.abspath(os.path.join(os.path.dirname(__file__),\
                 '../../../simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/' + str(c.ksize) + 'k/'))
         else:
-            return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../' + self._category + '/' + bed_file_name + '/' + str(c.ksize) + 'k/'))
+            if self._category == 'misc':
+                return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                    '../../../' + self._category + '/'))
+            else:
+                return os.path.abspath(os.path.join(os.path.dirname(__file__),\
+                    '../../../' + self._category + '/' + bed_file_name + '/' + str(c.ksize) + 'k/'))
 
     def get_previous_job_directory(self):
         if self._previous_job:
             return os.path.abspath(os.path.join(self.get_output_directory(), self._previous_job._name))
         else:
-            return self.get_current_job_directory()
+            return None
 
     def get_current_job_directory(self):
         return os.path.abspath(os.path.join(self.get_output_directory(), self._name))

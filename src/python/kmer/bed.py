@@ -9,6 +9,7 @@ from kmer import (
     config,
 )
 
+from kmer.debug import *
 from kmer.commons import *
 
 # ============================================================================================================================ #
@@ -18,7 +19,7 @@ from kmer.commons import *
 class BedTrack:
 
     def __init__(self, chrom, begin, end, **kwargs):
-        self.chrom = chrom.lower()
+        self.chrom = chrom
         self.begin = begin
         self.end = end
         for k, v in kwargs.items():
@@ -40,9 +41,10 @@ class BedTrack:
 # ============================================================================================================================ #
 
 def track_from_name(name):
-    tokens = name.lower().split('_')
+    tokens = name.split('_')
     return BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
 
+# keywords is an array of tuples: (name, default, transformation)
 def load_tracks_from_file(path, keywords = []):
     tracks = []
     with open(path, 'r') as f:
@@ -52,7 +54,10 @@ def load_tracks_from_file(path, keywords = []):
             kwargs = {}
             for index, pair in enumerate(keywords):
                 if index + 3 < len(tokens):
-                    kwargs[pair[0]] = tokens[3 + index]
+                    if len(pair) >= 3:
+                        kwargs[pair[0]] = pair[2](tokens[3 + index])
+                    else:
+                        kwargs[pair[0]] = tokens[3 + index]
                 else:
                     kwargs[pair[0]] = pair[1]
             track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[2]), **kwargs)

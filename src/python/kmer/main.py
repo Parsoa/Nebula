@@ -5,6 +5,7 @@ from kmer import (
     map_reduce,
 )
 
+from kmer.misc import *
 from kmer.depth import *
 from kmer.gapped import *
 from kmer.reduction import *

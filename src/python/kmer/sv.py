@@ -31,11 +31,18 @@ class StructuralVariation(object):
         c = config.Configuration()
         # this is the largest sequence that we will ever need for this track
         # <- Slack -><-actual sequence-><- Slack ->
-        self.slack = (c.read_length - c.ksize) / 2
+        self.slack = c.read_length - c.ksize
         begin = self.begin - self.slack
         end = self.end + self.slack
-        chromosome = extract_chromosome(self.chrom)
+        chromosome = extract_chromosome(self.chrom.lower())
         self.sequence = chromosome[begin: end]
+        if begin > len(chromosome) or end > len(chromosome) or len(self.sequence) == 0:
+            print(self.chrom)
+            print(len(chromosome))
+            print(self.slack)
+            print(self.begin)
+            print(self.end)
+            debug_breakpoint()
 
     def extract_inner_kmers(self, counter, count, n, overlap = True, canonical = True):
         c = config.Configuration()

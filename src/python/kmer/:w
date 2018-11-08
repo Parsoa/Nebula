@@ -7,7 +7,6 @@ import pwd
 import sys
 import copy
 import json
-import math
 import time
 import argparse
 import operator
@@ -24,8 +23,6 @@ from kmer import (
     statistics,
     visualizer,
 )
-
-import scipy
 
 from kmer.kmers import *
 from kmer.commons import *
@@ -61,8 +58,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
         c = config.Configuration()
         extract_whole_genome()
         self.load_reference_counts_provider()
-        self.tracks = self.load_tracks()
-        print(len(self.tracks))
+        self.tracks = self.load_tracks() 
         self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
 
     def transform(self, track, track_name):
@@ -352,10 +348,8 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.solution = problem.solution.get_values()
         self.export_solution()
         self.verify_genotypes()
-        job = self.GenotypingConfidenceJob()
-        job.problem = problem
-        job.tracks = self.tracks
-        job.execute()
+        self.generate_confidence_scores(problem)
+        #self.generate_lp_with_rounded_values(problem)
 
     def export_solution(self):
         with open(os.path.join(self.get_current_job_directory(), 'solution.json'), 'w') as json_file:
@@ -373,6 +367,12 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                     str(g)  + '\t' +
                     str(self.solution[index]) + '\n')
 
+    def calc_lp_objective_value(self):
+        objective = 0
+        for v in self.solutions[len(self.tracks):]:
+            objective += v
+        return objective
+
     def plot_event_lenght_distribution(self):
         lengths = []
         for track in self.tracks:
@@ -388,125 +388,28 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             for p in ['00', '10', '11']:
                 for track in bed.load_tracks_from_file(os.path.join(self.get_current_job_directory(), r + '_as_' + p + '.bed'), [('lp_genotype', None, str), ('lp_value', None, float)]):
                     self.tracks[str(track)]['lp_value'] = track.lp_value
-                    self.tracks[str(track)]['lp_rounding'] = round(2 * track.lp_value) / 2
                     self.tracks[str(track)]['lp_genotype'] = p
                     self.tracks[str(track)]['actual_genotype'] = r
-                    self.tracks[str(track)]['confidence_score'] = None
-                    self.tracks[str(track)]['p_value'] = None
-                    self.tracks[str(track)]['t_value'] = None
 
-    # ============================================================================================================================ #
-    # ============================================================================================================================ #
-    # ============================================================================================================================ #
-
-    class GenotypingConfidenceJob(map_reduce.BaseGenotypingJob):
-
-        _name = 'IntegerProgrammingJob'
-        _category = 'programming'
-        _previous_job = None
-        _kmer_type = 'unique_inner'
-
-        # ============================================================================================================================ #
-        # MapReduce overrides
-        # ============================================================================================================================ #
-
-        def load_inputs(self):
-            for track in self.tracks:
-                try:
-                    self.problem.variables.set_lower_bounds(self.tracks[track]['index'], self.tracks[track]['lp_rounding'])
-                    self.problem.variables.set_upper_bounds(self.tracks[track]['index'], self.tracks[track]['lp_rounding'])
-                except Exception as e:
-                    print(red(e))
-                    print(track, self.tracks[track])
-                    debug_breakpoint()
-            self.problem.set_log_stream(None)
-            self.problem.set_error_stream(None)
-            self.problem.set_warning_stream(None)
-            self.problem.set_results_stream(None)
-            self.round_robin(self.tracks)
-
-        def transform(self, _, track):
-            c = config.Configuration()
-            print(cyan('probing', track))
+    def generate_confidence_scores(self, problem):
+        # this only leaves the value of error terms open for calculation
+        for track in self.tracks:
+            problem.variables.set_lower_bounds(self.tracks[track]['index'], self.tracks[track]['lp_value'])
+            problem.variables.set_upper_bounds(self.tracks[track]['index'], self.tracks[track]['lp_value'])
+        for track in self.tracks:
+            print('probing', track)
             for r in [('00', 1.0), ('10', 0.5), ('11', 0.0)]:
-                self.problem.variables.set_lower_bounds(self.tracks[track]['index'], r[1])
-                self.problem.variables.set_upper_bounds(self.tracks[track]['index'], r[1])
-                self.problem.solve()
-                solution = self.problem.solution.get_values()
-                self.tracks[track]['objective_' + r[0]] = sum(self.get_sv_objective_values(track, solution))
-                self.tracks[track]['objective_values_' + r[0]] = self.get_sv_objective_values(track, solution) 
-            self.problem.variables.set_lower_bounds(self.tracks[track]['index'], self.tracks[track]['lp_rounding'])
-            self.problem.variables.set_upper_bounds(self.tracks[track]['index'], self.tracks[track]['lp_rounding'])
-            p = ['00', '10', '11']
-            g = self.tracks[track]['lp_genotype']
-            e = self.tracks[track]['objective_' + g]
-            p.remove(g)
-            m = min(p, key = lambda k: self.tracks[track]['objective_' + k])
-            d = [a - b for a,b in zip(self.tracks[track]['objective_values_' + m], self.tracks[track]['objective_values_' + g])]
-            n = len(d)
-            s = statistics.std(d)
-            t = sum(d) / (math.sqrt(n) * s) if s != 0 else float('Inf')
-            t_value, p_value = scipy.stats.ttest_rel(self.tracks[track]['objective_values_' + m], self.tracks[track]['objective_values_' + g])
-            self.tracks[track]['t_value'] = t_value
-            self.tracks[track]['p_value'] = p_value
-            if math.isnan(t_value):
-                print(yellow(track, p_value, t_value, t, d))
-            elif t_value == float('Inf'):
-                print(magenta(track, p_value, t_value, t, d, self.tracks[track]['objective_values_' + m], self.tracks[track]['objective_values_' + g], c.coverage))
-            else:
-                print(p_value, t_value, t)
-            with open(os.path.join(self.get_current_job_directory(), 'confidence_' + track + '.json'), 'w') as json_file:
-                json.dump(self.tracks[track], json_file, indent = 4)
-            return None
+                problem.variables.set_lower_bounds(self.tracks[track]['index'], r[1])
+                problem.variables.set_upper_bounds(self.tracks[track]['index'], r[1])
+                problem.solve()
+                solution = problem.solution.get_values()
+                self.tracks[track]['objective_' + r[0]] = calc_sv_objective_value() 
 
-        def output_batch(self, batch):
-            pass
-
-        def reduce(self):
-            for track in self.tracks:
-                print('loading', track)
-                with open(os.path.join(self.get_current_job_directory(), 'confidence_' + track + '.json'), 'r') as json_file:
-                    self.tracks[track] = json.load(json_file)
-            self.export_confidence_scores()
-            self.plot_confidence_scores()
-
-        def export_confidence_scores(self):
-            with open(os.path.join(self.get_current_job_directory(), 'confidence.bed'), 'w') as bed_file:
-                for track in self.tracks:
-                    if math.isnan(self.tracks[track]['t_value']):
-                        continue
-                    t = bed.track_from_name(track)
-                    bed_file.write(t.chrom + '\t' +
-                        str(t.begin) + '\t' +
-                        str(t.end)   + '\t' +
-                        str(self.tracks[track]['lp_value'])  + '\t' +
-                        str(self.tracks[track]['lp_rounding'])  + '\t' +
-                        str(self.tracks[track]['lp_genotype'])  + '\t' +
-                        str(self.tracks[track]['actual_genotype'])  + '\t' +
-                        str(self.tracks[track]['t_value'] if self.tracks[track]['p_value'] != float('Inf') else 1000) + '\t' +
-                        str(self.tracks[track]['p_value'] if self.tracks[track]['t_value'] != float('Inf') else 1000) + '\t' +
-                        str(len(self.tracks[track]['kmers'])) + '\n')
-
-        def plot_confidence_scores(self):
-            x = []
-            p = []
-            t = []
-            for track in self.tracks:
-                if math.isnan(self.tracks[track]['t_value']):
-                    continue
-                x.append('Correct' if self.tracks[track]['lp_genotype'] == self.tracks[track]['actual_genotype'] else 'Wrong')
-                p.append(self.tracks[track]['p_value'] if self.tracks[track]['p_value'] != float('Inf') else 1000)
-                t.append(self.tracks[track]['t_value'] if self.tracks[track]['t_value'] != float('Inf') else 1000)
-            visualizer.violin(x, p, 'p_value_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
-            visualizer.violin(x, t, 't_value_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
-            visualizer.histogram([t[i] for i in list(filter(lambda j: x[j] == 'Correct', range(0, len(x))))], 'confidence_score_correct_calls', self.get_current_job_directory(), 'Prediction', 'Confidence')
-            visualizer.histogram([t[i] for i in list(filter(lambda j: x[j] == 'Wrong', range(0, len(x))))], 'confidence_score_wrong_calls', self.get_current_job_directory(), 'Prediction', 'Confidence')
-
-        def get_sv_objective_values(self, track, solution):
-            objective = []
-            for k in self.tracks[track]['kmers']: 
-                objective.append(abs(solution[len(self.tracks) + k]))
-            return objective
+    def calc_sv_objective_value(self, solution):
+        objective = 0
+        for k in self.tracks[track]['kmers']: 
+            objective += solution[len(self.tracks) + index]
+        return objective
 
 # ============================================================================================================================ #
 # Main

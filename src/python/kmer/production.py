@@ -191,10 +191,6 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.tracks.update(self.non_unique_inner_tracks)
         self.tracks.update(self.unique_inner_tracks)
         self.tracks.update(self.gapped_tracks)
-        #self.find_tracks_with_no_signal()
-        #for track in self.tracks.keys():
-        #    if track in self.unique_inner_tracks or track in self.gapped_tracks:
-        #        self.tracks.pop(track, None)
         n = 0
         tmp = sorted([t for t in self.tracks])
         for track in tmp:

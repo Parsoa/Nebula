@@ -33,7 +33,7 @@ def variance(data):
     variance = sum((x - m) ** 2 for x in data) / len(data)
     return variance
 
-def std(mean):
+def std(data):
     return math.sqrt(variance(data))
 
 def mean(data):

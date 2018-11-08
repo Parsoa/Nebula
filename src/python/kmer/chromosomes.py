@@ -70,7 +70,7 @@ def extract_chromosomes(chromosomes):
                 while True:
                     line = ref.readline().lower().strip()
                     if line.startswith('>') or len(line) == 0:
-                        print(line)
+                        print(len(sequence), 'bases')
                         yield sequence, chrom
                         sequence = ''
                         found = True

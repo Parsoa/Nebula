@@ -61,6 +61,8 @@ def parse_args():
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
+    # generic flag for passing input arguments
+    parser.add_argument("--input")
     # whether to do a whole genome simulation or not 
     parser.add_argument("--whole", action = 'store_true')
     # the name of the genome being genotyped or whatver 
@@ -109,6 +111,7 @@ def configure(args):
         chrom = args.chrom,
         debug = args.debug,
         ksize = int(args.ksize[:-1]),
+        input = args.input,
         genome = args.genome,
         random = args.random,
         bed_file = args.bed,

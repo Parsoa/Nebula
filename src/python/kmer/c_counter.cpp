@@ -31,9 +31,6 @@ void handler(int sig) {
     exit(1);
 }
 
-// reduction
-std::unordered_map<std::string, std::unordered_map<std::string, void*>*> *kmers = new std::unordered_map<std::string, std::unordered_map<std::string, void*>*> ;
-// gapped
 std::unordered_map<std::string, std::unordered_map<std::string, string>*> *half_mers = new std::unordered_map<std::string, std::unordered_map<std::string, string>*> ;
 std::unordered_map<std::string, bool> *other_mers = new std::unordered_map<std::string, bool> ;
 std::unordered_map<std::string, int*> *counts = new std::unordered_map<std::string, int*> ;
@@ -96,14 +93,23 @@ string reverse_complement(string s) {
         if (s[i] == 'A') {
             rc[j] = 'T' ;
         }
-        if (s[i] == 'T') {
+        else if (s[i] == 'T') {
             rc[j] = 'A' ;
         }
-        if (s[i] == 'C') {
+        else if (s[i] == 'C') {
             rc[j] = 'G' ;
         }
-        if (s[i] == 'G') {
+        else if (s[i] == 'G') {
             rc[j] = 'C' ;
+        }
+        else if (s[i] == 'N') {
+            rc[j] == 'N' ;
+        }
+        else {
+            cout << "BAD KMER" << endl ;
+            cout << "#" << s << "#" << endl ;
+            int j ;
+            cin >> j ;
         }
         j += 1 ;
     }
@@ -126,35 +132,21 @@ bool is_subsequence(std::string* x, std::string* y) {
     return res ;
 }
 
-//bool is_canonical_subsequence(string* x, string* y) {
-//    return is_subsequence(reverse_complement(x), y) || is_subsequence(x, y) ;
-//}
-
 void process_read(char* read, int index) {
     int l = strlen(read) ;
     std::string seq(read) ;
     int slack = (100 - 31) / 2 ;
-    // for each kmer in the read
     for (int i = 0 ; i <= l - 1 - 31 ; i++) {
         std::string k = seq.substr(i, 31) ;
-        auto kmer = kmers->find(k) ;
-        // check if kmer exists
-        if (kmer != kmers->end()) {
-            std::vector<string>* m = static_cast<std::vector<string>*>(kmer->second->at("masks")) ;
+        auto kmer = counts->find(k) ;
+        if (kmer != counts->end()) {
+            std::vector<string>* m = masks->at(k) ;
             std::string right = seq.substr(i + 31, slack) ;
             std::string left = i <= slack ? seq.substr(0, i) : seq.substr(i - slack, slack) ;
             for (std::vector<string>::iterator it = m->begin(); it != m->end(); it++) {
                 if (is_subsequence(&(*it), &left) || is_subsequence(&(*it), &right)) {
                     int* count = counts->at(kmer->first) ;
                     *count += 1 ;
-                    //cout << *it << endl ;
-                    //cout << k << endl ;
-                    //cout << left << endl ;
-                    //cout << right << endl ;
-                    //cout << index << endl ;
-                    //cout << "waiting for input..." << endl ;
-                    //int j ;
-                    //cin >> j ;
                     break ;
                 }
             }
@@ -162,77 +154,39 @@ void process_read(char* read, int index) {
     }
 }
 
-void process_gapped_read(char* read, int num) {
-    if (num != 686) {
-        return ;
-    }
-    cout << num << endl ;
-    // get rid of the EOL
+void process_gapped_read(char* read, int num, bool select) {
     int l = strlen(read) ;
     std::string seq(read) ;
-    // index kmers
-    cout << seq << endl ;
     std::unordered_map<std::string, std::vector<int>> index ;
     for (int i = 0 ; i <= l - 1 - 15 ; i++) {
-        cout << 1 << endl ;
         std::string k = seq.substr(i, 15) ;
-        cout << k << endl ;
         if (half_mers->find(k) == half_mers->end() and other_mers->find(k) == other_mers->end()) {
-            cout << "not found" << endl ;
             continue ;
         }
-        if (index.find(k) == index.end()) {
-            cout << "adding to index" << endl ;
-            index.emplace(std::make_pair(k, std::vector<int>(1, i))) ;
-        } else {
-            cout << 6 << endl ;
-            index[k].push_back(i) ;
-        }
+        index[k].push_back(i) ;
     }
-    cout << index.size() << endl ;
-    // for every half-mer in index
     for (std::unordered_map<string, std::vector<int>>::iterator it = index.begin(); it != index.end(); it++) {
-        cout << 5 << endl ;
         auto half = half_mers->find(it->first) ;
-        cout << 2 << endl ;
         if (half == half_mers->end()) {
             continue ;
         }
-        cout << 3 << endl ;
-        //for all second pairs of this half
         for(std::unordered_map<std::string, std::string>::iterator j = half->second->begin(); j != half->second->end(); j++){
             std::string kmer = j->second ;
             auto other = index.find(j->first) ;
             if (other != index.end()) {
                 for (std::vector<int>::iterator a = it->second.begin(); a != it->second.end(); a++) {
                     for (std::vector<int>::iterator b = other->second.begin(); b != other->second.end(); b++) {
-                        cout << 4 << endl ;
                         int d = *b - (*a + 15) ;
-                        if (d == *gaps->at(kmer)) {
-                            //cout << "count" << endl ;
+                        if (select) {
+                            if (d >= 0 && d <= 10) {
+                                int* count = counts->at(kmer) ;
+                                count[d] = count[d] + 1 ;
+                            }
+                            continue ;
+                        }
+                        if (d >= 0 && d == *gaps->at(kmer)) {
                             int* count = counts->at(kmer) ;
                             *count += 1 ;
-                            //cout << num << endl ;
-                            //cout << it->first << endl ;
-                            //cout << j->first << endl ;
-                            //cout << "waiting for input..." << endl ;
-                            //int y ;
-                            //cin >> y ;
-                            //cout << it->first << endl ;
-                            //cout << j->first << endl ;
-                            //cout << kmer << endl ;
-                            //cout << num << endl ;
-                            //cout << "waiting for input..." << endl ;
-                            //int j ;
-                            //cin >> j ;
-                            //std::string right = seq.substr(*b + 15, 25) ;
-                            //std::string left = *a <= 25 ? seq.substr(0, *a) : seq.substr(*a - 25, 25) ;
-                            //auto m = masks->at(kmer) ;
-                            //for (std::vector<string>::iterator it = m->begin(); it != m->end(); it++) {
-                            //    if (is_subsequence(&(*it), &left) || is_subsequence(&(*it), &right)) {
-                            //        break ;
-                            //    }
-                            //}
                         }
                     }
                 }
@@ -241,12 +195,12 @@ void process_gapped_read(char* read, int num) {
     }
 }
 
-
-void process_fastq(string fastq, string path, int index, int threads, int type) {
+int process_fastq(string fastq, string path, int index, int threads, int type) {
     std::ifstream in(fastq, std::ifstream::ate | std::ifstream::binary) ;
     unsigned long size = (unsigned long) in.tellg() ;
     cout << "Size: " << size << endl ;
-    unsigned long chunk_size = size / 100 ;
+    cout << "Threads:" << threads << endl ;
+    unsigned long chunk_size = size / threads ;
     unsigned long offset = index * chunk_size ;
     cout << "Chunk size: " << chunk_size << endl ;
     cout << "Offset: " << offset << endl ;
@@ -296,12 +250,13 @@ void process_fastq(string fastq, string path, int index, int threads, int type) 
                 cout.precision(10) ;
                 cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
                 cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
-                cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size << endl ;
+                cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
+                cout << " reads per second: " << u / (s - t) << endl ;
             }
             if (type == 0) {
                 process_read(line, u) ;
             } else {
-                process_gapped_read(line, u) ;
+                process_gapped_read(line, u, type == 2) ;
             }
         }
         else if (state == THIRD_LINE) {
@@ -321,8 +276,21 @@ void process_fastq(string fastq, string path, int index, int threads, int type) 
     std::ofstream o(p);
     for (std::unordered_map<string, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
         int* count = i->second ;
-        o << std::string(i->first) << ":" << *count << endl ;
+        if (type == 2) {
+            int c = -1 ;
+            int g ;
+            for (int j = 0 ; j < 10 ; j++) {
+                if (count[j] >= c) {
+                    g = j ;
+                    c = count[j] ;
+                }
+            }
+            o << std::string(i->first) << ":" << c << ":" << g << endl ;
+        } else {
+            o << std::string(i->first) << ":" << *count << endl ;
+        }
     }
+    return u ;
 }
 
 int transform(int index, string path, string fastq, int threads, int type) {
@@ -332,13 +300,8 @@ int transform(int index, string path, string fastq, int threads, int type) {
     json_file >> kmers_json ;
     for (json::iterator it = kmers_json.begin(); it != kmers_json.end(); ++it) {
         auto kmer = it.value() ;
-        std::unordered_map<string, void*>* map = new std::unordered_map<string, void*> ;
         int* count = new int ;
         *count = 0 ;
-        int* doubt = new int ;
-        *doubt = 0 ;
-        map->emplace(std::make_pair("count", count)) ;
-        map->emplace(std::make_pair("doubt", doubt)) ;
         counts->emplace(std::make_pair(std::string(it.key()), count)) ;
         counts->emplace(std::make_pair(reverse_complement(std::string(it.key())), count)) ;
         std::vector<std::string> *m = new std::vector<std::string> ;
@@ -348,53 +311,53 @@ int transform(int index, string path, string fastq, int threads, int type) {
                 m->push_back(reverse_complement(mask.key())) ;
             }
         }
-        map->emplace(std::make_pair("masks", m)) ;
-        kmers->emplace(std::make_pair(std::string(it.key()), map)) ;
-        kmers->emplace(std::make_pair(reverse_complement(std::string(it.key())), map)) ;
+        masks->emplace(std::make_pair(std::string(it.key()), m)) ;
+        masks->emplace(std::make_pair(reverse_complement(std::string(it.key())), m)) ;
     }
-    cout << kmers->size() << " kmers" << endl ;
-    process_fastq(fastq, path, index, threads, type) ;
+    cout << counts->size() / 2 << " kmers" << endl ;
+    return 0 ;
 }
 
-void transform_gapped(int index, string path, string fastq, int threads, int type) {
+int transform_gapped(int index, string path, string fastq, int threads, int type) {
     cout << "index " << index << " counting " << fastq << endl ;
     cout << path << "/half_mers.json" << endl ;
-    // load kmer masks
+    // load json file
+    cout << "loading kmers" << endl ;
     ifstream kmers_json_file(path + "/pre_kmers.json") ;
     json kmers_json ;
     kmers_json_file >> kmers_json ;
+    //
     for (json::iterator i = kmers_json.begin(); i != kmers_json.end(); ++i) {
         auto kmer = i.value() ;
-        std::vector<std::string> *m = new std::vector<std::string> ;
-        for (json::iterator mask = kmer["masks"].begin(); mask != kmer["masks"].end(); ++mask) {
-            m->push_back(mask.key()) ;
-            m->push_back(reverse_complement(mask.key())) ;
+        if (type == 2) {
+            int* count = new int[11] ;
+            counts->insert(std::make_pair(std::string(i.key()), count)) ;
+        } else {
+            int* count = new int ;
+            *count = 0 ;
+            counts->insert(std::make_pair(std::string(i.key()), count)) ;
+            int* gap = new int ;
+            *gap = std::stoi(kmer["gap"].get<std::string>(), nullptr, 10) ;
+            gaps->insert(std::make_pair(std::string(i.key()), gap)) ;
         }
-        masks->emplace(std::make_pair(std::string(i.key()), m)) ;
-        int* count = new int ;
-        *count = 0 ;
-        counts->emplace(std::make_pair(std::string(i.key()), count)) ;
-        int* gap = new int ;
-        *gap = std::stoi(kmer["gap"].get<std::string>(), nullptr, 10) ;
-        gaps->emplace(std::make_pair(std::string(i.key()), gap)) ;
     }
-    cout << masks->size() << " kmers" << endl ;
-    // load half-mer pairs
+    // 
+    cout << "loading half mers" << endl ;
     ifstream half_mer_json_file(path + "/half_mers.json") ;
     json half_mers_json ;
     half_mer_json_file >> half_mers_json ;
+    //
     for (json::iterator i = half_mers_json.begin(); i != half_mers_json.end(); ++i) {
         auto half_mer = i.value() ;
         std::unordered_map<string, string>* map = new std::unordered_map<string, string> ;
         for (json::iterator j = half_mer.begin(); j != half_mer.end(); ++j) { 
-            map->emplace(std::make_pair(std::string(j.key()), std::string(j.value().get<std::string>()))) ;
-            other_mers->emplace(std::make_pair(std::string(j.key()), true)) ;
+            map->insert(std::make_pair(std::string(j.key()), std::string(j.value().get<std::string>()))) ;
+            other_mers->insert(std::make_pair(std::string(j.key()), true)) ;
         }
-        half_mers->emplace(std::make_pair(std::string(i.key()), map)) ;
+        half_mers->insert(std::make_pair(std::string(i.key()), map)) ;
     }
     cout << counts->size() << " kmers" << endl ;
-    //
-    process_fastq(fastq, path, index, threads, type) ;
+    return 0 ;
 } 
 
 int main(int argc, char** argv) {
@@ -406,9 +369,17 @@ int main(int argc, char** argv) {
     int type = std::stoi(string(argv[5]), nullptr, 10) ;
     cout << fastq << endl ;
     cout << "Threads: " << threads << endl ;
+    time_t t ;
+    time(&t) ;
+    int n ;
     if (type == 0) {
         transform(index, path, fastq, threads, type) ;
     } else {
         transform_gapped(index, path, fastq, threads, type) ;
     }
+    n = process_fastq(fastq, path, index, threads, type) ;
+    time_t s;
+    time(&s) ;
+    auto d = s - t ;
+    cout << "processed " << n << " reads in " << (s - t) << " seconds. average" << n / d << " reads per second." << endl ;
 }
