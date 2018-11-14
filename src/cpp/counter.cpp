@@ -21,17 +21,6 @@
 using namespace std ;
 using json = nlohmann::json ;
 
-void handler(int sig) {
-    void *array[10];
-    size_t size;
-    // get void*'s for all entries on the stack
-    size = backtrace(array, 10);
-    // print out all the frames to stderr
-    fprintf(stderr, "Error: signal %d:\n", sig);
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-    exit(1);
-}
-
 #define MASK 6
 
 std::unordered_map<uint64_t, std::unordered_map<std::string, string>*> *half_mers = new std::unordered_map<uint64_t, std::unordered_map<std::string, string>*> ;
@@ -39,55 +28,6 @@ std::unordered_map<uint64_t, bool> *other_mers = new std::unordered_map<uint64_t
 std::unordered_map<uint64_t, int*> *counts = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, int*> *gaps = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, std::vector<uint64_t>*> *masks = new std::unordered_map<uint64_t, std::vector<uint64_t>*> ;
-
-//string reverse_complement(string s) {
-//    std::replace(s.begin(), s.end(), 'A', 'Z') ;
-//    std::replace(s.begin(), s.end(), 'T', 'A') ;
-//    std::replace(s.begin(), s.end(), 'Z', 'T') ;
-//    std::replace(s.begin(), s.end(), 'C', 'Z') ;
-//    std::replace(s.begin(), s.end(), 'G', 'C') ;
-//    std::replace(s.begin(), s.end(), 'Z', 'G') ;
-//    std::reverse(s.begin(), s.end());
-//    return s ;
-//}
-
-//uint8_t encode_base(char base) {
-//    if (base == 'A') {
-//        return (uint8_t)0 ;
-//    }
-//    if (base == 'T') {
-//        return (uint8_t)1 ;
-//    }
-//    if (base == 'C') {
-//        return (uint8_t)2 ;
-//    }
-//    return (uint8_t)3 ;
-//}
-//
-//// Will encode 4 bases in a byte, 32 bases in 8 bytes = 64bit uint64_t
-//void encode_read(char* read) {
-//    int l = strlen(read) ;
-//    int m ;
-//    if (l % 4 == 0){
-//        m = l / 4 ;
-//    } else {
-//        m = l / 4 + 1 ;
-//    }
-//    uint8_t* a = (uint8_t*) malloc(sizeof(uint8_t) * m) ;
-//    int r = 0 ;
-//    int j = 0 ;
-//    a[0] = 0 ;
-//    for (int i = 0 ; i < l - 1 ; i++) {
-//        uint8_t b = encode_base(read[i]) ;
-//        a[j] = a[j] & (b << (3 - j) * 2) ;
-//        r += 1 ;
-//        if (r == 4) {
-//            j += 1 ;
-//            r = 0 ;
-//            a[j] = 0 ;
-//        }
-//    }
-//}
 
 string reverse_complement(string s) {
     char rc[s.length()] ;
@@ -124,22 +64,9 @@ string canonicalize(string s) {
     return s.compare(rc) <= 0 ? s : rc ;
 }
 
-bool is_subsequence(std::string* x, std::string* y) {
-    string::iterator x_it = x->begin();
-    for (string::iterator y_it = y->begin(); y_it != y->end() && x_it != x->end(); ++y_it) {
-        if (*x_it == *y_it) {
-            ++x_it ;
-        }
-    }
-    bool res = (x_it == x->end()) ;
-    return res ;
-}
-
 uint64_t encode_kmer(const char* c) {
     uint64_t kmer = 0 ;
     for (int i = 0 ; i < 32 ; i++) {
-        //uint64_t r = 0 ? c[i] == 'A' : 1 ? c[i] == 'C' : 2 ? c[i] == 'G' : 3 ;
-        //kmer += (r << (62 - (i << 1))) ;
         kmer += ((uint64_t)((c[i] & MASK) >> 1) << (62 - (i << 1))) ;
     }
     return kmer ;
@@ -148,8 +75,6 @@ uint64_t encode_kmer(const char* c) {
 uint64_t encode_substring(const char* c, int base, int l) {
     uint64_t mask = 0 ;
     for (int i = 0 ; i < l ; i++) {
-        //uint64_t r = 0 ? c[base + i] == 'A' : 1 ? c[base + i] == 'C' : 2 ? c[base + i] == 'G' : 3 ;
-        //mask += (r << (62 - (i << 1))) ;
         mask += ((uint64_t)((c[base + i] & MASK) >> 1) << (62 - (i << 1))) ;
     }
     return mask ;
@@ -361,25 +286,25 @@ int process_fastq(string fastq, string path, int index, int threads, int type) {
             break ;
         }
     }
-    //json payload ;
-    //string p = path + "/c_batch_" + std::to_string(index) + ".json" ;
-    //std::ofstream o(p);
-    //for (std::unordered_map<string, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
-    //    int* count = i->second ;
-    //    if (type == 2) {
-    //        int c = -1 ;
-    //        int g ;
-    //        for (int j = 0 ; j < 10 ; j++) {
-    //            if (count[j] >= c) {
-    //                g = j ;
-    //                c = count[j] ;
-    //            }
-    //        }
-    //        o << std::string(i->first) << ":" << c << ":" << g << endl ;
-    //    } else {
-    //        o << std::string(i->first) << ":" << *count << endl ;
-    //    }
-    //}
+    json payload ;
+    string p = path + "/c_batch_" + std::to_string(index) + ".json" ;
+    std::ofstream o(p);
+    for (std::unordered_map<uint64_t, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
+        int* count = i->second ;
+        if (type == 2) {
+            int c = -1 ;
+            int g ;
+            for (int j = 0 ; j < 10 ; j++) {
+                if (count[j] >= c) {
+                    g = j ;
+                    c = count[j] ;
+                }
+            }
+            o << std::string(decode_kmer(i->first)) << ":" << c << ":" << g << endl ;
+        } else {
+            o << std::string(decode_kmer(i->first)) << ":" << *count << endl ;
+        }
+    }
     return u ;
 }
 
