@@ -82,7 +82,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
     def transform(self, sequence, chrom):
         c = config.Configuration()
         index = 0
-        slack = (c.read_length - c.ksize) / 2
+        slack = c.ksize#(c.read_length - c.ksize) / 2
         print(cyan(chrom, len(sequence)))
         t = time.time()
         for kmer in stream_kmers(c.ksize, True, sequence):
@@ -91,7 +91,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
                 self.inner_kmers[kmer]['loci'][locus] = {
                     'seq': {
                         'all': sequence[index - slack: index + c.ksize + slack],
-                        'left': sequence[index - slack : index],
+                        'left': sequence[index - slack: index],
                         'right': sequence[index + c.ksize: index + c.ksize + slack]
                     }
                 }
@@ -212,19 +212,20 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
 
     def generate_kmer_mask(self, kmer, left, right, seed):
         c = config.Configuration()
+        return {left: True, right: True}
         random.seed(seed)
         masks = {}
         for seq in [left, right]:
             for j in range(0, 5):
-                indices = []
+                indices = {}
+                mask = 'N' * len(seq)
                 while len(indices) != c.ksize - 2:
                     i = random.randint(0, len(seq) - 1)
                     if not i in indices:
-                        indices.append(i)
-                indices = sorted(indices)
-                indices.insert(0, '')
-                mask = reduce(lambda x, y: x + seq[y], indices)
+                        indices[i] = True
+                        mask = mask[:i] + seq[i] + mask[i + 1:]
                 masks[mask] = True
+        print(masks)
         return masks
 
     def output_batch(self, batch):
@@ -310,10 +311,12 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
         c = config.Configuration()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
         if c.accelerate:
+            command = " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0"
+            print(command)
             if c.debug:
-                output = subprocess.call('valgrind ' + os.path.join(cpp_dir, "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0", shell = True)
+                output = subprocess.call(os.path.join(cpp_dir, "counter_s.out") + command, shell = True)
             else:
-                output = subprocess.call(os.path.join(cpp_dir, "c_counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0", shell = True)
+                output = subprocess.call(os.path.join(cpp_dir, "counter.out") + command, shell = True)
             exit()
         else:
             with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'r') as json_file:

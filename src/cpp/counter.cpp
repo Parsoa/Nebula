@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <bitset>
 
 #include "json.hpp"
 
@@ -31,20 +32,62 @@ void handler(int sig) {
     exit(1);
 }
 
+#define MASK 6
+
 std::unordered_map<uint64_t, std::unordered_map<std::string, string>*> *half_mers = new std::unordered_map<uint64_t, std::unordered_map<std::string, string>*> ;
 std::unordered_map<uint64_t, bool> *other_mers = new std::unordered_map<uint64_t, bool> ;
 std::unordered_map<uint64_t, int*> *counts = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, int*> *gaps = new std::unordered_map<uint64_t, int*> ;
-std::unordered_map<uint64_t, std::vector<string>*> *masks = new std::unordered_map<uint64_t, std::vector<string>*> ;
+std::unordered_map<uint64_t, std::vector<uint64_t>*> *masks = new std::unordered_map<uint64_t, std::vector<uint64_t>*> ;
 
-uint32_t encode_kmer(char* c) {
-    uint64_t kmer = 0 ;
-    for (int i = 0 ; i < 32 ; i++) {
-        uint64_t r = 0 ? c[i] == 'A' : 1 ? c[i] == 'C' : 2 ? c[i] == 'G' : 3 ;
-        kmer += (r << (62 - (i << 1))) ;
-    }
-    return kmer ;
-}
+//string reverse_complement(string s) {
+//    std::replace(s.begin(), s.end(), 'A', 'Z') ;
+//    std::replace(s.begin(), s.end(), 'T', 'A') ;
+//    std::replace(s.begin(), s.end(), 'Z', 'T') ;
+//    std::replace(s.begin(), s.end(), 'C', 'Z') ;
+//    std::replace(s.begin(), s.end(), 'G', 'C') ;
+//    std::replace(s.begin(), s.end(), 'Z', 'G') ;
+//    std::reverse(s.begin(), s.end());
+//    return s ;
+//}
+
+//uint8_t encode_base(char base) {
+//    if (base == 'A') {
+//        return (uint8_t)0 ;
+//    }
+//    if (base == 'T') {
+//        return (uint8_t)1 ;
+//    }
+//    if (base == 'C') {
+//        return (uint8_t)2 ;
+//    }
+//    return (uint8_t)3 ;
+//}
+//
+//// Will encode 4 bases in a byte, 32 bases in 8 bytes = 64bit uint64_t
+//void encode_read(char* read) {
+//    int l = strlen(read) ;
+//    int m ;
+//    if (l % 4 == 0){
+//        m = l / 4 ;
+//    } else {
+//        m = l / 4 + 1 ;
+//    }
+//    uint8_t* a = (uint8_t*) malloc(sizeof(uint8_t) * m) ;
+//    int r = 0 ;
+//    int j = 0 ;
+//    a[0] = 0 ;
+//    for (int i = 0 ; i < l - 1 ; i++) {
+//        uint8_t b = encode_base(read[i]) ;
+//        a[j] = a[j] & (b << (3 - j) * 2) ;
+//        r += 1 ;
+//        if (r == 4) {
+//            j += 1 ;
+//            r = 0 ;
+//            a[j] = 0 ;
+//        }
+//    }
+//}
 
 string reverse_complement(string s) {
     char rc[s.length()] ;
@@ -92,23 +135,105 @@ bool is_subsequence(std::string* x, std::string* y) {
     return res ;
 }
 
+uint64_t encode_kmer(const char* c) {
+    uint64_t kmer = 0 ;
+    for (int i = 0 ; i < 32 ; i++) {
+        //uint64_t r = 0 ? c[i] == 'A' : 1 ? c[i] == 'C' : 2 ? c[i] == 'G' : 3 ;
+        //kmer += (r << (62 - (i << 1))) ;
+        kmer += ((uint64_t)((c[i] & MASK) >> 1) << (62 - (i << 1))) ;
+    }
+    return kmer ;
+}
+
+uint64_t encode_substring(const char* c, int base, int l) {
+    uint64_t mask = 0 ;
+    for (int i = 0 ; i < l ; i++) {
+        //uint64_t r = 0 ? c[base + i] == 'A' : 1 ? c[base + i] == 'C' : 2 ? c[base + i] == 'G' : 3 ;
+        //mask += (r << (62 - (i << 1))) ;
+        mask += ((uint64_t)((c[base + i] & MASK) >> 1) << (62 - (i << 1))) ;
+    }
+    return mask ;
+}
+
+string decode_kmer(uint64_t kmer) {
+    char* d = (char*) malloc(sizeof(char) * 32) ;
+    uint64_t mask = 3 ;
+    for (int i = 0; i < 32 ; i++) {
+        uint64_t t = kmer & mask ;
+        if (t == 1) {
+            d[31 - i] = 'C' ;
+        }
+        else if (t == 0) {
+            d[31 - i] = 'A' ;
+        }
+        else if (t == 2) {
+            d[31 - i] = 'T' ;
+        }
+        else if (t == 3) {
+            d[31 - i] = 'G' ;
+        }
+        else {
+            cout << "error" << endl ;
+        }
+        kmer = kmer >> 2 ;
+    }
+    cout << d << endl ;
+    return std::string(d) ;
+}
+
 void process_read(char* read, int index) {
     int l = strlen(read) ;
-    //std::string seq(read) ;
-    int slack = (100 - 31) / 2 ;
-    for (int i = 0 ; i <= l - 2 - 32 ; i++) {
-        uint64_t k = encode_kmer(read) ;
-        //std::string k = seq.substr(i, 31) ;
+    char c ;
+    uint64_t k = 0 ;
+    uint64_t left = 0 ;
+    uint64_t right = 0 ;
+    for (int i = 0 ; i <= l - 32 ; i++) {
+        if (i == 0) {
+            k = encode_kmer(read) ;
+            left = encode_substring(read, 32, 32) ;
+            right = k ;
+        } else {
+            k = k << 2 ;
+            k += (read[i + 31] & MASK) >> 1 ;
+        }
+        if (i + 32 + 31 < l) {
+            left = left << 2 ;
+            left += (read[i + 32 + 31] & MASK) >> 1 ;
+        }
+        if (i > 32) {
+            right = right << 2 ;
+            right += (read[i - 1] & MASK) >> 1 ;
+        }
         auto kmer = counts->find(k) ;
+        /*
+        cout << i << endl ;
+        string d_l = decode_kmer(left) ;
+        string d_r = decode_kmer(right) ;
+        string d_k = decode_kmer(k) ;
+        ios init(NULL);
+        init.copyfmt(cout);
+        cout << "===================" << endl ;
+        cout << read ;
+        cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
+        cout.copyfmt(init) ;
+        cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
+        */
         if (kmer != counts->end()) {
-            std::vector<string>* m = masks->at(k) ;
-            std::string right = seq.substr(i + 31, slack) ;
-            std::string left = i <= slack ? seq.substr(0, i) : seq.substr(i - slack, slack) ;
-            for (std::vector<string>::iterator it = m->begin(); it != m->end(); it++) {
-                if (is_subsequence(&(*it), &left) || is_subsequence(&(*it), &right)) {
-                    int* count = counts->at(kmer->first) ;
-                    *count += 1 ;
-                    break ;
+            std::vector<uint64_t>* m = masks->at(k) ;
+            for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
+                if (i + 32 + 31 < l) {
+                    if (__builtin_popcountll((left ^ *it)) <= 3) {
+                        int* count = counts->at(kmer->first) ;
+                        *count += 1 ;
+                        break ;
+                    }
+                }
+                if (i >= 32) {
+                    if (__builtin_popcountll((right ^ *it)) <= 3) {
+                        int* count = counts->at(kmer->first) ;
+                        *count += 1 ;
+                        break ;
+                    }
                 }
             }
         }
@@ -204,20 +329,22 @@ int process_fastq(string fastq, string path, int index, int threads, int type) {
                 n = 0 ;
                 m += 1 ;
                 unsigned long c = ftell(fastq_file) - index * chunk_size ;
-                time_t s;
+                time_t s ;
                 time(&s) ;
                 double p = c / double(chunk_size) ;
                 double e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600) ;
                 cout.precision(10) ;
-                cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
-                cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
-                cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
-                cout << " reads per second: " << u / (s - t) << endl ;
+                if (s - t != 0) {
+                    cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
+                    cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
+                    cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
+                    cout << " reads per second: " << u / (s - t) << " Done" << endl ;
+                }
             }
             if (type == 0) {
                 process_read(line, u) ;
             } else {
-                process_gapped_read(line, u, type == 2) ;
+                //process_gapped_read(line, u, type == 2) ;
             }
         }
         else if (state == THIRD_LINE) {
@@ -226,31 +353,33 @@ int process_fastq(string fastq, string path, int index, int threads, int type) {
         else if (state == QUALITY_LINE) {
             state = HEADER_LINE ;
         }
-        line = strcpy(line, ahead) ;
+        char* tmp = line ;
+        line = ahead ;
+        ahead = tmp ;
         r = getline(&ahead, &len_ahead, fastq_file) ;
         if (r == -1) {
             break ;
         }
     }
-    json payload ;
-    string p = path + "/c_batch_" + std::to_string(index) + ".json" ;
-    std::ofstream o(p);
-    for (std::unordered_map<string, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
-        int* count = i->second ;
-        if (type == 2) {
-            int c = -1 ;
-            int g ;
-            for (int j = 0 ; j < 10 ; j++) {
-                if (count[j] >= c) {
-                    g = j ;
-                    c = count[j] ;
-                }
-            }
-            o << std::string(i->first) << ":" << c << ":" << g << endl ;
-        } else {
-            o << std::string(i->first) << ":" << *count << endl ;
-        }
-    }
+    //json payload ;
+    //string p = path + "/c_batch_" + std::to_string(index) + ".json" ;
+    //std::ofstream o(p);
+    //for (std::unordered_map<string, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
+    //    int* count = i->second ;
+    //    if (type == 2) {
+    //        int c = -1 ;
+    //        int g ;
+    //        for (int j = 0 ; j < 10 ; j++) {
+    //            if (count[j] >= c) {
+    //                g = j ;
+    //                c = count[j] ;
+    //            }
+    //        }
+    //        o << std::string(i->first) << ":" << c << ":" << g << endl ;
+    //    } else {
+    //        o << std::string(i->first) << ":" << *count << endl ;
+    //    }
+    //}
     return u ;
 }
 
@@ -261,17 +390,17 @@ int transform(int index, string path, string fastq, int threads, int type) {
     json_file >> kmers_json ;
     for (json::iterator it = kmers_json.begin(); it != kmers_json.end(); ++it) {
         auto kmer = it.value() ;
-        uint64_t k = encode_kmer(&std::string(it.key())) ;
-        uint64_t rc_k = encode_kmer(&reverse_complement(std::string(it.key())))
+        uint64_t k = encode_kmer(std::string(it.key()).c_str()) ;
+        uint64_t rc_k = encode_kmer(reverse_complement(std::string(it.key())).c_str()) ;
         int* count = new int ;
         *count = 0 ;
         counts->emplace(std::make_pair(k, count)) ;
         counts->emplace(std::make_pair(rc_k, count)) ;
-        std::vector<std::string> *m = new std::vector<std::string> ;
+        std::vector<uint64_t> *m = new std::vector<uint64_t> ;
         for (json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
             for (json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
-                m->push_back(mask.key()) ;
-                m->push_back(reverse_complement(mask.key())) ;
+                m->push_back(encode_kmer(mask.key().c_str())) ;
+                m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
             }
         }
         masks->emplace(std::make_pair(k, m)) ;
@@ -324,7 +453,10 @@ int transform(int index, string path, string fastq, int threads, int type) {
 //} 
 
 int main(int argc, char** argv) {
-    //signal(SIGSEGV, handler);
+    cout << ('C' & MASK) << endl ;
+    cout << ('A' & MASK) << endl ;
+    cout << ('T' & MASK) << endl ;
+    cout << ('G' & MASK) << endl ;
     string path(argv[2]) ;
     string fastq(argv[3]) ;
     int index = std::stoi(string(argv[1]), nullptr, 10) ;
