@@ -21,7 +21,7 @@ if __name__ == '__main__':
                 with open('./res.bed', 'r') as r:
                     l = r.readline()
                 print(l)
-                tokens = tokens[:3] + l.split()
+                tokens = tokens[:3] + l.split() + tokens[3:]
                 tokens = [''] + tokens
                 s = reduce(lambda x, y: x + '{:12}'.format(y), tokens)
                 c.write(s + '\n')

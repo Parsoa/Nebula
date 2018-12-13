@@ -15,6 +15,7 @@ import subprocess
 
 from kmer import (
     bed,
+    depth,
     config,
     counter,
     simulator,
@@ -108,7 +109,6 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
         return None
 
     def output_batch(self, batch):
-        n = 0
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(self.inner_kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
@@ -178,11 +178,13 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         self.round_robin(self.tracks)
 
     def transform(self, track, track_name):
-        print(cyan(track))
+        #print(cyan(track))
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
             t = bed.track_from_name(track_name)
             for kmer in kmers:
+                #if kmer != 'CGGGTTCACGCCCTTCTCCCGCCTCAGCCTCC':
+                #    continue
                 seed = sum(list(map(lambda s: ord(s), kmer)))
                 if not kmer in self.kmers:
                     interest_kmers = {}
@@ -210,6 +212,15 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                     print(yellow(track, locus))
         return None
 
+    def get_shared_masks(self, interest_kmers, kmers):
+        l = []
+        for x in kmers:
+            for y in interest_kmers:
+                if is_canonical_subsequence(x[4:-4], y):
+                    l.append(x)
+                    break
+        return len(l)
+
     def generate_kmer_mask(self, kmer, left, right, seed):
         c = config.Configuration()
         return {left: True, right: True}
@@ -235,9 +246,11 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
             self.kmers[kmer]['non_indicator_masks'] = {}
             n = 0
             for locus in self.kmers[kmer]['loci'].keys():
-                l = len(list(filter(lambda x: x in self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])))
-                m = len(list(filter(lambda x: x in self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])))
-                if l != 0 or m != 0:
+                l = self.get_shared_masks(self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])
+                #l = len(list(filter(lambda x: x in self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])))
+                #m = len(list(filter(lambda x: x in self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])))
+                #print(locus, l, list(filter(lambda x: x in self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])))
+                if l != 0:
                     for ukmer in self.kmers[kmer]['loci'][locus]['kmers']:
                         self.kmers[kmer]['indicator_kmers'][ukmer] = True
                     n += 1
@@ -267,6 +280,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
+        visualizer.histogram(list(map(lambda kmer: len(self.kmers[kmer]['loci']), self.kmers)), 'number_of_loci', self.get_current_job_directory(), 'number of loci', 'number of kmers')
         print(len(self.tracks))
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as json_file:
@@ -287,6 +301,7 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
     _name = 'CountLociIndicatorKmersJob'
     _category = 'programming'
     _previous_job = FilterLociIndicatorKmersJob
+    _counter_mode = 0
 
     @staticmethod
     def launch(**kwargs):
@@ -307,23 +322,6 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
         print(len(self.kmers), 'kmers')
         self.round_robin()
 
-    def transform(self):
-        c = config.Configuration()
-        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
-        if c.accelerate:
-            command = " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + "0"
-            print(command)
-            if c.debug:
-                output = subprocess.call(os.path.join(cpp_dir, "counter_s.out") + command, shell = True)
-            else:
-                output = subprocess.call(os.path.join(cpp_dir, "counter.out") + command, shell = True)
-            exit()
-        else:
-            with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'r') as json_file:
-                self.kmers = json.load(json_file)
-            for read, name, index in self.parse_fastq():
-                self.process_read(read, name, index)
-    
     def process_read(self, read, name, index):
         c = config.Configuration()
         slack = (c.read_length - c.ksize) / 2
@@ -353,80 +351,58 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
                     break
             i += 1
 
-    def compare(self):
-        self.kmers = json.load(open(os.path.join(self.get_current_job_directory(), 'kmers.json')))
-        self.py_kmers = {}
-        self.tracks = {}
-        print('loading python kmers')
-        for kmer in self.kmers:
-            for track in self.kmers[kmer]['tracks']:
-                if not track in self.tracks:
-                    self.tracks[track] = True
-                    print(track)
-                    with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'r') as json_file:
-                        kmers = json.load(json_file)
-                        for kmer in kmers:
-                            self.py_kmers[kmer] = kmers[kmer]['count']
-        path = os.path.join(self.get_current_job_directory(), 'batch_0.json') 
-        self.c_kmers = {}
-        print(len(self.py_kmers))
-        print('loading C kmers')
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                line = json_file.readline()
-                while line:
-                    kmer = line[:line.find(':')]
-                    count = int(line[line.find(':') + 1:])
-                    canon = canonicalize(kmer)
-                    if not canon in self.c_kmers:
-                        self.c_kmers[canon] = count
-                    else:
-                        self.c_kmers[canon] += count
-                    line = json_file.readline()
-        print(len(self.c_kmers))
-        n = 0
-        m = 0
-        d = []
-        s = 0
-        print('comparing...')
-        for kmer in self.py_kmers:
-            if not kmer in self.c_kmers:
-                n += 1
-            else:
-                if self.py_kmers[kmer] != self.c_kmers[kmer] / 2:
-                    print(green(self.py_kmers[kmer]), blue(self.c_kmers[kmer] / 2))
-                    a = abs(self.py_kmers[kmer] - self.c_kmers[kmer])
-                    d.append(a)
-                    s += a
-                    m += 1
-        visualizer.histogram(d, 'C-Python diff', self.get_current_job_directory(), 'diff', 'frequency') 
-        print(n)
-        print(m)
-        print(float(s) / len(d))
-        exit()
-
-    def merge_accelerator_counts(self):
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-            n = 0
-            with open (path, 'r') as json_file:
-                line = json_file.readline()
-                while line:
-                    try:
-                        kmer = line[:line.find(':')]
-                        count = int(line[line.find(':') + 1:])
-                        canon = canonicalize(kmer)
-                        self.kmers[canon]['count'] += count / 2
-                        line = json_file.readline()
-                        n += 1
-                    except Exception as e:
-                        print(n, i, line)
-                        print(e)
-                        debug_breakpoint()
-                        line = json_file.readline()
-                        n += 1
+    #def compare(self):
+    #    self.kmers = json.load(open(os.path.join(self.get_current_job_directory(), 'kmers.json')))
+    #    self.py_kmers = {}
+    #    self.tracks = {}
+    #    print('loading python kmers')
+    #    for kmer in self.kmers:
+    #        for track in self.kmers[kmer]['tracks']:
+    #            if not track in self.tracks:
+    #                self.tracks[track] = True
+    #                print(track)
+    #                with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'r') as json_file:
+    #                    kmers = json.load(json_file)
+    #                    for kmer in kmers:
+    #                        self.py_kmers[kmer] = kmers[kmer]['count']
+    #    path = os.path.join(self.get_current_job_directory(), 'batch_0.json') 
+    #    self.c_kmers = {}
+    #    print(len(self.py_kmers))
+    #    print('loading C kmers')
+    #    for i in range(0, self.num_threads):
+    #        path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
+    #        with open (path, 'r') as json_file:
+    #            line = json_file.readline()
+    #            while line:
+    #                kmer = line[:line.find(':')]
+    #                count = int(line[line.find(':') + 1:])
+    #                canon = canonicalize(kmer)
+    #                if not canon in self.c_kmers:
+    #                    self.c_kmers[canon] = count
+    #                else:
+    #                    self.c_kmers[canon] += count
+    #                line = json_file.readline()
+    #    print(len(self.c_kmers))
+    #    n = 0
+    #    m = 0
+    #    d = []
+    #    s = 0
+    #    print('comparing...')
+    #    for kmer in self.py_kmers:
+    #        if not kmer in self.c_kmers:
+    #            n += 1
+    #        else:
+    #            if self.py_kmers[kmer] != self.c_kmers[kmer] / 2:
+    #                print(green(self.py_kmers[kmer]), blue(self.c_kmers[kmer] / 2))
+    #                a = abs(self.py_kmers[kmer] - self.c_kmers[kmer])
+    #                d.append(a)
+    #                s += a
+    #                m += 1
+    #    visualizer.histogram(d, 'C-Python diff', self.get_current_job_directory(), 'diff', 'frequency') 
+    #    print(n)
+    #    print(m)
+    #    print(float(s) / len(d))
+    #    exit()
 
     def reduce(self):
         c = config.Configuration()
@@ -455,12 +431,83 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+class AdjustCoverageGcContentJob(map_reduce.BaseGenotypingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    _name = 'AdjustCoverageGcContentJob'
+    _category = 'programming'
+    _previous_job = CountLociIndicatorKmersJob
+
+    @staticmethod
+    def launch(**kwargs):
+        job = AdjustCoverageGcContentJob(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+            self.kmers = json.load(json_file)
+        print(len(self.kmers))
+        gc_coverage_job = depth.ChromosomeGcContentEstimationJob()
+        with open(os.path.join(gc_coverage_job.get_current_job_directory(), 'coverage.json'), 'r') as json_file:
+            self.coverage = json.load(json_file)
+        self.round_robin(self.kmers)
+        self.batch_kmers = {}
+
+    def transform(self, kmer, k):
+        coverage = []
+        for locus in kmer['loci']:
+            gc = calculate_gc_content(kmer['loci'][locus]['seq']['all'])
+            coverage.append(self.coverage[gc])
+        kmer['coverage'] = statistics.mean(coverage)
+        self.batch_kmers[k] = kmer
+        return None
+
+    def output_batch(self, batch):
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.batch_kmers, json_file, sort_keys = True, indent = 4)
+        json_file.close()
+        exit()
+
+    def reduce(self):
+        self.kmers = {}
+        for batch in self.load_output():
+            for kmer in batch:
+                self.kmers[kmer] = batch[kmer]
+        print(len(self.kmers))
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
+        self.tracks = {}
+        for kmer in self.kmers:
+            for track in self.kmers[kmer]['tracks']:
+                if not track in self.tracks:
+                    self.tracks[track] = {}
+                self.tracks[track][kmer] = self.kmers[kmer]
+        for track in self.tracks:
+            print('exporting track', track)
+            with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as json_file:
+                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'LociIndicatorKmersIntegerProgrammingJob'
     _category = 'programming'
-    _previous_job = CountLociIndicatorKmersJob
-    _kmer_type = 'non_unique_inner'
+    _previous_job = AdjustCoverageGcContentJob
+    _kmer_type = 'inner'
 
     @staticmethod
     def launch(**kwargs):
@@ -479,15 +526,19 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             t = bed.track_from_name(track_name)
             kmers = json.load(json_file)
-            if not kmers:
+            if len(kmers) == 0:
                 print('no inner kmers found for', red(track_name))
                 return None
+            unique_kmers = list(filter(lambda kmer: len(kmers[kmer]['loci']) == 1, kmers))
+            if len(unique_kmers) > 3:
+                kmers = {kmer: kmers[kmer] for kmer in unique_kmers}
             for kmer in kmers:
                 self.lp_kmers[kmer] = {}
                 self.lp_kmers[kmer]['type'] = self._kmer_type
-                self.lp_kmers[kmer]['count'] = kmers[kmer]['count']# + k['doubt']
+                self.lp_kmers[kmer]['count'] = kmers[kmer]['count']# if kmers[kmer]['reference'] == 1 else kmers[kmer]['total']
                 self.lp_kmers[kmer]['doubt'] = kmers[kmer]['doubt']
                 self.lp_kmers[kmer]['total'] = kmers[kmer]['total']
+                self.lp_kmers[kmer]['coverage'] = kmers[kmer]['coverage']
                 self.lp_kmers[kmer]['reference'] = len(kmers[kmer]['loci'])
                 self.lp_kmers[kmer]['reduction'] = kmers[kmer]['reference']
                 self.lp_kmers[kmer]['tracks'] = kmers[kmer]['tracks']
@@ -518,71 +569,154 @@ class GenotypingConfidenceJob(map_reduce.BaseGenotypingJob):
     # ============================================================================================================================ #
 
     def load_inputs(self):
-        with open(os.path.join(self.get_previous_job_directory(), 'indexed_tracks.json'), 'r') as json_file:
+        with open(os.path.join(self.get_previous_job_directory(), 'tracks.json'), 'r') as json_file:
             self.tracks = json.load(json_file)
-        with open(os.path.join(self.get_previous_job_directory(), 'indexed_kmers.json'), 'r') as json_file:
+        with open(os.path.join(self.get_previous_job_directory(), 'lp_kmers.json'), 'r') as json_file:
             self.lp_kmers = json.load(json_file)
+        with open(os.path.join(self.get_previous_job_directory(), 'solution.json'), 'r') as json_file:
+            self.solution = json.load(json_file)['variables']
+        #self.errors = sorted(self.solution[len(self.tracks):])
+        #self.correct_errors = sorted(list(reduce(lambda x, y : x + y, [] + list(map(lambda track: [self.errors[i] for i in self.tracks[track]['kmers']], list(filter(lambda t: self.tracks[t]['lp_genotype'] == self.tracks[t]['actual_genotype'], self.tracks)))))))
+        #self.wrong_errors = sorted(list(reduce(lambda x, y: x + y, [] + list(map(lambda track: [self.errors[i] for i in self.tracks[track]['kmers']], list(filter(lambda t: self.tracks[t]['lp_genotype'] != self.tracks[t]['actual_genotype'], self.tracks)))))))
+        #self.estimate_distribution(self.correct_errors)
+        #self.estimate_distribution(self.wrong_errors)
+        #self.estimate_distribution(self.errors)
+        #visualizer.histogram(self.correct_errors, 'correct_errors', self.get_current_job_directory(), 'error', 'frequency')
+        #visualizer.histogram(self.wrong_errors, 'wrong_errors', self.get_current_job_directory(), 'error', 'frequency')
+        #visualizer.histogram(self.errors, 'errors', self.get_current_job_directory(), 'error', 'frequency')
+        #exit()
         self.round_robin(self.tracks)
 
+    def estimate_distribution(self, x):
+        std = statistics.std(x)
+        mean = statistics.mean(x)
+        median = statistics.median(x)
+        print(mean, std, median)
+        x = list(filter(lambda x: x < 3 * mean, x))
+        std = statistics.std(x)
+        mean = statistics.mean(x)
+        median = statistics.median(x)
+        print(mean, std, median)
+        return
+        x = list(filter(lambda x: x < 3 * mean, x))
+        std = statistics.std(x)
+        mean = statistics.mean(x)
+        print(mean, std)
+
     def transform(self, _, track):
-        c = config.Configuration()
-        print(cyan('probing', track))
-        for r in [('00', 1.0), ('10', 0.5), ('11', 0.0)]:
-            self.tracks[track]['objective_values_' + r[0]] = self.recalculate_lp_error(track, r[1])
-            self.tracks[track]['objective_' + r[0]] = sum(self.tracks[track]['objective_values_' + r[0]])
-        p = ['00', '10', '11']
-        g = self.tracks[track]['lp_genotype']
-        e = self.tracks[track]['objective_' + g]
-        p.remove(g)
-        m = min(p, key = lambda k: self.tracks[track]['objective_' + k])
-        d = [a - b for a,b in zip(self.tracks[track]['objective_values_' + m], self.tracks[track]['objective_values_' + g])]
-        n = len(d)
-        s = statistics.std(d)
-        t = sum(d) / (math.sqrt(n) * s) if s != 0 else float('Inf')
-        t_value, p_value = scipy.stats.ttest_rel(self.tracks[track]['objective_values_' + m], self.tracks[track]['objective_values_' + g])
-        self.tracks[track]['t_value'] = t_value
-        self.tracks[track]['p_value'] = p_value
-        #if math.isnan(t_value):
-        #    print(yellow(track, p_value, t_value, t, d))
-        #elif t_value == float('Inf'):
-        #    print(magenta(track, p_value, t_value, t, d, self.tracks[track]['objective_values_' + m], self.tracks[track]['objective_values_' + g], c.coverage))
-        #else:
-        #    print(p_value, t_value, t)
-        with open(os.path.join(self.get_current_job_directory(), 'confidence_' + track + '.json'), 'w') as json_file:
+        print(cyan(track))
+        l = len(self.lp_kmers)
+        current = 0
+        n = len(self.tracks[track]['kmers'])
+        self.tracks[track]['bootstrap'] = {'00': [], '10': [], '11': [], 'genotypes': []}
+        kmers = list(filter(lambda k: len(self.lp_kmers[k]['tracks']) == 1, self.tracks[track]['kmers']))
+        kmers = [self.lp_kmers[i] for i in self.tracks[track]['kmers']]
+        for i in range(n):
+            kmers[i]['coefficient'] = 0
+            if len(kmers[i]['tracks']) > 1:
+                for t in kmers[i]['tracks']:
+                    if t != track:
+                        kmers[i]['count'] -= self.tracks[t]['lp_value'] * 0.97 * kmers[i]['coverage'] * kmers[i]['tracks'][t]
+        for i in range(n):
+            print(green('iterarion', i))
+            kmers[i]['coefficient'] = 1
+            problem = self.generate_linear_program(kmers, track)
+            problem.solve()
+            self.solution = problem.solution.get_values()
+            s = int(round(2 * self.solution[0]))
+            g = '00' if s == 2 else '10' if s == 1 else '11'
+            self.tracks[track]['bootstrap']['genotypes'].append(g)
+            self.tracks[track]['bootstrap'][g].append(i)
+        with open(os.path.join(self.get_current_job_directory(), 'bootstrap_' + track + '.json'), 'w') as json_file:
             json.dump(self.tracks[track], json_file, indent = 4)
         return None
 
-    def recalculate_lp_error(self, track, c):
-        errors = []
-        for kmer in self.tracks[track]['kmers']:
-            kmer = self.lp_kmers[kmer]
-            r = 0
-            for t in kmer['tracks']:
-                if t == track:
-                    r += kmer['coverage'] * kmer['tracks'][t] * (1.0 - 0.03) * c
-                else:
-                    r += kmer['coverage'] * kmer['tracks'][t] * (1.0 - 0.03) * self.tracks[t]['lp_rounding']
-            errors.append(abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - r))
-        return errors
+    def generate_linear_program(self, kmers, track):
+        c = config.Configuration()
+        globals()['cplex'] = __import__('cplex')
+        problem = cplex.Cplex()
+        problem.set_log_stream(None)
+        problem.set_error_stream(None)
+        problem.set_warning_stream(None)
+        problem.set_results_stream(None)
+        problem.objective.set_sense(problem.objective.sense.minimize)
+        # the coverage of each event
+        problem.variables.add(names = ['t'],
+            ub = [1.0],
+        )
+        # the real-valued error parameter for inner_kmer
+        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(kmers)],
+            ub = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue']) for kmer in kmers],
+            lb = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in kmers],
+        )
+        # absolute value of the inner_kmer error parameter
+        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(kmers)],
+            obj = [1.0] * len(kmers),
+        )
+        #self.add_snp_linear_constraint(problem)
+        n = 0
+        start = time.time()
+        offset = len(self.tracks) + 2 * len(kmers)
+        for index, kmer in enumerate(kmers):
+            if kmer['coefficient'] == 0:
+                continue
+            # TxR + E = C - 
+            #ref = kmer['reference']
+            ind = [0]
+            #ind += [offset + i for i in range(0, ref)] #SNP
+            ind.append(1 + index) # Objective
+            val = [kmer['coefficient'] * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03)] #Coverage corrected for errors
+            #val += [-kmer['coverage']] * ref #SNP
+            val.append(1.0) #Objective
+            #offset += ref
+            problem.linear_constraints.add(
+                lin_expr = [cplex.SparsePair(
+                    ind = ind,
+                    val = val,
+                )],
+                rhs = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'])],
+                senses = ['E']
+            )
+            self.add_error_absolute_value_constraints(problem, index, kmers)
+            n = n + 1
+            if n % 1000 == 0:
+                t = time.time()
+                p = float(n) / len(kmers)
+                eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
+                #print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
+        return problem
 
-    def output_batch(self, batch):
-        pass
+    def add_error_absolute_value_constraints(self, problem, index, kmers):
+        problem.linear_constraints.add(
+            lin_expr = [cplex.SparsePair(
+                ind = [1 + len(kmers) + index, 1 + index],
+                val = [1.0, 1.0],
+            )],
+            rhs = [0],
+            senses = ['G']
+        )
+        problem.linear_constraints.add(
+            lin_expr = [cplex.SparsePair(
+                ind = [1 + len(kmers) + index, 1 + index],
+                val = [1.0, -1.0],
+            )],
+            rhs = [0],
+            senses = ['G']
+        )
 
     def reduce(self):
+        remove = []
         for track in self.tracks:
-            print('loading', track)
-            with open(os.path.join(self.get_current_job_directory(), 'confidence_' + track + '.json'), 'r') as json_file:
-                self.tracks[track] = json.load(json_file)
-        self.export_confidence_scores()
-        self.plot_confidence_scores()
-
-    def export_confidence_scores(self):
-        with open(os.path.join(self.get_current_job_directory(), 'confidence.bed'), 'w') as bed_file:
+            path = os.path.join(self.get_current_job_directory(), 'bootstrap_' + track + '.json')
+            try:
+                with open(path, 'r') as json_file:
+                    self.tracks[track] = json.load(json_file)
+            except:
+                remove.append(track)
+        for track in remove:
+            self.tracks.pop(track, None)
+        with open(os.path.join(self.get_current_job_directory(), 'bootstrap.bed'), 'w') as bed_file:
             for track in self.tracks:
-                if str(self.tracks[track]['t_value']).find('inf') != -1:
-                    self.tracks[track]['t_value'] = 100000
-                if math.isnan(self.tracks[track]['t_value']):
-                    continue
                 t = bed.track_from_name(track)
                 bed_file.write(t.chrom + '\t' +
                     str(t.begin) + '\t' +
@@ -590,25 +724,94 @@ class GenotypingConfidenceJob(map_reduce.BaseGenotypingJob):
                     str(self.tracks[track]['lp_value'])  + '\t' +
                     str(self.tracks[track]['lp_rounding'])  + '\t' +
                     str(self.tracks[track]['lp_genotype'])  + '\t' +
-                    str(self.tracks[track]['actual_genotype'])  + '\t' +
-                    str(self.tracks[track]['t_value'] if self.tracks[track]['p_value'] != float('Inf') else 1000) + '\t' +
-                    str(self.tracks[track]['p_value'] if self.tracks[track]['t_value'] != float('Inf') else 1000) + '\t' +
-                    str(len(self.tracks[track]['kmers'])) + '\n')
+                    str(self.tracks[track]['actual_genotype']) + '\t' +
+                    str(len(self.tracks[track]['kmers'])) + '\t' +
+                    str(self.tracks[track]['confidence_score']) + '\t' +
+                    compactify(self.tracks[track]['bootstrap']['00'])  + '\t' +
+                    compactify(self.tracks[track]['bootstrap']['10'])  + '\t' +
+                    compactify(self.tracks[track]['bootstrap']['11'])  + '\t' +
+                    compactify(self.tracks[track]['bootstrap']['genotypes'])  + '\n')
+        self.plot_rounding_gap()
 
-    def plot_confidence_scores(self):
+    def plot_rounding_gap(self):
         x = []
-        p = []
-        t = []
+        s = []
         for track in self.tracks:
-            if math.isnan(self.tracks[track]['t_value']):
-                continue
             x.append('Correct' if self.tracks[track]['lp_genotype'] == self.tracks[track]['actual_genotype'] else 'Wrong')
-            p.append(self.tracks[track]['p_value'] if self.tracks[track]['p_value'] != float('Inf') else 1000)
-            t.append(self.tracks[track]['t_value'] if self.tracks[track]['t_value'] != float('Inf') else 1000)
-        visualizer.violin(x, p, 'p_value_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
-        visualizer.violin(x, t, 't_value_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
-        visualizer.histogram([t[i] for i in list(filter(lambda j: x[j] == 'Correct', range(0, len(x))))], 'confidence_score_correct_calls', self.get_current_job_directory(), 'Prediction', 'Confidence')
-        visualizer.histogram([t[i] for i in list(filter(lambda j: x[j] == 'Wrong', range(0, len(x))))], 'confidence_score_wrong_calls', self.get_current_job_directory(), 'Prediction', 'Confidence')
+            if len(self.tracks[track]['bootstrap']['genotypes']) == 1:
+                s.append(-1)
+            else:
+                g = self.tracks[track]['bootstrap']['genotypes']
+                s.append(sum(map(lambda i: 1 if g[i] != g[i - 1] else 0, range(1, len(g))))) 
+        visualizer.violin(x, s, 'rounding_gap_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
+
+    #def transform(self, _, track):
+    #    c = config.Configuration()
+    #    std = 5
+    #    print(cyan('probing', track))
+    #    stats = {'00': {}, '10': {}, '11': {}}
+    #    for r in [('00', 1.0), ('10', 0.5), ('11', 0.0)]:
+    #        self.tracks[track]['objective_values_' + r[0]] = self.recalculate_lp_error(track, r[1])
+    #        self.tracks[track]['objective_' + r[0]] = sum(self.tracks[track]['objective_values_' + r[0]])
+    #        mean = statistics.mean(self.tracks[track]['objective_values_' + r[0]])
+    #        N = statistics.NormalDistribution(mean, std)
+    #        self.tracks[track]['likelihood_' + r[0]] = reduce(lambda x, y: x * N.pmf(int(y)), [1] + self.tracks[track]['objective_values_' + r[0]]) 
+    #    p = ['00', '10', '11']
+    #    g = self.tracks[track]['lp_genotype']
+    #    e = self.tracks[track]['objective_' + g]
+    #    p.remove(g)
+    #    m = max(p, key = lambda k: self.tracks[track]['likelihood_' + k])
+    #    N = statistics.NormalDistribution(0, std)
+    #    self.tracks[track]['confidence_score'] = reduce(lambda x, y: x * N.pmf(int(y)), [1] + self.tracks[track]['objective_values_' + g]) / self.tracks[track]['likelihood_' + m]
+    #    with open(os.path.join(self.get_current_job_directory(), 'confidence_' + track + '.json'), 'w') as json_file:
+    #        json.dump(self.tracks[track], json_file, indent = 4)
+    #    return None
+
+    #def recalculate_lp_error(self, track):
+    #    errors = []
+    #    for kmer in self.tracks[track]['kmers']:
+    #        kmer = self.lp_kmers[kmer]
+    #        r = 0
+    #        for t in kmer['tracks']:
+    #            if t == track:
+    #                r += kmer['coverage'] * kmer['tracks'][t] * (1.0 - 0.03) * self.tracks[t]['lp_rounding']
+    #            else:
+    #                r += kmer['coverage'] * kmer['tracks'][t] * (1.0 - 0.03) * self.tracks[t]['lp_rounding']
+    #        errors.append(abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - r))
+    #    return errors
+
+    #def output_batch(self, batch):
+    #    pass
+
+    #def reduce(self):
+    #    for track in self.tracks:
+    #        print('loading', track)
+    #        with open(os.path.join(self.get_current_job_directory(), 'confidence_' + track + '.json'), 'r') as json_file:
+    #            self.tracks[track] = json.load(json_file)
+    #    self.export_confidence_scores()
+    #    self.plot_confidence_scores()
+
+    #def export_confidence_scores(self):
+    #    with open(os.path.join(self.get_current_job_directory(), 'confidence.bed'), 'w') as bed_file:
+    #        for track in self.tracks:
+    #            t = bed.track_from_name(track)
+    #            bed_file.write(t.chrom + '\t' +
+    #                str(t.begin) + '\t' +
+    #                str(t.end)   + '\t' +
+    #                str(self.tracks[track]['lp_value'])  + '\t' +
+    #                str(self.tracks[track]['lp_rounding'])  + '\t' +
+    #                str(self.tracks[track]['lp_genotype'])  + '\t' +
+    #                str(self.tracks[track]['actual_genotype']) + '\t' +
+    #                str(self.tracks[track]['standard_error'])  + '\t' +
+    #                str(len(self.tracks[track]['kmers'])) + '\n')
+
+    #def plot_confidence_scores(self):
+    #    x = []
+    #    e = []
+    #    for track in self.tracks:
+    #        x.append('Correct' if self.tracks[track]['lp_genotype'] == self.tracks[track]['actual_genotype'] else 'Wrong')
+    #        e.append(self.tracks[track]['standard_error'])
+    #    visualizer.violin(x, e, 'standard_error_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
 
 # ============================================================================================================================ #
 # Main

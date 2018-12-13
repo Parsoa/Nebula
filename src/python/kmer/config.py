@@ -110,6 +110,7 @@ def configure(args):
         seed = args.seed,
         chrom = args.chrom,
         debug = args.debug,
+        hsize = 16,
         ksize = int(args.ksize[:-1]),
         input = args.input,
         genome = args.genome,

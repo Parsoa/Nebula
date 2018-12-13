@@ -107,13 +107,12 @@ def is_subsequence(x, y):
     if len(y) < len(x):
         return False
     it = iter(y)
-    #debug_log('Checking', green(x), 'substring of', blue(y))
+    debug_log('Checking', green(x), 'substring of', blue(y))
     return all(c in it for c in x)
 
 def is_canonical_subsequence(x, y):
     if len(y) < len(x):
         return False
-    it = iter(y)
     #debug_log('Checking', green(x), 'substring of', blue(y))
     return is_subsequence(reverse_complement(x), y) or is_subsequence(x, y)
     #return all(c in it for c in x) or all(c in it for c in reverse_complement(x))
@@ -127,3 +126,6 @@ def find_all(string, substring):
             break
         l.append(index)
     return l
+
+def calculate_gc_content(seq):
+    return len(list(filter(lambda x: x == 'G' or x == 'C', seq)))

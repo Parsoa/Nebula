@@ -76,6 +76,7 @@ class Job(object):
             print('resuming from reduce')
         output = self.reduce()
         self.plot(output)
+        return output
 
     def find_thread_count(self):
         c = config.Configuration()
@@ -192,6 +193,7 @@ class Job(object):
 
     def load_output(self):
         for i in range(0, self.num_threads):
+            print('reading batch', i)
             yield self.load_output_batch(i)
 
     def load_output_batch(self, index):
@@ -358,3 +360,18 @@ class BaseGenotypingJob(FirstGenotypingJob):
             bed_file_name = c.bed_file.split('/')[-1]
             return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._previous_job._name))
 
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# Base class for every job that is a direct part of the genotyping process
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class GenomeDependentJob(BaseGenotypingJob):
+
+    def get_current_job_directory(self):
+        c = config.Configuration()
+        if c.simulation:
+            return map_reduce.Job.get_current_job_directory(self)
+        else:
+            bed_file_name = c.bed_file.split('/')[-1]
+            return os.path.abspath(os.path.join(self.get_output_directory(), self._name))

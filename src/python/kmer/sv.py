@@ -64,22 +64,23 @@ class StructuralVariation(object):
         end = len(self.sequence) - self.slack
         outer_gapped_kmers = {}
         inner_gapped_kmers = {}
-        # each half is 15 bases plus 10 bases in between, say nearly 45: 25 bases remain for each end
-        b = self.sequence[begin - 15 - 2 - 25: begin + 3 + 15 + 25]
-        kmer = self.sequence[begin - 15 - 2: begin + 3 + 15]
-        prefix = self.sequence[begin - 15 - 2 - 25: begin - 15 - 2]
-        suffix = self.sequence[begin + 3 + 15: begin + 3 + 15 + 25]
+        h = c.hsize
+        # each half is 16 bases plus 10 bases in between, say nearly 45: 25 bases remain for each end
+        b = self.sequence[begin - h - 2 - 25: begin + 3 + h + 25]
+        kmer = self.sequence[begin - h - 2: begin + 3 + h]
+        prefix = self.sequence[begin - h - 2 - 25: begin - h - 2]
+        suffix = self.sequence[begin + 3 + h: begin + 3 + h + 25]
         inner_gapped_kmers[kmer] = {'indicators': self.generate_kmer_mask(prefix, suffix), 'prefix': prefix, 'suffix': suffix}
         #
-        e = self.sequence[end - 15 - 2 - 25: end + 3 + 15 + 25]
-        kmer = self.sequence[end - 15 - 2: end + 3 + 15]
-        prefix = self.sequence[end - 15 - 2 - 25: end - 15 - 2]
-        suffix = self.sequence[end + 3 + 15: end + 3 + 15 + 25]
+        e = self.sequence[end - h - 2 - 25: end + 3 + h + 25]
+        kmer = self.sequence[end - h - 2: end + 3 + h]
+        prefix = self.sequence[end - h - 2 - 25: end - h - 2]
+        suffix = self.sequence[end + 3 + h: end + 3 + h + 25]
         inner_gapped_kmers[kmer] = {'indicators': self.generate_kmer_mask(prefix, suffix), 'prefix': prefix, 'suffix': suffix}
         #
-        kmer = self.sequence[begin - 2 - 15: begin + 3] + self.sequence[end - 2: end + 3 + 15]
-        prefix = self.sequence[begin - 15 - 2 - 25: begin - 15 - 2]
-        suffix = self.sequence[end + 3 + 15: end + 3 + 15 + 25]
+        kmer = self.sequence[begin - 2 - h: begin + 3] + self.sequence[end - 2: end + 3 + h]
+        prefix = self.sequence[begin - h - 2 - 25: begin - h - 2]
+        suffix = self.sequence[end + 3 + h: end + 3 + h + 25]
         outer_gapped_kmers[kmer] = {'indicators': self.generate_kmer_mask(prefix, suffix), 'prefix': prefix, 'suffix': suffix}
         return {'inner': inner_gapped_kmers, 'outer': outer_gapped_kmers, 'begin': b, 'end': e, 'sequence': self.sequence}
 

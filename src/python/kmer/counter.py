@@ -11,6 +11,7 @@ import time
 import argparse
 import operator
 import traceback
+import subprocess
 
 from kmer import (
     bed,
@@ -101,8 +102,18 @@ class BaseExactCountingJob(map_reduce.Job):
 
     def transform(self):
         c = config.Configuration()
-        for read, name, index in self.parse_fastq():
-            self.process_read(read, name, index)
+        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
+        if c.accelerate:
+            command = " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0")
+            print(command)
+            if c.debug:
+                output = subprocess.call(os.path.join(cpp_dir, "counter_s.out") + command, shell = True)
+            else:
+                output = subprocess.call(os.path.join(cpp_dir, "counter.out") + command, shell = True)
+            exit()
+        else:
+            for read, name, index in self.parse_fastq():
+                self.process_read(read, name, index)
 
     def process_read(self, read, name):
         c = config.Configuration()
@@ -110,6 +121,33 @@ class BaseExactCountingJob(map_reduce.Job):
         for kmer in kmers:
             if kmer in self.kmers: 
                 self.kmers[kmer]['count'] += kmers[kmer]
+
+    def merge_accelerator_counts(self):
+        for i in range(0, self.num_threads):
+            print('adding batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
+            n = 0
+            with open (path, 'r') as json_file:
+                line = json_file.readline()
+                while line:
+                    try:
+                        kmer = line[:line.find(':')]
+                        i = line.find(':')
+                        j = line.find(':', i + 1)
+                        count = int(line[i + 1: j])
+                        total = int(line[j + 1:])
+                        canon = canonicalize(kmer)
+                        self.kmers[canon]['count'] += count / 2
+                        self.kmers[canon]['total'] += total / 2
+                        line = json_file.readline()
+                        n += 1
+                    except Exception as e:
+                        print(n, i, line)
+                        print(e)
+                        traceback.print_exc()
+                        debug_breakpoint()
+                        line = json_file.readline()
+                        n += 1
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

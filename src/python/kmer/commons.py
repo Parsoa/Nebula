@@ -70,3 +70,5 @@ def json_print(d):
 def jsonify(s):
     return json.dumps(s, sort_keys = True, indent = 4, separators = (',', ': '))
 
+def compactify(l):
+    return '[' + ','.join(map(lambda t: str(t), l)) + ']'

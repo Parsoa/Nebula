@@ -14,6 +14,7 @@ import argparse
 
 from kmer import (
     config,
+    statistics,
 )
 import pandas as pd
 import plotly.offline as plotly
@@ -53,7 +54,14 @@ def bar(x, ys, name, path, x_label, y_label):
     plotly.plot(figure, filename = os.path.join(path, 'bar_' + name + '.html'), auto_open = False)
 
 def violin(x, y, name, path, x_label, y_label):
-    data = pd.DataFrame(dict(LP = y, Zygosity = x))
-    fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity', width = 400 * len(set(x)))
+    xs = []
+    ys = []
+    m = statistics.mean(y)
+    for index, d in enumerate(y):
+        if d <= 3 * m or d < 200:
+            xs.append(x[index])
+            ys.append(d)
+    data = pd.DataFrame(dict(LP = ys, Zygosity = xs))
+    fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity', width = 200 * len(set(x)))
     plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
 

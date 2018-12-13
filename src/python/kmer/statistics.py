@@ -39,3 +39,7 @@ def std(data):
 def mean(data):
     m = sum(data) / len(data)
     return m
+
+def median(data):
+    n = len(data)
+    return data[n / 2]
