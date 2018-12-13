@@ -18,8 +18,6 @@ from kmer import (
     bed,
     config,
     counter,
-    simulator,
-    counttable,
     map_reduce,
     statistics,
     visualizer,
