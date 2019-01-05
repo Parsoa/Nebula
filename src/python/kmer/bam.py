@@ -1,28 +1,39 @@
 from __future__ import print_function
 
+import io
+import os
+import re
+import pwd
+import sys
+import copy
+import json
+import math
+import time
+import argparse
+import operator
+import traceback
+import subprocess
+
 from kmer import (
+    bed,
     config,
+    counter,
     map_reduce,
+    statistics,
+    visualizer,
 )
 
-from kmer.alu import *
-from kmer.misc import *
-from kmer.depth import *
-from kmer.gapped import *
-from kmer.reduction import *
-from kmer.simulator import *
-from kmer.production import *
-from kmer.programming import *
+import scipy
+
+from kmer.kmers import *
+from kmer.commons import *
+from kmer.chromosomes import *
+print = pretty_print
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# Main
-# ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-if __name__ == '__main__':
-    config.init()
-    c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+

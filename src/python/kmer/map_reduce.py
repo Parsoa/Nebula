@@ -238,6 +238,8 @@ class Job(object):
             return Deletion
         if bed_file_name.find('INV') != -1:
             return Inversion
+        if bed_file_name.find('ALU') != -1:
+            return AluInsertion
         return Deletion
 
     def load_reference_counts_provider(self):

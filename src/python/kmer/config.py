@@ -39,6 +39,8 @@ def init():
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    # path to a BAM files, for jobs that need one as input
+    parser.add_argument("--bam", default = None)
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", default = None)
     # the job to execute from this file
@@ -57,6 +59,8 @@ def parse_args():
     parser.add_argument("--dummy", action='store_true')
     # the chromosome to simulate
     parser.add_argument("--chrom", default = 'chr1')
+    # set of exons for the current reference
+    parser.add_argument("--exons", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/Exons/hg38.exons.filtered.bed')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # path to a FASTQ files, for jobs that need one as input
@@ -110,11 +114,13 @@ def configure(args):
         seed = args.seed,
         chrom = args.chrom,
         debug = args.debug,
+        exons = args.exons,
         hsize = 16,
         ksize = int(args.ksize[:-1]),
         input = args.input,
         genome = args.genome,
         random = args.random,
+        bam_file = args.bam,
         bed_file = args.bed,
         coverage = round(1 * args.coverage) if args.simulation else (args.coverage),
         is_dummy = args.dummy,

@@ -113,12 +113,12 @@ class UniqueGappedKmersJob(map_reduce.Job):
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 gapped_kmers = json.load(json_file)
-                for side in self.gapped_kmers:
+                for side in ['inner', 'outer']:
                     for kmer in gapped_kmers[side]:
                         k = canonicalize(kmer)
                         k = k[:c.hsize] + k[-c.hsize:]
                         if not k in self.gapped_kmers[side]:
-                            self.gapped_kmers[side][k] = {'tracks': {}, 'indicators': gapped_kmers[side][kmer]['indicators']}
+                            self.gapped_kmers[side][k] = {'tracks': {}}
                         if track in self.gapped_kmers[side][k]:
                             self.gapped_kmers[side][k]['tracks'][track] += 1
                         else:
@@ -190,12 +190,11 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
         self.kmers = {}
         self.tracks = self.load_previous_job_results()
         self.half_mers = {}
-        n = 0
         for track in self.tracks:
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                for side in ['outer']:
+                for side in ['outer', 'inner']:
                     for kmer in kmers[side]:
                         if len(kmer) != c.ksize:
                             print(red(kmer))
@@ -208,9 +207,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
                         self.half_mers[right] = True
                         self.half_mers[reverse_complement(left)] = True
                         self.half_mers[reverse_complement(right)] = True
-                        if side == 'outer':
-                            n += 1
-        print(n, "events")
+        print('scoring', len(self.kmers), 'kmers')
         self.chroms = extract_whole_genome()
         for chrom in self.chroms:
             print(sys.getsizeof(self.chroms[chrom]))
@@ -221,7 +218,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
         t = time.time()
         l = len(sequence)
         for index in range(0, l - 50):
-            if index % 100000 == 0:
+            if index % 100000 == 1:
                 s = time.time()
                 p = index / float(len(sequence))
                 e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
@@ -231,6 +228,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
                 continue
             for k in range(32, 43):
                 kmer = canonicalize(sequence[index: index + k])
+                #kmer = sequence[index: index + k]
                 kmer = kmer[:c.hsize] + kmer[-c.hsize:]
                 if kmer in self.kmers:
                     print(kmer)
@@ -294,29 +292,14 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
         m = 0
         print(len(tracks))
         for track in tracks:
-            #print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                #for kmer in kmers['inner']:
-                #    if kmers['inner'][kmer]['count'] == sum(map(lambda track: kmers['inner'][kmer]['tracks'][track], kmers['inner'][kmer]['tracks'])):
-                #        left = kmer[:c.hsize]
-                #        right = kmer[-c.hsize:]
-                #        self.kmers[kmer] = {'tracks': kmers['inner'][kmer]['tracks'], 'side': 'inner', 'count': {}, 'masks': kmers['inner'][kmer]['indicators']}
-                #        if not left in self.half_mers:
-                #            self.half_mers[left] = {}
-                #        self.half_mers[left][right] = kmer 
-                #        left = reverse_complement(left)
-                #        right = reverse_complement(right)
-                #        if not right in self.half_mers:
-                #            self.half_mers[right] = {}
-                #        self.half_mers[right][left] = kmer
-                #        n += 1
                 for kmer in kmers['outer']:
                     x.append(kmers['outer'][kmer]['count'])
                     if kmers['outer'][kmer]['count'] == 0:
                         left = kmer[:c.hsize]
                         right = kmer[-c.hsize:]
-                        self.kmers[kmer] = {'tracks': kmers['outer'][kmer]['tracks'], 'side': 'outer', 'count': {}, 'masks': kmers['outer'][kmer]['indicators']}
+                        self.kmers[kmer] = {'tracks': kmers['outer'][kmer]['tracks'], 'side': 'outer', 'count': {}}
                         for i in range(0, 11):
                             self.kmers[kmer]['count'][i] = 0
                         if not left in self.half_mers:

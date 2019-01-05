@@ -384,12 +384,11 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             for track in self.tracks:
                 index = self.tracks[track]['index']
                 t = bed.track_from_name(track)
-                s = self.round_genotype(self.solution[index])
-                g = '00' if s == 2 else '10' if s == 1 else '11'
+                g = self.round_genotype(self.solution[index])
                 bed_file.write(t.chrom + '\t' +
                     str(t.begin) + '\t' +
-                    str(t.end)   + '\t' +
-                    str(g)  + '\t' +
+                    str(t.end) + '\t' +
+                    str(g[1]) + '\t' +
                     str(self.solution[index]) + '\n')
                     #str(len(self.tracks[track]['kmers'])) + '\n')
 
@@ -400,9 +399,10 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         for r in ['00', '10', '11']:
             for p in ['00', '10', '11']:
                 for track in bed.load_tracks_from_file(os.path.join(self.get_current_job_directory(), r + '_as_' + p + '.bed'), [('lp_genotype', None, str), ('lp_value', None, float)]):
+                    g = self.round_genotype(track.lp_value)
                     self.tracks[str(track)]['lp_value'] = track.lp_value
-                    self.tracks[str(track)]['lp_rounding'] = self.round_genotype(track.lp_value)
-                    self.tracks[str(track)]['lp_genotype'] = p
+                    self.tracks[str(track)]['lp_rounding'] = g[0] 
+                    self.tracks[str(track)]['lp_genotype'] = g[1]
                     self.tracks[str(track)]['actual_genotype'] = r
                     #self.tracks[str(track)]['confidence_score'] = None
                     #self.tracks[str(track)]['p_value'] = None
@@ -519,15 +519,13 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
     #    #    r -= 1
     #    #    self.lp_kmers[i]['count'] += r * self.lp_kmers[i]['backup'] / 10
 
-    def round_genotype(self, g):
-        d = 0.5 / 3
-        a = 0.5 / 6
-        if g > 0.75:# + d:
-            return 2
-        elif g > 0.25:
-            return 1
+    def round_genotype(self, c):
+        if c > 0.75:
+            return (1.0, '00')
+        elif c > 0.25:
+            return (0.5, '10')
         else:
-            return 0
+            return (0.0, '11')
 
     def kmers_in_iteration(self, track):
         return sum(map(lambda kmer: self.lp_kmers[kmer]['coefficient'], self.tracks[track]['kmers']))

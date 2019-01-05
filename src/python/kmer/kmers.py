@@ -30,7 +30,7 @@ def canonicalize(seq):
     reverse_complement = reverse_complement_sequence(seq)
     return seq if seq < reverse_complement else reverse_complement
 
-def c_extract_kmers(k = 31, counter = lambda x: 1, count = 1, overlap = True, canonical = True, *args):
+def c_extract_kmers(k = 32, counter = lambda x: 1, count = 1, overlap = True, canonical = True, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
@@ -50,7 +50,7 @@ def c_extract_kmers(k = 31, counter = lambda x: 1, count = 1, overlap = True, ca
                 i += 1
     return kmers
 
-def extract_kmers(k = 31, canonical = True, *args):
+def extract_kmers(k = 32, canonical = True, *args):
     c = config.Configuration()
     kmers = {}
     for s in args:
@@ -61,13 +61,13 @@ def extract_kmers(k = 31, canonical = True, *args):
             kmers[kmer] += 1
     return kmers
 
-def stream_kmers(k = 31, canonical = True, *args):
+def stream_kmers(k = 32, canonical = True, *args):
     for s in args:
         for i in range(0, len(s) - k + 1):
             kmer = s[i : i + k]
             yield canonicalize(kmer) if canonical else kmer
 
-def index_kmers(k = 31, canonical = True, *args):
+def index_kmers(k = 32, canonical = True, *args):
     kmers = {}
     index = 0
     for kmer in stream_kmers(k, canonical, *args):

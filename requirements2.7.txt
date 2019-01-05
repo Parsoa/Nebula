@@ -9,3 +9,4 @@ pylru
 scipy
 seaborn
 tk
+pysam

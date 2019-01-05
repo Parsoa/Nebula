@@ -83,6 +83,30 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
                 json.dump(self.kmers, json_file, indent = 4)
         self.round_robin()
 
+    def merge_accelerator_counts(self):
+        for i in range(0, self.num_threads):
+            print('adding batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
+            n = 0
+            with open (path, 'r') as json_file:
+                line = json_file.readline()
+                while line:
+                    try:
+                        kmer = line[:line.find(':')]
+                        i = line.find(':')
+                        count = int(line[i + 1:])
+                        canon = canonicalize(kmer)
+                        self.kmers[canon]['count'] += count / 2
+                        line = json_file.readline()
+                        n += 1
+                    except Exception as e:
+                        print(n, i, line)
+                        print(e)
+                        traceback.print_exc()
+                        debug_breakpoint()
+                        line = json_file.readline()
+                        n += 1
+
     def reduce(self):
         #self.kmers = self.merge_counts()
         self.merge_accelerator_counts()
@@ -107,7 +131,6 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
         print('mean:', self.mean)
         print('std:', self.std)
         #
-        print(self.counts[:100])
         self.plot_reference_distribution([ self.counts[i] for i in sorted(random.sample(xrange(len(self.counts)), 10000)) ])
         with open(os.path.join(self.get_current_job_directory(), 'stats_' + str(c.ksize) + '.json'), 'w') as json_file:
             json.dump({ 'mean': self.mean, 'std': self.std }, json_file, sort_keys = True, indent = 4)
@@ -135,27 +158,147 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-#class ExonGcContentEstimationJob(map_reduce.BaseGenotypingJob, counter.BaseExactCountingJob):
-#
-#    def load_inputs(self):
-#        self.chromosomes = extract_whole_genome()
-#        self.load_reference_counts_provider() 
-#        self.exons = bed.load_tracks_from_file_as_dict('/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/gc_profile.bed.Clean')
-#        self.round_robin(exons)
-#        self.gc = {}
-#
-#    def calculate_gc_content(seq):
-#        return len(list(filter(lambda x: x == 'G' or x == 'C', seq)))
-#
-#    def transform(self, exon, _):
-#        if exon.end - exon.begin >= 100:
-#            seq = self.chromosomes[exon.chrom.lower()][exon.begin: exon.end]
-#            gc = self.calculate_gc_content(seq)
-#            kmers = c_extract_kmers(32, self.reference_counts_provider.get_kmer_count, count = 1, n = 100, overlap = True, canonical = True)
-#            if kmers:
-#
-#        else:
-#            return None
+class GappedKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, counter.BaseExactCountingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    _name = 'GappedKmersDepthOfCoverageEstimationJob'
+    _category = 'programming'
+    _previous_job = None
+
+    @staticmethod
+    def launch(**kwargs):
+        job = GappedKmersDepthOfCoverageEstimationJob(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+    # ============================================================================================================================ #
+
+    class ExtractExonGappedKmersHelper(map_reduce.BaseGenotypingJob):
+
+        _name = 'ExtractExonGappedKmersHelper'
+        _category = 'programming'
+        _previous_job = None
+
+        @staticmethod
+        def launch(**kwargs):
+            job = ExtractExonGappedKmersHelper(**kwargs)
+            job.execute()
+        
+        def load_inputs(self):
+            c = config.Configuration()
+            exons = bed.load_tracks_from_file_as_dict(c.exons)
+            extract_whole_genome()
+            self.round_robin(exons)
+            self.kmers = {}
+
+        def transform(self, track, track_name):
+            chromosome = extract_chromosome(self.chrom.lower())
+            sequence = chromosome[track.begin: track.end]
+            for i in range(0, len(sequence) - 50):
+                kmer = canonicalize(sequence(i, 37))
+                self.kmers[kmer] = 0
+            return None
+
+        def output_batch(self, batch):
+            json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+            json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
+            json_file.close()
+            exit()
+
+        def reduce(self):
+
+
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        print(self.get_current_job_directory())
+        c = config.Configuration()
+        self.load_reference_counts_provider() 
+        self.kmers = {}
+        n = 0
+        self.acc = {}
+        for i in range(1, 2):
+            self.acc[i] = 0
+        for kmer, count in self.reference_counts_provider.stream_kmers():
+            if count in self.acc:
+                if self.acc[count] == 1000000:
+                    self.acc.pop(count, None)
+                    if len(self.acc) == 0:
+                        break
+                    continue
+                self.kmers[canonicalize(kmer)] = {'ref': count, 'count': 0}
+                self.acc[count] += 1
+                if self.acc[count] % 1000 == 0:
+                    print(self.acc[count], 'kmers with a count of', count, 'so far')
+        print('Counting', green(len(self.kmers)), 'unique kmers')
+        if c.accelerate:
+            with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+                json.dump(self.kmers, json_file, indent = 4)
+        self.round_robin()
+
+    def merge_accelerator_counts(self):
+        for i in range(0, self.num_threads):
+            print('adding batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
+            n = 0
+            with open (path, 'r') as json_file:
+                line = json_file.readline()
+                while line:
+                    try:
+                        kmer = line[:line.find(':')]
+                        i = line.find(':')
+                        count = int(line[i + 1:])
+                        canon = canonicalize(kmer)
+                        self.kmers[canon]['count'] += count / 2
+                        line = json_file.readline()
+                        n += 1
+                    except Exception as e:
+                        print(n, i, line)
+                        print(e)
+                        traceback.print_exc()
+                        debug_breakpoint()
+                        line = json_file.readline()
+                        n += 1
+
+    def reduce(self):
+        #self.kmers = self.merge_counts()
+        self.merge_accelerator_counts()
+        self.counts = list(map(lambda kmer: self.kmers[kmer]['count'], self.kmers))
+        self.mean = numpy.mean(self.counts)
+        self.std = numpy.std(self.counts)
+        print(len(self.counts))
+        print('mean:', self.mean)
+        print('std:', self.std)
+        # filter outliers
+        self.counts = list(filter(lambda x: x < 3 * self.mean, self.counts))
+        self.mean = numpy.mean(self.counts)
+        self.std = numpy.std(self.counts)
+        print(len(self.counts))
+        print('mean:', self.mean)
+        print('std:', self.std)
+        # filter anything appearing more than twice the medium, 4x coverage or more, repeatimg kmer
+        self.counts = list(filter(lambda x: x < 2 * self.mean, self.counts))
+        self.mean = numpy.mean(self.counts)
+        self.std = numpy.std(self.counts)
+        print(len(self.counts))
+        print('mean:', self.mean)
+        print('std:', self.std)
+        #
+        self.plot_reference_distribution([ self.counts[i] for i in sorted(random.sample(xrange(len(self.counts)), 10000)) ])
+        with open(os.path.join(self.get_current_job_directory(), 'stats_' + str(c.ksize) + '.json'), 'w') as json_file:
+            json.dump({ 'mean': self.mean, 'std': self.std }, json_file, sort_keys = True, indent = 4)
+
+    def plot_reference_distribution(self, counts):
+        visualizer.histogram(counts, name = 'kmer count distribution', path = self.get_current_job_directory(), x_label = 'count', y_label = 'number of kmers')
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -179,6 +322,7 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
+
     def load_inputs(self):
         c = config.Configuration()
         self.gc = {}

@@ -52,16 +52,20 @@ def load_tracks_from_file(path, keywords = []):
         while line:
             tokens = line.split()
             kwargs = {}
-            for index, pair in enumerate(keywords):
-                if index + 3 < len(tokens):
-                    if len(pair) >= 3:
-                        kwargs[pair[0]] = pair[2](tokens[3 + index])
+            if len(tokens) >= 3:
+                for index, pair in enumerate(keywords):
+                    if index + 3 < len(tokens):
+                        if len(pair) >= 3:
+                            kwargs[pair[0]] = pair[2](tokens[3 + index])
+                        else:
+                            kwargs[pair[0]] = tokens[3 + index]
                     else:
-                        kwargs[pair[0]] = tokens[3 + index]
-                else:
-                    kwargs[pair[0]] = pair[1]
-            track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[2]), **kwargs)
-            tracks.append(track)
+                        kwargs[pair[0]] = pair[1]
+                track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[2]), **kwargs)
+                tracks.append(track)
+            else:
+                track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[1]))
+                tracks.append(track)
             line = f.readline()
     return tracks
 

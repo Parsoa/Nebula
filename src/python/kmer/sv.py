@@ -115,3 +115,18 @@ class Inversion(StructuralVariation):
 class Deletion(StructuralVariation):
 
     pass
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class AluInsertion(StructuralVariation):
+
+    # the begin position itself is not included in the sequence
+    # the end position is included in the sequence
+    def extract_base_sequence(self):
+        c = config.Configuration()
+        # this is the largest sequence that we will ever need for this track
+        # <- Slack -><-actual sequence-><- Slack ->
+        chromosome = extract_chromosome(self.chrom.lower())
+        self.sequence = chromosome[self.begin - 150: self.begin + 150]
