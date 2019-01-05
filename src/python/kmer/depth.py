@@ -38,7 +38,7 @@ import numpy
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, counter.BaseExactCountingJob):
+class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, counter.BaseExactCountingJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -47,6 +47,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
     _name = 'UniqueKmersDepthOfCoverageEstimationJob'
     _category = 'programming'
     _previous_job = None
+    _counter_mode = 3
 
     @staticmethod
     def launch(**kwargs):
@@ -158,7 +159,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class GappedKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, counter.BaseExactCountingJob):
+class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, counter.BaseExactCountingJob):
 
     # ============================================================================================================================ #
     # Launcher
@@ -167,15 +168,20 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
     _name = 'GappedKmersDepthOfCoverageEstimationJob'
     _category = 'programming'
     _previous_job = None
+    _counter_mode = 1
 
     @staticmethod
     def launch(**kwargs):
         job = GappedKmersDepthOfCoverageEstimationJob(**kwargs)
         job.execute()
 
+    def execute(self):
+        job = GappedKmersDepthOfCoverageEstimationJob.ExtractExonGappedKmersHelper()
+        job.execute()
+
     # ============================================================================================================================ #
     # ============================================================================================================================ #
-    # Launcher
+    # Extract Kmers
     # ============================================================================================================================ #
     # ============================================================================================================================ #
 
@@ -210,10 +216,6 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.BaseGenotypingJob, coun
             json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
             json_file.close()
             exit()
-
-        def reduce(self):
-
-
 
     # ============================================================================================================================ #
     # MapReduce overrides

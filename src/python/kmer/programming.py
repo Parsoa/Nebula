@@ -82,61 +82,6 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class CountInnerKmersJob(counter.BaseExactCountingJob):
-    
-    _name = 'CountInnerKmersJob'
-    _category = 'programming'
-    _previous_job = ExtractInnerKmersJob
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        job = CountInnerKmersJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        self.kmers = {}
-        self.tracks = self.load_previous_job_results()
-        for track in self.tracks:
-            print(track)
-            with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
-                kmers = json.load(json_file)
-                for kmer in kmers['unique_inner_kmers']:
-                    if not kmer in self.kmers:
-                        self.kmers[kmer] = {'count': 0, 'track': track, 'reference': kmers['unique_inner_kmers'][kmer]['reference']}
-                        self.kmers[reverse_complement(kmer)] = {'count': 0, 'track': track, 'reference': kmers['unique_inner_kmers'][kmer]['reference']}
-        self.round_robin()
-
-    def reduce(self):
-        self.kmers = self.merge_counts()
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
-        self.tracks = {}
-        for kmer in self.kmers:
-            track = self.kmers[kmer]['track']
-            if not track in self.tracks:
-                self.tracks[track] = {}
-            self.tracks[track][kmer] = self.kmers[kmer]
-        for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'inner_kmers_' + track + '.json'), 'w') as track_file:
-                json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'inner_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
 # Models the problem as an integer program and uses CPLEX to solve it
 # This won't need any parallelization
 # ============================================================================================================================ #

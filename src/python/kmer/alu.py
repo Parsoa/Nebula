@@ -198,7 +198,6 @@ class SelectUniqueAluGappedKmersJob(gapped.SelectUniqueGappedKmersJob):
         self.half_mers = {}
         tracks = self.load_previous_job_results()
         m = {}
-        print(len(tracks))
         for track in tracks:
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
@@ -258,7 +257,6 @@ class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
         self.kmers = {}
         tracks = self.load_previous_job_results()
         self.half_mers = {}
-        bed_file_name = c.bed_file.split('/')[-1]
         n = 0
         for track in tracks:
             n += 1
@@ -281,11 +279,8 @@ class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
                             if not right in self.half_mers:
                                 self.half_mers[right] = {}
                             self.half_mers[right][left] = kmer
-        with open(os.path.join(self.get_current_job_directory(), 'half_mers.json'), 'w') as json_file:
-            json.dump(self.half_mers, json_file, indent = 4)
         print(len(self.kmers), 'kmers')
-        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4)
+        self.export_accelerator_input()
         self.round_robin()
 
 # ============================================================================================================================ #

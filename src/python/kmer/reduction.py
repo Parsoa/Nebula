@@ -322,94 +322,9 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
         print(len(self.kmers), 'kmers')
         self.round_robin()
 
-    def process_read(self, read, name, index):
-        c = config.Configuration()
-        slack = (c.read_length - c.ksize) / 2
-        i = 0
-        l = len(read)
-        while i <= l - c.ksize:
-            k = read[i : i + c.ksize]
-            kmer = canonicalize(read[i: i + c.ksize])
-            left = read[:i][-slack:]
-            right = read[i + c.ksize:][:slack]
-            if not kmer in self.kmers:
-                i += 1
-                continue
-            found = False
-            for locus in self.kmers[kmer]['loci']:
-                for mask in self.kmers[kmer]['loci'][locus]['masks']:
-                    if is_canonical_subsequence(mask, left) or is_canonical_subsequence(mask, right):
-                        self.kmers[kmer]['count'] += 1
-                        found = True
-                        break
-                if found:
-                    debug_print(kmer)
-                    debug_print(left)
-                    debug_print(right)
-                    debug_print(index)
-                    debug_breakpoint()
-                    break
-            i += 1
-
-    #def compare(self):
-    #    self.kmers = json.load(open(os.path.join(self.get_current_job_directory(), 'kmers.json')))
-    #    self.py_kmers = {}
-    #    self.tracks = {}
-    #    print('loading python kmers')
-    #    for kmer in self.kmers:
-    #        for track in self.kmers[kmer]['tracks']:
-    #            if not track in self.tracks:
-    #                self.tracks[track] = True
-    #                print(track)
-    #                with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'r') as json_file:
-    #                    kmers = json.load(json_file)
-    #                    for kmer in kmers:
-    #                        self.py_kmers[kmer] = kmers[kmer]['count']
-    #    path = os.path.join(self.get_current_job_directory(), 'batch_0.json') 
-    #    self.c_kmers = {}
-    #    print(len(self.py_kmers))
-    #    print('loading C kmers')
-    #    for i in range(0, self.num_threads):
-    #        path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-    #        with open (path, 'r') as json_file:
-    #            line = json_file.readline()
-    #            while line:
-    #                kmer = line[:line.find(':')]
-    #                count = int(line[line.find(':') + 1:])
-    #                canon = canonicalize(kmer)
-    #                if not canon in self.c_kmers:
-    #                    self.c_kmers[canon] = count
-    #                else:
-    #                    self.c_kmers[canon] += count
-    #                line = json_file.readline()
-    #    print(len(self.c_kmers))
-    #    n = 0
-    #    m = 0
-    #    d = []
-    #    s = 0
-    #    print('comparing...')
-    #    for kmer in self.py_kmers:
-    #        if not kmer in self.c_kmers:
-    #            n += 1
-    #        else:
-    #            if self.py_kmers[kmer] != self.c_kmers[kmer] / 2:
-    #                print(green(self.py_kmers[kmer]), blue(self.c_kmers[kmer] / 2))
-    #                a = abs(self.py_kmers[kmer] - self.c_kmers[kmer])
-    #                d.append(a)
-    #                s += a
-    #                m += 1
-    #    visualizer.histogram(d, 'C-Python diff', self.get_current_job_directory(), 'diff', 'frequency') 
-    #    print(n)
-    #    print(m)
-    #    print(float(s) / len(d))
-    #    exit()
-
     def reduce(self):
         c = config.Configuration()
-        if c.accelerate:
-            self.merge_accelerator_counts()
-        else:
-            self.kmers = self.merge_counts('total', 'doubt')
+        self.merge_accelerator_counts()
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
