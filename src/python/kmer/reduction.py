@@ -178,13 +178,10 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         self.round_robin(self.tracks)
 
     def transform(self, track, track_name):
-        #print(cyan(track))
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
             t = bed.track_from_name(track_name)
             for kmer in kmers:
-                #if kmer != 'CGGGTTCACGCCCTTCTCCCGCCTCAGCCTCC':
-                #    continue
                 seed = sum(list(map(lambda s: ord(s), kmer)))
                 if not kmer in self.kmers:
                     interest_kmers = {}
@@ -201,15 +198,11 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                     for locus in self.kmers[kmer]['loci']:
                         self.kmers[kmer]['loci'][locus]['kmers'] = {k: True for k in self.kmers[kmer]['loci'][locus]['kmers']['left'].keys() + self.kmers[kmer]['loci'][locus]['kmers']['right'].keys()}
                         self.kmers[kmer]['loci'][locus]['masks'] = self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['left'], self.kmers[kmer]['loci'][locus]['seq']['right'], seed)
-                n = 0
                 for locus in self.kmers[kmer]['loci']:
                     tokens = locus.split('_')
                     if tokens[0].lower() == t.chrom.lower() and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
                         self.kmers[kmer]['interest_kmers'].update(self.kmers[kmer]['loci'][locus]['kmers'])
                         self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
-                        n += 1
-                if n == 0:
-                    print(yellow(track, locus))
         return None
 
     def get_shared_masks(self, interest_kmers, kmers):
@@ -236,7 +229,6 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                         indices[i] = True
                         mask = mask[:i] + seq[i] + mask[i + 1:]
                 masks[mask] = True
-        print(masks)
         return masks
 
     def output_batch(self, batch):
@@ -247,9 +239,6 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
             n = 0
             for locus in self.kmers[kmer]['loci'].keys():
                 l = self.get_shared_masks(self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])
-                #l = len(list(filter(lambda x: x in self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])))
-                #m = len(list(filter(lambda x: x in self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])))
-                #print(locus, l, list(filter(lambda x: x in self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])))
                 if l != 0:
                     for ukmer in self.kmers[kmer]['loci'][locus]['kmers']:
                         self.kmers[kmer]['indicator_kmers'][ukmer] = True
@@ -266,12 +255,10 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
 
     def reduce(self):
         self.kmers = {}
-        i = 0
         for batch in self.load_output():
-            print('adding batch', i)
-            i += 1
             for kmer in batch:
                 self.kmers[kmer] = batch[kmer]
+        #
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
@@ -322,9 +309,16 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
         print(len(self.kmers), 'kmers')
         self.round_robin()
 
+    def merge_count(self, kmer, tokens):
+        count = tokens[0] 
+        total = tokens[1] 
+        canon = canonicalize(kmer)
+        self.kmers[canon]['count'] += count / 2
+        self.kmers[canon]['total'] += total / 2
+
     def reduce(self):
         c = config.Configuration()
-        self.merge_accelerator_counts()
+        self.merge_counts()
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
@@ -445,10 +439,18 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
             if len(kmers) == 0:
                 print('no inner kmers found for', red(track_name))
                 return None
-            #kmers = {kmer: kmer[kmer] for kmer in list(filter(lambda kmer: len(kmers[kmer]['tracks']) == 1, kmers))}
-            unique_kmers = list(filter(lambda kmer: len(kmers[kmer]['loci']) == 1, kmers))
-            if len(unique_kmers) > 3:
-                kmers = {kmer: kmers[kmer] for kmer in unique_kmers}
+            _kmers = {kmer: kmers[kmer] for kmer in list(filter(lambda kmer: len(kmers[kmer]['tracks']) == 1, kmers))}
+            unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) == 1, _kmers))
+            non_unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) != 1, _kmers))
+            # let's limit the number of kmers to 50 to help with integer programming runtime
+            if len(unique_kmers) >= 5:
+                kmers = {kmer: _kmers[kmer] for kmer in unique_kmers[:min(50, len(unique_kmers))]}
+            else:
+                kmers = {kmer: _kmers[kmer] for kmer in unique_kmers}
+                for kmer in non_unique_kmers:
+                    kmers[kmer] = _kmers[kmer]
+                    if len(kmers) > 50:
+                        break
             for kmer in kmers:
                 self.lp_kmers[kmer] = {}
                 self.lp_kmers[kmer]['type'] = self._kmer_type
@@ -647,24 +649,24 @@ class LociIndicatorKmersFractionalProgrammingJob(programming.IntegerProgrammingJ
                 val = list(map(lambda track: kmer['coefficient'] * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
                 val.append(1.0)
                 val.append(-1 * (kmer['count'] - kmer['coverage'] * kmer['residue']))
-                #problem.linear_constraints.add(
-                #    lin_expr = [cplex.SparsePair(
-                #        ind = ind,
-                #        val = val,
-                #    )],
-                #    rhs = [0],
-                #    senses = ['E']
-                #)
-                problem.indicator_constraints.add(
-                    indvar = 1 + 2 * len(lp_kmers) + index,
-                    complemented = 1,
-                    rhs = 0,
-                    lin_expr = cplex.SparsePair(
+                problem.linear_constraints.add(
+                    lin_expr = [cplex.SparsePair(
                         ind = ind,
                         val = val,
-                    ),
-                    sense = 'E'
+                    )],
+                    rhs = [0],
+                    senses = ['E']
                 )
+                #problem.indicator_constraints.add(
+                #    indvar = 1 + 2 * len(lp_kmers) + index,
+                #    complemented = 1,
+                #    rhs = 0,
+                #    lin_expr = cplex.SparsePair(
+                #        ind = ind,
+                #        val = val,
+                #    ),
+                #    sense = 'E'
+                #)
                 # error absolute value
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
@@ -796,9 +798,6 @@ class GenotypingConfidenceJob(map_reduce.BaseGenotypingJob):
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(kmers)],
             obj = [1.0] * len(kmers),
         )
-        #self.add_snp_linear_constraint(problem)
-        n = 0
-        start = time.time()
         offset = len(self.tracks) + 2 * len(kmers)
         for index, kmer in enumerate(kmers):
             if kmer['coefficient'] == 0:

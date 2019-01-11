@@ -58,9 +58,6 @@ class ExtractAluReadsJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        #extract_whole_genome()
-        #self.chroms = extract_whole_genome()
-        print(c.bam_file)
         self.bamfile = pysam.AlignmentFile(c.bam_file, "rb")
         self.tracks = bed.load_tracks_from_file_as_dict(c.bed_file)
         self.round_robin(self.tracks)
@@ -68,7 +65,6 @@ class ExtractAluReadsJob(map_reduce.Job):
     def transform(self, track, track_name):
         gapped_kmers = {'outer': {}, 'inner': {}}
         slack = 70
-        ref = ''
         reads = self.bamfile.fetch(region = track.chrom + ':' + str(track.begin - slack) + ':' + str(track.begin + slack))
         for read in reads:
             if read.query_alignment_length != len(read.query_sequence):
@@ -88,7 +84,7 @@ class ExtractAluReadsJob(map_reduce.Job):
                                 gapped_kmers['outer'][kmer] = 0
                             gapped_kmers['outer'][kmer] += 1
                         index += 1
-        _gapped_kmers = {'outer': {}, 'inner': {}, 'ref': ref}
+        _gapped_kmers = {'outer': {}, 'inner': {}}
         for kmer in gapped_kmers['outer']:
             if gapped_kmers['outer'][kmer] >= 3:
                 _gapped_kmers['outer'][kmer] = gapped_kmers['outer'][kmer]
@@ -127,6 +123,7 @@ class UniqueAluGappedKmersJob(gapped.UniqueGappedKmersJob):
         job = UniqueAluGappedKmersJob(**kwargs)
         job.execute()
 
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -352,14 +349,6 @@ class AluGappedKmersIntegerProgrammingJob(gapped.GappedKmersIntegerProgrammingJo
                 eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
         return problem
 
-    def round_genotype(self, c):
-        if c > 0.75:
-            return (1.0, '11')
-        elif c > 0.25:
-            return (0.5, '10')
-        else:
-            return (0.0, '00')
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # Models the problem as an integer program and uses CPLEX to solve it
@@ -394,27 +383,21 @@ class AluGappedKmersFractionalProgrammingJob(gapped.GappedKmersIntegerProgrammin
                 t = bed.track_from_name(track)
                 c = solution[0]
                 w = solution[-1]
-                print(c)
-                #g = self.round_genotype(c / w)
-                g = self.round_genotype(c / 2.0)
-                w = 1.0
+                g = self.round_genotype(c / w)
                 bed_file.write(t.chrom + '\t' +
                     str(t.begin) + '\t' +
                     str(t.end) + '\t' +
                     str(g[1]) + '\t' +
-                    str(solution[1]) + '\t' +
-                    str(solution[2]) + '\t' +
-                    str(solution[3]) + '\n')
-                    #str(1.0 / w) + '\t' +
-                    #str(c / w) + '\t' +
-                    #str(len(solution) / 2) + '\n')
+                    str(1.0 / w) + '\t' +
+                    str(c / w) + '\t' +
+                    str(len(solution) / 2) + '\n')
                 with open(os.path.join(self.get_current_job_directory(), 'solution_' + track + '.json'), 'w') as json_file:
                     json.dump({'variables': [s / w if s != w else 1.0 / s for s in solution]}, json_file, indent = 4, sort_keys = True)
 
     def round_genotype(self, c):
         if c > 0.75:
             return (1.0, '11')
-        elif c > 0.25:
+        elif c > 0.10:
             return (0.5, '10')
         else:
             return (0.0, '00')
@@ -435,12 +418,12 @@ class AluGappedKmersFractionalProgrammingJob(gapped.GappedKmersIntegerProgrammin
 
         def transform(self, _, track):
             print('solving for', cyan(track))
-            #problem = self.generate_linear_program(track)
-            #print('program_' + track + '.lp')
-            #problem.write(os.path.join(self.get_current_job_directory(), 'program_' + str(track) + '.lp'))
-            #problem.solve()
-            #solution = problem.solution.get_values()
-            solution = self.estimate_maximum_likelihood(track)
+            problem = self.generate_linear_program(track)
+            print('program_' + track + '.lp')
+            problem.write(os.path.join(self.get_current_job_directory(), 'program_' + str(track) + '.lp'))
+            problem.solve()
+            solution = problem.solution.get_values()
+            #solution = self.estimate_maximum_likelihood(track)
             with open(os.path.join(self.get_current_job_directory(), 'solution_' + track + '.json'), 'w') as json_file:
                 json.dump({'variables': solution}, json_file, indent = 4, sort_keys = True)
             return None
@@ -451,16 +434,11 @@ class AluGappedKmersFractionalProgrammingJob(gapped.GappedKmersIntegerProgrammin
         def output_batch(self, batch):
             exit()
 
-        def estimate_maximum_likelihood(self, track):
-            c = config.Configuration()
-            lp_kmers = list(filter(lambda kmer: track in kmer['tracks'], self.lp_kmers))
-            distributions = [statistics.NormalDistribution(0, 3), statistics.NormalDistribution(c.coverage / 2, 8), statistics.NormalDistribution(c.coverage, 15)]
-            likelihoods = [0, 0, 0]
-            for index, kmer in enumerate(lp_kmers):
-                for i, distribution in enumerate(distributions):
-                    likelihoods[i] += distribution.log_pmf(kmer['count'])
-            index, value = max(enumerate(likelihoods), key = operator.itemgetter(1))
-            return [index] + likelihoods
+        #    for index, kmer in enumerate(lp_kmers):
+        #        for i, distribution in enumerate(distributions):
+        #            likelihoods[i] += distribution.log_pmf(kmer['count'])
+        #    index, value = max(enumerate(likelihoods), key = operator.itemgetter(1))
+        #    return [index] + likelihoods
 
         def generate_linear_program(self, track):
             print('generating linear program')
@@ -490,7 +468,7 @@ class AluGappedKmersFractionalProgrammingJob(gapped.GappedKmersIntegerProgrammin
             ind = [0]
             ind.append(1 + 2 * len(lp_kmers))
             #ind.append(1 + index)
-            val = [17, 0.01]
+            val = [27, 1]
             #val.append([kmer['count']] * (1 + 2 * len(lp_kmers)))
             problem.linear_constraints.add(
                 lin_expr = [cplex.SparsePair(
@@ -499,6 +477,17 @@ class AluGappedKmersFractionalProgrammingJob(gapped.GappedKmersIntegerProgrammin
                 )],
                 rhs = [1],
                 senses = ['E']
+            )
+            # range constraints
+            ind = [0, 1 + 2 * len(lp_kmers)]
+            val = [1, -1]
+            problem.linear_constraints.add(
+                lin_expr = [cplex.SparsePair(
+                    ind = ind,
+                    val = val,
+                )],
+                rhs = [0],
+                senses = ['L']
             )
             for index, kmer in enumerate(lp_kmers):
                 ind = [0]

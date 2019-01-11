@@ -34,14 +34,6 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# MapReduce job for finding StructuralVariation breakpoints
-# Algorithm: starts with a set of structural variation events and their approximate breakpoints and tries to refine them
-# considers a radius of [-50, 50] around each end of the breakpoint, and for each pair of endpoints within that radius considers
-# the area as the structural variations and applies it to the reference genome to generate a set of kmers. Discards those endpoints
-# whose kmers do not all appear in the base genome the event was detected in. 
-# Output: Reports the remaining boundary candidates with their list of associated kmers and the count of those kmers in the
-# base genome.
-# ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -84,6 +76,7 @@ class ExtractGappedKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
 
 class UniqueGappedKmersJob(map_reduce.Job):
 
@@ -106,7 +99,6 @@ class UniqueGappedKmersJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        #self.gapped_counts_provider = counttable.JellyfishCountsProvider(self.get_gapped_reference_counts_provider())
         self.gapped_kmers = {'inner': {}, 'outer': {}}
         tracks = self.load_previous_job_results()
         for track in tracks:
@@ -196,21 +188,17 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
                 kmers = json.load(json_file)
                 for side in ['outer', 'inner']:
                     for kmer in kmers[side]:
-                        if len(kmer) != c.ksize:
-                            print(red(kmer))
                         self.kmers[kmer] = kmers[side][kmer]
                         self.kmers[kmer]['count'] = 0
                         self.kmers[kmer]['side'] = side
                         left = kmer[:c.hsize]
                         right = kmer[-c.hsize:]
                         self.half_mers[left] = True
-                        self.half_mers[right] = True
-                        self.half_mers[reverse_complement(left)] = True
+                        #self.half_mers[right] = True
+                        #self.half_mers[reverse_complement(left)] = True
                         self.half_mers[reverse_complement(right)] = True
         print('scoring', len(self.kmers), 'kmers')
         self.chroms = extract_whole_genome()
-        for chrom in self.chroms:
-            print(sys.getsizeof(self.chroms[chrom]))
         self.round_robin(self.chroms)
 
     def transform(self, sequence, chrom):
@@ -228,10 +216,8 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
                 continue
             for k in range(32, 43):
                 kmer = canonicalize(sequence[index: index + k])
-                #kmer = sequence[index: index + k]
                 kmer = kmer[:c.hsize] + kmer[-c.hsize:]
                 if kmer in self.kmers:
-                    print(kmer)
                     if self.kmers[kmer]['side'] == 'inner' and k != c.ksize + 5:
                         continue
                     self.kmers[kmer]['count'] += 1
@@ -242,8 +228,19 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
         json_file.close()
         exit()
 
+    def merge_counts(self):
+        c = config.Configuration()
+        print('merging kmer counts ...')
+        for i in range(0, self.num_threads):
+            print('adding batch', i)
+            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
+            with open (path, 'r') as json_file:
+                batch = json.load(json_file)
+                for kmer in batch:
+                    self.kmers[kmer]['count'] += batch[kmer]['count']
+
     def reduce(self):
-        self.kmers = self.merge_counts()
+        self.merge_counts()
         self.tracks = self.load_previous_job_results()
         for track in self.tracks.keys():
             with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
@@ -288,8 +285,8 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
         self.kmers = {}
         self.half_mers = {}
         tracks = self.load_previous_job_results()
-        x = []
         m = 0
+        x = []
         for track in tracks:
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
@@ -323,22 +320,15 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
         with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
 
+    def merge_count(self, kmer, tokens):
+        for i in range(0, 11):
+            count = tokens[i] 
+            self.kmers[kmer]['count'][i] += count
+
     def reduce(self):
         c = config.Configuration()
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                line = json_file.readline()
-                while line:
-                    kmer = line[:line.find(':')]
-                    index = line.find(':')
-                    for i in range(0, 11):
-                        count = int(line[index + 1: line.find(':', index + 1)])
-                        self.kmers[kmer]['count'][i] += count
-                        index = line.find(':', index + 1)
-                    line = json_file.readline()
         self.tracks = {}
+        self.merge_counts()
         print(len(self.kmers))
         keys = list(self.kmers.keys())
         for kmer in keys:
@@ -411,7 +401,6 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
                             self.kmers[kmer] = kmers[side][kmer]
                             self.kmers[kmer]['count'] = 0
                             self.kmers[kmer]['doubt'] = 0
-                            print(type(kmers[side][kmer]['gap']))
                             if not left in self.half_mers:
                                 self.half_mers[left] = {}
                             self.half_mers[left][right] = kmer 
@@ -424,19 +413,13 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
         self.export_accelerator_input()
         self.round_robin()
 
+    def merge_count(self, kmer, tokens):
+        count = tokens[0] 
+        self.kmers[kmer]['count'] += count
+
     def reduce(self):
         c = config.Configuration()
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                line = json_file.readline()
-                while line:
-                    kmer = line[:line.find(':')]
-                    count = int(line[line.find(':') + 1:])
-                    self.kmers[kmer]['count'] += count
-                    line = json_file.readline()
-        print('exporting C kmers...')
+        self.merge_counts()
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         # output kmers per track
@@ -585,6 +568,14 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 p = float(n) / len(self.lp_kmers)
                 eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
         return problem
+
+    def round_genotype(self, c):
+        if c > self.b2:
+            return (1.0, '11')
+        elif c > self.b1:
+            return (0.5, '10')
+        else:
+            return (0.0, '00')
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

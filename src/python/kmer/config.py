@@ -75,6 +75,8 @@ def parse_args():
     parser.add_argument("--random", action = 'store_true')
     # whether to resume this job from reduce or not
     parser.add_argument("--reduce", action = 'store_true')
+    # whether to do a diploid simulation or two haploid ones 
+    parser.add_argument("--diploid", action = 'store_true')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
@@ -120,6 +122,7 @@ def configure(args):
         input = args.input,
         genome = args.genome,
         random = args.random,
+        diploid = args.diploid,
         bam_file = args.bam,
         bed_file = args.bed,
         coverage = round(1 * args.coverage) if args.simulation else (args.coverage),

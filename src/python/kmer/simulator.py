@@ -67,6 +67,8 @@ class Simulation(map_reduce.Job):
         self.export_bed(self.present, 'present')
         self.export_bed(self.homozygous, 'homozygous')
         self.export_bed(self.heterozygous, 'heterozygous')
+        if c.diploid:
+            print('Starting diploid simulation...')
         #
         self.extract_whole_genome()
         self.round_robin(self.chroms)
@@ -99,6 +101,8 @@ class Simulation(map_reduce.Job):
     def load_structural_variations(self):
         c = config.Configuration()
         print('loading SVs from file', c.bed_file)
+        self.sv_type = self.get_sv_type()
+        print('Type of events:', cyan(self.sv_type))
         tracks = []
         for track in bed.load_tracks_from_file(c.bed_file, [('zygosity', None)]):
             if track.end - track.begin > 1000000:
@@ -109,6 +113,17 @@ class Simulation(map_reduce.Job):
         return self.filter_overlapping_intervals(\
                     sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
                 )
+
+    def get_sv_type(self):
+        c = config.Configuration()
+        bed_file_name = c.bed_file.split('/')[-1]
+        if bed_file_name.find('DEL') != -1:
+            return 'DEL'
+        if bed_file_name.find('INV') != -1:
+            return 'INV'
+        if bed_file_name.find('ALU') != -1:
+            return 'ALU'
+        return Deletion
 
     def filter_overlapping_intervals(self, intervals):
         remove = []
@@ -162,12 +177,15 @@ class Simulation(map_reduce.Job):
                     r = random.randint(0, 2)
                     if r == 2:
                         self.absent.append(track)
+                        track.zygosity = '0|0'
                     else:
                         self.present.append(track)
                         if r == 1:
                             self.heterozygous.append(track)
+                            track.zygosity = '0|1'
                         else:
                             self.homozygous.append(track)
+                            track.zygosity = '1|1'
         print(len(self.tracks), 'non-overlapping tracks')
         print(len(self.absent), '0/0')
         print(len(self.present), '1/1 or 1/0')
@@ -182,13 +200,18 @@ class Simulation(map_reduce.Job):
 
     def transform(self, seq, chrom):
         print('simulating', chrom)
+        c = config.Configuration()
         strand_1 = self.apply_events_to_chromosome(chrom, self.present)
         strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
-        self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
-        self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
-        self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
-        self.export_fastq(seq, chrom + '_strand_1')
-        self.export_fastq(seq, chrom + '_strand_2')
+        exit()
+        if c.diploid:
+            self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
+            self.export_fastq(seq, chrom + '_diploid')
+        else:
+            self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
+            self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
+            self.export_fastq(seq, chrom + '_strand_1')
+            self.export_fastq(seq, chrom + '_strand_2')
         exit()
 
     def export_diploid_chromosome_fasta(self, chrom, strands):
@@ -196,7 +219,7 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), chrom + '_diploid.fa'), 'w') as fasta_file:
             for i in range(0, 2):
-                fasta_file.write('>' + chrom + '_' + str(i) + '\n')
+                fasta_file.write('>' + chrom + '_' + str(i + 1) + '\n')
                 seq = strands[i]
                 l = len(seq)
                 n = 100
@@ -227,6 +250,9 @@ class Simulation(map_reduce.Job):
             print('applying', track, 'to', chrom)
             s = self.chroms[chrom][previous:track.begin]
             seq += s
+            if self.sv_type == 'ALU':
+                print('Adding sequence')
+                seq += 'GCCGGGCGTGGTGGCTTACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGACGGGTGGATCACGAGGTCAGCAGATGGAGACCATCCTGGCTAACACGGTGAAACCCCGTCTCTACTAAAAATGCAAAAAAATTAGCCGGGTGTGGTGGTGGGCGCCTGTAGTCCCAGCTACTCAGGAGGCTGAGGCAGGAGAATGGCATGAACCTGGGAGGCGGAGCTTGCAGTGAGCCGAGATCATGTCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCGTCTCAAAAAAAAAAAGAAAAAAA'
             previous = track.end
         seq += self.chroms[chrom][previous:]
         return seq
@@ -244,6 +270,7 @@ class Simulation(map_reduce.Job):
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def reduce(self):
+        c = config.Configuration()
         self.export_reference_genome()
         self.export_reference_jellyfish_table()
         self.merge_fastq_files()
@@ -275,7 +302,10 @@ class Simulation(map_reduce.Job):
         FNULL = open(os.devnull, 'w')
         print('Mixing FASTQ files...')
         command = 'cat '
-        command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
+        if c.diploid:
+            command += os.path.join(self.get_current_job_directory(), 'chr*.fq')
+        else:
+            command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
         command += ' > '
         command += os.path.join(self.get_current_job_directory(), 'test.fq')
         print(command)
@@ -291,6 +321,31 @@ class Simulation(map_reduce.Job):
         command += ' -o ' + os.path.join(self.get_current_job_directory(), channel + '.jf')
         print(command)
         output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+
+    def export_bam(name, ref):
+        c = config.Configuration()
+        FNULL = open(os.devnull, 'w')
+        fasta = os.path.join(get_output_directory(), 'reference.fa')
+        fastq = os.path.join(get_output_directory(), 'test.fq')
+        # generate sam file
+        print('Generating SAM file')
+        sam_file = os.path.join(get_output_directory(), 'test.sam')
+        command = "bwa mem -M -t 24 {} {} > {}".format(fasta, fastq, sam_file)
+        subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+        # generate bam file
+        print('Generating unsorted BAM file')
+        unsorted_bam = os.path.join(get_output_directory(), name + '.unsorted.bam')
+        command = "samtools view -S -b {} > {}".format(sam_file, unsorted_bam)  
+        subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+        #print('Sorting ...')
+        #bam = os.path.join(get_output_directory(), name)
+        #command = "samtools sort {} -o {}".format(unsorted_bam, bam)
+        #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+        #print('Indexing ...')
+        #bam_index = os.path.join(get_output_directory(), name + '.bai')
+        #command = "samtools index {} {}".format(bam + '.bam', bam_index)
+        #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
+        print('Done!')
 
 # ============================================================================================================================ #
 # Main

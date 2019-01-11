@@ -52,18 +52,9 @@ class Job(object):
             print('adding attr', green(k), blue(v))
             setattr(self, k, v)
 
-    def prepare(self):
-        # Declare and initialize needed variables here before the mpa reduce flow beings
-        pass
-
-    def check_cli_arguments(self, args):
-        # Check if every needed argument is passed and in good form
-        pass
-
     def execute(self):
         c = config.Configuration()
-        self.check_cli_arguments(None)
-        self.prepare()
+        self.pre_process()
         self.create_output_directories()
         self.find_thread_count()
         self.prepare()
@@ -77,6 +68,9 @@ class Job(object):
         output = self.reduce()
         self.plot(output)
         return output
+
+    def pre_process(self):
+        pass
 
     def find_thread_count(self):
         c = config.Configuration()
@@ -350,5 +344,4 @@ class GenomeDependentJob(BaseGenotypingJob):
         if c.simulation:
             return map_reduce.Job.get_current_job_directory(self)
         else:
-            bed_file_name = c.bed_file.split('/')[-1]
             return os.path.abspath(os.path.join(self.get_output_directory(), self._name))

@@ -3,10 +3,10 @@ source PWD.sh
 source BED.sh
 source SIM.sh
 DATA="/share/hormozdiarilab/Codes/NebulousSerendipity/data/"
-BED_GENOME=$(echo $BED | awk -F. "{ print $1 }")
-echo $BED_GENOME
+BED_GENOME=$(echo $BED | awk -F. '{ print $1 }')
+echo BED_GENOME $BED_GENOME
 TARGET_BED="$GEN.$(echo $BED | sed 's|[^.]*\.||')"
-echo $TARGET_BED
+echo TARGET_BED $TARGET_BED
 F="merge.bed"
 ################################################################################
 awk 'BEGIN {FS = "\t"} { if ($4 ~ /00/)    { print $0 } }' $F > 00.bed

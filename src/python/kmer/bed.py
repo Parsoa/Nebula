@@ -31,8 +31,8 @@ class BedTrack:
 
     def export(self):
         s = self.chrom + '\t' + str(self.begin) + '\t' + str(self.end)
-        for k, v in enumerate(self.kwargs):
-            s += '\t' + str(self.kwargs[v])
+        for k, v in self.kwargs.items():
+            s += '\t' + getattr(self, k)
         s += '\n'
         return s
 

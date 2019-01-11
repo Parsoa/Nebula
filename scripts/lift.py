@@ -6,6 +6,7 @@ import subprocess
 if __name__ == '__main__':
     print os.getcwd()
     bed = sys.argv[1]
+    to = int(sys.argv[2]) if len(sys.argv) == 3 else 38
     name = bed[:bed.find('.bed')]
     FNULL = open(os.devnull, 'w')
     with open(name + '.convert.bed', 'w') as c:
@@ -15,7 +16,10 @@ if __name__ == '__main__':
                 name = tokens[0] + '_' + tokens[1] + '_' + tokens[2] + '.bed'
                 with open(name, 'w') as t:
                     t.write(tokens[0] + '\t' + tokens[1] + '\t' + tokens[2] + '\n')
-                command = '/home/pkhorsand/local/bin/liftOver ' + name + ' /afs/genomecenter.ucdavis.edu/home/pkhorsand/hg19ToHg38.over.chain res.bed un.bed'
+                if to == 38:
+                    command = '/home/pkhorsand/local/bin/liftOver ' + name + ' /afs/genomecenter.ucdavis.edu/home/pkhorsand/hg19ToHg38.over.chain res.bed un.bed'
+                else:
+                    command = '/home/pkhorsand/local/bin/liftOver ' + name + ' /afs/genomecenter.ucdavis.edu/home/pkhorsand/hg38ToHg19.over.chain res.bed un.bed'
                 print command
                 output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
                 with open('./res.bed', 'r') as r:
