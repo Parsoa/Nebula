@@ -280,35 +280,26 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         return self.tracks
 
     def export_solution(self):
-        with open(os.path.join(self.get_current_job_directory(), 'solution.json'), 'w') as json_file:
-            json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
-        self.errors = self.solution[len(self.tracks):]
-        with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
-            for track in self.tracks:
-                index = self.tracks[track]['index']
-                t = bed.track_from_name(track)
-                g = self.round_genotype(self.solution[index])
-                bed_file.write(t.chrom + '\t' +
-                    str(t.begin) + '\t' +
-                    str(t.end) + '\t' +
-                    str(g[1]) + '\t' +
-                    str(self.solution[index]) + '\n')
-                    #str(len(self.tracks[track]['kmers'])) + '\n')
-
-    def export_solution(self):
+        c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), 'solution.json'), 'w') as json_file:
             json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
         self.errors = self.solution[len(self.tracks):]
         for track in self.tracks:
             index = self.tracks[track]['index']
             self.tracks[track]['coverage'] = self.solution[index]
-            self.tracks[track]['lp_kmers'] = list(filter(lambda kmer: track in kmer['tracks'], self.lp_kmers))
+            self.tracks[track]['lp_kmers'] = []
+        for index, kmer in enumerate(self.lp_kmers):
+            for track in kmer['tracks']:
+                self.tracks[track]['lp_kmers'].append(kmer)
         self.find_rounding_break_points()
-        print('[0,', cyan(self.b1), ',', yellow(self.b2), ', 1.0]')
+        self.b2 = 0.75
+        self.b1 = 0.25
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in self.tracks:
                 index = self.tracks[track]['index']
                 t = bed.track_from_name(track)
+                if t.chrom.lower() == 'chrx' and c.simulation:
+                    continue
                 g = self.round_genotype(self.solution[index])
                 bed_file.write(t.chrom + '\t' +
                     str(t.begin) + '\t' +
@@ -319,15 +310,20 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def find_rounding_break_points(self):
         c = config.Configuration()
-        likelihood = [0, 0, 0]
-        distributions = [statistics.NormalDistribution(0, 3), statistics.NormalDistribution(c.coverage / 2, 8), statistics.NormalDistribution(c.coverage, 15)]
-        m = -1000000000
-        for b1 in range(1, 10):
-            for b2 in range(11, 20):
+        d_0 = statistics.NormalDistribution(0, 3)
+        d_1 = statistics.NormalDistribution(c.coverage / 2, 8)
+        d_2 = statistics.NormalDistribution(c.coverage, 15)
+        distributions = [{'inner': d_0, 'gapped': d_2}, {'inner': d_1, 'gapped': d_1}, {'inner': d_2, 'gapped': d_0}]
+        m = None
+        self.b2 = 0.90
+        self.b1 = 0.10
+        step = 0.05
+        for b1 in range(int(0.1 / step), int(0.5 / step)):
+            for b2 in range(int(0.55 / step), int(1.0 / step)):
                 print(b1, b2)
                 likelihood = 0
-                b_1 = b1 * 0.05
-                b_2 = b2 * 0.05
+                b_1 = b1 * step
+                b_2 = b2 * step
                 for track in self.tracks:
                     if self.tracks[track]['coverage'] <= b_1:
                         likelihood += self.estimate_likelihood(track, distributions[0])
@@ -335,25 +331,92 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                         likelihood += self.estimate_likelihood(track, distributions[1])
                     else:
                         likelihood += self.estimate_likelihood(track, distributions[2])
-                if likelihood > m:
+                if m == None:
                     self.b1 = b_1
                     self.b2 = b_2
                     m = likelihood
+                elif likelihood > m:
+                    self.b1 = b_1
+                    self.b2 = b_2
+                    m = likelihood
+        print('[0,', cyan(self.b1), ',', yellow(self.b2), ', 1.0]')
+
+    def find_rounding_break_points_em(self):
+        c = config.Configuration()
+        T = {}
+        r = {}
+        m = [0, 50, 100]
+        #m = sorted([random.randint(0, 100), random.randint(0, 100), random.randint(0, 100)])
+        print(m)
+        s = [5.0, 25.0, 10.0]
+        #s = [random.randint(1, 50), random.randint(1, 50), random.randint(1, 50)]
+        print(s)
+        f = [None, None, None]
+        n = float(len(self.tracks))
+        for track in self.tracks:
+            T[track] = [0, 0, 0]
+        u = 0
+        while True:
+            for j in range(0, 3):
+                f[j] = statistics.NormalDistribution(m[j], max(s[j], 1.0))
+            for track in self.tracks:
+                t = sum(map(lambda j: f[j].pmf(self.tracks[track]['coverage'] * 100), range(0, 3)))
+                for j in range(0, 3):
+                    T[track][j] = f[j].pmf(self.tracks[track]['coverage'] * 100) / t
+            d = 0
+            for j in range(0, 3):
+                t = sum(map(lambda track: T[track][j], self.tracks)) + 0.00001
+                # mean
+                a = sum(map(lambda track: T[track][j] * self.tracks[track]['coverage'] * 100, self.tracks)) / t
+                d = max(abs(m[j] - a), d)
+                m[j] = a
+                # std
+                a = math.sqrt(sum(map(lambda track: T[track][j] * ((self.tracks[track]['coverage'] * 100 - m[j]) ** 2), self.tracks)) / t)
+                d = max(abs(s[j] - a), d)
+                s[j] = a
+            if d < 0.01:
+                break
+            u += 1
+            print('EM Iteration', u)
+            print(cyan(m[0], s[0]))
+            print(blue(m[1], s[1]))
+            print(green(m[2], s[2]))
+        self.distributions = []
+        m = [0, 50, 99]
+        s = [3.0, 20.0, 3.0]
+        m, s = (list(t) for t in zip(*sorted(zip(m, s))))
+        print(cyan(m[0], s[0]))
+        print(blue(m[1], s[1]))
+        print(green(m[2], s[2]))
+        for j in range(0, 3):
+            self.distributions.append(statistics.NormalDistribution(m[j], max(s[j], 1.0)))
 
     def estimate_likelihood(self, track, distribution):
         c = config.Configuration()
-        likelihood = 0
+        likelihood = 0.0
         for index, kmer in enumerate(self.tracks[track]['lp_kmers']):
-            likelihood += distribution.log_pmf(kmer['count'])
-        return likelihood
+            l = distribution[kmer['type']].log_pmf(kmer['count'] - kmer['residue'] * kmer['coverage'])
+            kmer['likelihood'] = l
+            likelihood += l
+        return likelihood / (index + 1)
 
     def round_genotype(self, c):
-        if c > 0.75:
+        if c > self.b2:
             return (1.0, '00')
-        elif c > 0.25:
+        elif c > self.b1:
             return (0.5, '10')
         else:
             return (0.0, '11')
+
+    #def round_genotype(self, c):
+    #    likelihoods = [F.pmf(c * 100) for F in self.distributions]
+    #    index, value = max(enumerate(likelihoods), key = operator.itemgetter(1))
+    #    if index == 0:
+    #        return (0.0, '11')
+    #    elif index == 1:
+    #        return (0.5, '10')
+    #    else:
+    #        return (1.0, '00')
 
     def verify_genotypes(self):
         c = config.Configuration()
@@ -364,22 +427,18 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 for track in bed.load_tracks_from_file(os.path.join(self.get_current_job_directory(), r + '_as_' + p + '.bed'), [('lp_genotype', None, str), ('lp_value', None, float)]):
                     g = self.round_genotype(track.lp_value)
                     self.tracks[str(track)]['lp_value'] = track.lp_value
-                    self.tracks[str(track)]['lp_rounding'] = g[0] 
+                    self.tracks[str(track)]['lp_rounding'] = g[0]
                     self.tracks[str(track)]['lp_genotype'] = g[1]
                     self.tracks[str(track)]['actual_genotype'] = r
-                    #self.tracks[str(track)]['confidence_score'] = None
-                    #self.tracks[str(track)]['p_value'] = None
-                    #self.tracks[str(track)]['t_value'] = None
         with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
             json.dump(self.tracks, json_file, indent = 4)
+        self.plot_lp_values()
 
     def plot_lp_values(self):
         x = []
-        y = []
         for track in self.tracks:
-            x.append(self.tracks[track]['actual_genotype'])
-            y.append(self.tracks[track]['lp_value'])
-        visualizer.violin(x, y, 'lp_value_distribution', self.get_current_job_directory(), 'Prediction', 'Value')
+            x.append(self.tracks[track]['lp_value'])
+        visualizer.histogram(x, 'lp_value_distribution', self.get_current_job_directory(), 'Value', 'Frequency', 0.05)
 
 # ============================================================================================================================ #
 # Main

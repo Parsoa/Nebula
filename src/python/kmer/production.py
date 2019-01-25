@@ -153,8 +153,9 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
             kmer['coverage'] = c.coverage if kmer['type'] == 'gapped' else kmer['coverage']
             l = len(self.tracks[kmer['tracks'].keys()[0]]['inner_kmers'])
             #kmer['weight'] = 1.0 if kmer['type'] != 'gapped' else 2 * l if l != 0 else 1.0
+            kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
             l = l if l else 1
-            kmer['weight'] = 2 * l if kmer['type'] == 'gapped' else 0.5 + abs(kmer['count'] - (kmer['coverage'] / 2.0)) / (kmer['coverage'] / 2.0) if kmer['reference'] == 1 else 0.5
+            kmer['weight'] = 2 * l if kmer['type'] == 'gapped' else 1.0#0.5 + abs(kmer['count'] - (kmer['coverage'] / 2.0)) / (kmer['coverage'] / 2.0) if kmer['reference'] == 1 else 0.5
 
     def generate_linear_program(self):
         c = config.Configuration()
@@ -256,7 +257,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), 'kmers_' + track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
-        self.plot_confidence_parameters()
+        #self.plot_confidence_parameters()
 
     def plot_confidence_parameters(self):
         x = []
@@ -315,7 +316,6 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
             score += 1.0 / (1 + error)
         for error in track['errors']['gapped_kmers']:
             score += 10 / (1 + error)
-            #score += float(len(track['kmers']['inner_kmers'])) / (1 + error)
         return score
 
 # ============================================================================================================================ #

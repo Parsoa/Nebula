@@ -79,17 +79,17 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                 if self.acc[count] % 1000 == 0:
                     print(self.acc[count], 'kmers with a count of', count, 'so far')
         print('Counting', green(len(self.kmers)), 'unique kmers')
-        if c.accelerate:
-            with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
-                json.dump(self.kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
         self.round_robin()
 
-    def merge_counts(self, kmer, tokens):
+    def merge_count(self, kmer, tokens):
         count = tokens[0] 
         canon = canonicalize(kmer)
         self.kmers[canon]['count'] += count / 2
 
     def reduce(self):
+        c = config.Configuration()
         self.merge_counts()
         self.counts = list(map(lambda kmer: self.kmers[kmer]['count'], self.kmers))
         self.mean = numpy.mean(self.counts)
@@ -406,6 +406,8 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
         job = ChromosomeGcContentEstimationJob.CounterHelper(resume_from_reduce = True)
         job.kmers = self.kmers
         kmers = job.execute()
+        with open(os.path.join(self.get_current_job_directory(), 'gc.json'), 'w') as json_file:
+            json.dump(kmers, json_file, indent = 4)
         for gc in self.gc:
             for kmer in self.gc[gc]:
                 if kmer in kmers:
@@ -456,26 +458,15 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
             with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
                 json.dump(self.kmers, json_file, indent = 4)
             self.round_robin()
-
-        def merge_counts(self):
-            for i in range(0, self.num_threads):
-                print('adding batch', i)
-                path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-                with open (path, 'r') as json_file:
-                    line = json_file.readline()
-                    while line:
-                        kmer = line[:line.find(':')]
-                        i = line.find(':')
-                        j = line.find(':', i + 1)
-                        count = int(line[i + 1: j])
-                        total = int(line[j + 1:])
-                        self.kmers[canon] += count / 2
-                        line = json_file.readline()
+            self.num_threads = 4
 
         def merge_count(self, kmer, tokens):
             canon = canonicalize(kmer)
+            count = tokens[0]
+            # randomness in selection earlier
             if not canon in self.kmers:
                 self.kmers[canon] = 0
+            self.kmers[canon] += count / 2
 
         def reduce(self):
             self.kmers = {}

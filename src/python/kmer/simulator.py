@@ -203,7 +203,6 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         strand_1 = self.apply_events_to_chromosome(chrom, self.present)
         strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
-        exit()
         if c.diploid:
             self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
             self.export_fastq(seq, chrom + '_diploid')
@@ -244,7 +243,7 @@ class Simulation(map_reduce.Job):
         seq = ''
         previous = 0
         for track in tracks:
-            if track.chrom != chrom:
+            if track.chrom.lower() != chrom.lower():
                 print(yellow('skipping', track, 'on', chrom))
                 continue
             print('applying', track, 'to', chrom)
@@ -303,13 +302,23 @@ class Simulation(map_reduce.Job):
         print('Mixing FASTQ files...')
         command = 'cat '
         if c.diploid:
-            command += os.path.join(self.get_current_job_directory(), 'chr*.fq')
+            command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
+            command += ' > '
+            command += os.path.join(self.get_current_job_directory(), 'test.1.fq')
+            print(command)
+            output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+            command = 'cat '
+            command += os.path.join(self.get_current_job_directory(), 'chr*.2.fq')
+            command += ' > '
+            command += os.path.join(self.get_current_job_directory(), 'test.2.fq')
+            print(command)
+            output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
         else:
             command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
-        command += ' > '
-        command += os.path.join(self.get_current_job_directory(), 'test.fq')
-        print(command)
-        output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+            command += ' > '
+            command += os.path.join(self.get_current_job_directory(), 'test.fq')
+            print(command)
+            output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
 
     def export_fastq_jellyfish_table(self, channel, *args):
         c = config.Configuration()

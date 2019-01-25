@@ -70,4 +70,3 @@ class BaseExactCountingJob(map_reduce.Job):
                     tokens = line.split(':')
                     self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
                     line = json_file.readline()
-

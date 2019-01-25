@@ -14,6 +14,8 @@ import operator
 import traceback
 import subprocess
 
+from itertools import chain
+
 from kmer import (
     bed,
     config,
@@ -59,14 +61,18 @@ class ExtractAluReadsJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         self.bamfile = pysam.AlignmentFile(c.bam_file, "rb")
-        self.tracks = bed.load_tracks_from_file_as_dict(c.bed_file)
+        self.tracks = self.load_tracks() 
         self.round_robin(self.tracks)
-    
+        self.num_threads = 1
+
     def transform(self, track, track_name):
         gapped_kmers = {'outer': {}, 'inner': {}}
         slack = 70
-        reads = self.bamfile.fetch(region = track.chrom + ':' + str(track.begin - slack) + ':' + str(track.begin + slack))
+        self.sv_type = self.get_sv_type() 
+        reads = chain(self.bamfile.fetch(region = track.chrom + ':' + str(track.begin - slack) + ':' + str(track.begin + slack)), self.bamfile.fetch(region = track.chrom + ':' + str(track.end - slack) + ':' + str(track.end + slack)))
+        n = 0
         for read in reads:
+            n += 1
             if read.query_alignment_length != len(read.query_sequence):
                 seq = read.query_sequence
                 if read.reference_start >= track.begin - slack and read.reference_start <= track.begin + slack:
@@ -84,6 +90,7 @@ class ExtractAluReadsJob(map_reduce.Job):
                                 gapped_kmers['outer'][kmer] = 0
                             gapped_kmers['outer'][kmer] += 1
                         index += 1
+        print(n)
         _gapped_kmers = {'outer': {}, 'inner': {}}
         for kmer in gapped_kmers['outer']:
             if gapped_kmers['outer'][kmer] >= 3:
@@ -94,6 +101,8 @@ class ExtractAluReadsJob(map_reduce.Job):
         return path
 
     def is_clipped(self, kmer, clips):
+        if self.sv_type == 'DEL':
+            return True
         for clip in clips:
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
                 return True
@@ -395,9 +404,9 @@ class AluGappedKmersFractionalProgrammingJob(gapped.GappedKmersIntegerProgrammin
                     json.dump({'variables': [s / w if s != w else 1.0 / s for s in solution]}, json_file, indent = 4, sort_keys = True)
 
     def round_genotype(self, c):
-        if c > 0.75:
+        if c > self.b2:
             return (1.0, '11')
-        elif c > 0.10:
+        elif c > self.b1:
             return (0.5, '10')
         else:
             return (0.0, '00')

@@ -429,10 +429,16 @@ int transform(int index, string path) {
         //uint64_t k = encode_kmer(std::string("GAGATTGCGCCATTGCACTCCAGCCTGGGCGT").c_str()) ;
         //uint64_t k = encode_kmer(std::string("CCTGTCTCTACTAAAAATACAGATAAATTAGC").c_str()) ;
         //cout << decode_kmer(k) << " " << std::string(it.key()) << endl ;
+        //if (decode_kmer(k).compare(std::string(it.key())) != 0) {
+        //    cout << "Error on kmer #" << std::string(it.key()) << "#" << decode_kmer(k) << "#" << endl ;
+        //}
         uint64_t rc_k = encode_kmer(reverse_complement(std::string(it.key())).c_str()) ;
         //uint64_t rc_k = encode_kmer(reverse_complement(std::string("GAGATTGCGCCATTGCACTCCAGCCTGGGCGT")).c_str()) ;
         //uint64_t rc_k = encode_kmer(reverse_complement(std::string("CCTGTCTCTACTAAAAATACAGATAAATTAGC")).c_str()) ;
         //cout << decode_kmer(rc_k) << " " << reverse_complement(std::string(it.key())) << endl ;
+        //if (decode_kmer(rc_k).compare(reverse_complement(std::string(it.key()))) != 0) {
+        //    cout << "Error on kmer #" << reverse_complement(std::string(it.key())) << "#" << decode_kmer(rc_k) << "#" << endl ;
+        //}
         int* count = new int ;
         *count = 0 ;
         counts->emplace(std::make_pair(k, count)) ;

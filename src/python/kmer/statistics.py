@@ -11,7 +11,8 @@ class NormalDistribution():
 
     def pmf(self, x):
         #return self.cdf(x + 1) - self.cdf(x)
-        return (1 / math.sqrt(2 * math.pi * self.var)) * math.exp(-1 * ((x - self.mean) ** 2) / (2 * self.var))
+        a = math.exp(-1 * ((x - self.mean) ** 2) / (2 * self.var))
+        return (1 / math.sqrt(2 * math.pi * self.var)) * a 
 
     def log_pmf(self, x):
         #return math.log(self.pmf(x))

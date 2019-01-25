@@ -23,7 +23,6 @@ from kmer import (
     counttable,
 )
 
-from kmer.sv import StructuralVariation, Inversion, Deletion
 from kmer.kmers import *
 from kmer.commons import *
 print = pretty_print
@@ -221,20 +220,20 @@ class Job(object):
     def load_tracks(self, name = 'all.bed'):
         c = config.Configuration()
         if c.simulation:
-            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(os.path.join(self.get_simulation_directory(), name))}
+            return bed.load_tracks_from_file_as_dict(os.path.join(self.get_simulation_directory(), name))
         else:
-            return {str(track): self.get_sv_type()(track) for track in bed.load_tracks_from_file(c.bed_file)}
+            return bed.load_tracks_from_file_as_dict(c.bed_file)
 
     def get_sv_type(self):
         c = config.Configuration()
         bed_file_name = c.bed_file.split('/')[-1]
         if bed_file_name.find('DEL') != -1:
-            return Deletion
+            return 'DEL'
         if bed_file_name.find('INV') != -1:
-            return Inversion
+            return 'INV'
         if bed_file_name.find('ALU') != -1:
-            return AluInsertion
-        return Deletion
+            return 'ALU'
+        return 'DEL'
 
     def load_reference_counts_provider(self):
         c = config.Configuration()
@@ -328,7 +327,6 @@ class FirstGenotypingJob(BaseGenotypingJob):
     def get_previous_job_directory(self):
         c = config.Configuration()
         d = Job.get_output_directory(self)
-        bed_file_name = c.bed_file.split('/')[-1]
         return os.path.abspath(os.path.join(d, self._previous_job._name))
 
 # ============================================================================================================================ #
@@ -342,6 +340,8 @@ class GenomeDependentJob(BaseGenotypingJob):
     def get_current_job_directory(self):
         c = config.Configuration()
         if c.simulation:
-            return map_reduce.Job.get_current_job_directory(self)
+            s = Job.get_current_job_directory(self)
+            print(yellow(s))
+            return s
         else:
             return os.path.abspath(os.path.join(self.get_output_directory(), self._name))
