@@ -239,6 +239,9 @@ class Job(object):
         c = config.Configuration()
         self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
 
+    def unload_reference_counts_provider(self):
+        del self.reference_counts_provider
+
     # ============================================================================================================================ #
     # filesystem helpers
     # ============================================================================================================================ #

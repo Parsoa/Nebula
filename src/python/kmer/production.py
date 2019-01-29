@@ -37,6 +37,136 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    _name = 'MixCounterJob'
+    _category = 'programming'
+    _previous_job = None 
+    _counter_mode = 4
+
+    @staticmethod
+    def launch(**kwargs):
+        job = MixCounterJob(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.half_mers = {}
+        self.depth_kmers = {}
+        self.inner_kmers = {}
+        self.gapped_kmers = {}
+        self.load_inner_kmers()
+        self.load_gapped_kmers()
+        self.round_robin()
+
+    def load_inner_kmers(self):
+        c = config.Configuration()
+        job = reduction.CountLociIndicatorKmersJob()
+        with open(os.path.join(job.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+            self.inner_kmers = json.load(json_file)
+        self.load_depth_of_coverage_kmers()
+        print('Counting', green(len(self.inner_kmers)), 'inner kmers')
+        with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
+            _kmers = {}
+            for kmer in self.inner_kmers:
+                _kmers[kmer] = {}
+                _kmers[kmer]['loci'] = {}
+                for locus in self.inner_kmers[kmer]['loci']:
+                    _kmers[kmer]['loci'][locus] = {}
+                    _kmers[kmer]['loci'][locus]['masks'] = self.inner_kmers[kmer]['loci'][locus]['masks']
+            for kmer in self.depth_kmers:
+                _kmers[kmer] = {}
+                _kmers[kmer]['loci'] = {}
+            json.dump(_kmers, json_file, indent = 4)
+
+    def load_depth_of_coverage_kmers(self):
+        n = 100000
+        self.load_reference_counts_provider() 
+        for kmer, count in self.reference_counts_provider.stream_kmers():
+            if count == 1 and kmer.find('N') == -1:
+                canon = canonicalize(kmer)
+                if not kmer in self.inner_kmers and not reverse_complement(kmer) in self.inner_kmers:
+                    self.depth_kmers[canon] = {'loci': {}}
+                    n -= 1
+                    if n == 0:
+                        break
+        print('Counting', green(len(self.depth_kmers)), 'depth kmers')
+        self.unload_reference_counts_provider()
+
+    # There shouldn't be any overlap between gapped kmers and other kmers because of the filtering applied to them
+    def load_gapped_kmers(self):
+        c = config.Configuration()
+        job = gapped.CountUniqueGappedKmersJob()
+        tracks = job.load_previous_job_results()
+        for track in tracks:
+            with open(os.path.join(job.get_previous_job_directory(), tracks[track]), 'r') as json_file:
+                kmers = json.load(json_file)
+                for side in ['inner', 'outer']:
+                    for kmer in kmers[side]:
+                        if kmers[side][kmer]['gap'] != -1:
+                            left = kmer[:c.hsize]
+                            right = kmer[-c.hsize:]
+                            self.gapped_kmers[kmer] = kmers[side][kmer]
+                            self.gapped_kmers[kmer]['count'] = 0
+                            self.gapped_kmers[kmer]['doubt'] = 0
+                            if not left in self.half_mers:
+                                self.half_mers[left] = {}
+                            self.half_mers[left][right] = kmer 
+                            left = reverse_complement(left)
+                            right = reverse_complement(right)
+                            if not right in self.half_mers:
+                                self.half_mers[right] = {}
+                            self.half_mers[right][left] = kmer
+        print('Counting', green(len(self.gapped_kmers)), 'gapped kmers')
+        with open(os.path.join(self.get_current_job_directory(), 'half_mers.json'), 'w') as json_file:
+            json.dump(self.half_mers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'pre_gapped_kmers.json'), 'w') as json_file:
+            json.dump(self.gapped_kmers, json_file, indent = 4)
+
+    def merge_count(self, kmer, tokens):
+        if kmer in self.gapped_kmers:
+            count = tokens[0] 
+            self.gapped_kmers[kmer]['count'][i] += count
+        else:
+            count = tokens[0] 
+            total = tokens[1] 
+            canon = canonicalize(kmer)
+            self.inner_kmers[canon]['count'] += count / 2
+            self.inner_kmers[canon]['total'] += total / 2
+
+    def reduce():
+        c = config.Configuration()
+        self.merge_counts()
+        with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
+            json.dump(self.inner_kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
+            json.dump(self.gapped_kmers, json_file, indent = 4)
+        self.tracks = {}
+        for kmer in self.inner_kmers:
+            for track in self.inner_kmers[kmer]['tracks']:
+                if not track in self.tracks:
+                    self.tracks[track] = {'gapped_kmers': {}, 'inner_kmers': {}}
+                self.tracks[track]['inner_kmers'][kmer] = self.inner_kmers[kmer]
+        for kmer in self.gapped_kmers:
+            for track in self.gapped_kmers[kmer]['tracks']:
+                if not track in self.tracks:
+                    self.tracks[track] = {'gapped_kmers': {}, 'inner_kmers': {}}
+                self.tracks[track]['gapped_kmers'][kmer] = self.kmers[kmer]
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'MixIntegerProgrammingJob'

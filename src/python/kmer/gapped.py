@@ -317,7 +317,7 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
     def export_accelerator_input(self):
         with open(os.path.join(self.get_current_job_directory(), 'half_mers.json'), 'w') as json_file:
             json.dump(self.half_mers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'pre_gapped_kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
 
     def merge_count(self, kmer, tokens):

@@ -312,7 +312,7 @@ class Simulation(map_reduce.Job):
             command += ' > '
             command += os.path.join(self.get_current_job_directory(), 'test.2.fq')
             print(command)
-            output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+            #output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
         else:
             command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
             command += ' > '

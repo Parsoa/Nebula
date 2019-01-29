@@ -292,8 +292,9 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             for track in kmer['tracks']:
                 self.tracks[track]['lp_kmers'].append(kmer)
         self.find_rounding_break_points()
-        self.b2 = 0.75
-        self.b1 = 0.25
+        if self.get_sv_type() == 'DEL':
+            self.b2 = 0.75
+            self.b1 = 0.25
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in self.tracks:
                 index = self.tracks[track]['index']

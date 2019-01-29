@@ -311,9 +311,12 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
+        self.depth_mers = {}
         with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             self.kmers = json.load(json_file)
-        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+        print(len(self.kmers), 'inner kmers')
+        #self.get_depth_of_coverage_kmers()
+        with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             _kmers = {}
             for kmer in self.kmers:
                 _kmers[kmer] = {}
@@ -321,9 +324,26 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
                 for locus in self.kmers[kmer]['loci']:
                     _kmers[kmer]['loci'][locus] = {}
                     _kmers[kmer]['loci'][locus]['masks'] = self.kmers[kmer]['loci'][locus]['masks']
+            for kmer in self.depth_mers:
+                _kmers[kmer] = {}
+                _kmers[kmer]['loci'] = {}
             json.dump(_kmers, json_file, indent = 4)
-        print(len(self.kmers), 'kmers')
         self.round_robin()
+
+    def get_depth_of_coverage_kmers(self):
+        n = 100000
+        self.depth_mers = {}
+        self.load_reference_counts_provider() 
+        for kmer, count in self.reference_counts_provider.stream_kmers():
+            if count == 1 and kmer.find('N') == -1:
+                canon = canonicalize(kmer)
+                if not kmer in self.kmers and not reverse_complement(kmer) in self.kmers:
+                    self.depth_mers[canon] = {'loci': {}}
+                    n -= 1
+                    if n == 0:
+                        break
+        print('Counting', green(len(self.depth_mers)), 'unique kmers')
+        self.unload_reference_counts_provider()
 
     def merge_count(self, kmer, tokens):
         count = tokens[0] 
@@ -335,6 +355,7 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
     def reduce(self):
         c = config.Configuration()
         self.merge_counts()
+        self.estimate_depth_of_coverage()
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
@@ -349,6 +370,33 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+
+    def estimate_depth_of_coverage(self):
+        self.counts = list(map(lambda kmer: self.kmers[kmer]['count'], self.depth_mers))
+        self.mean = numpy.mean(self.counts)
+        self.std = numpy.std(self.counts)
+        print(len(self.counts))
+        print('mean:', self.mean)
+        print('std:', self.std)
+        # filter outliers
+        self.counts = list(filter(lambda x: x < 3 * self.mean, self.counts))
+        self.mean = numpy.mean(self.counts)
+        self.std = numpy.std(self.counts)
+        print(len(self.counts))
+        print('mean:', self.mean)
+        print('std:', self.std)
+        # filter outliers
+        self.counts = list(filter(lambda x: x < 2 * self.mean, self.counts))
+        self.mean = numpy.mean(self.counts)
+        self.std = numpy.std(self.counts)
+        print(len(self.counts))
+        print('mean:', self.mean)
+        print('std:', self.std)
+        #
+        self.plot_reference_distribution([ self.counts[i] for i in sorted(random.sample(xrange(len(self.counts)), 10000)) ])
+        with open(os.path.join(self.get_current_job_directory(), 'stats_' + str(c.ksize) + '.json'), 'w') as json_file:
+            json.dump({ 'mean': self.mean, 'std': self.std }, json_file, sort_keys = True, indent = 4)
+
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

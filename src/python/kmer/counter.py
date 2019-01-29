@@ -40,17 +40,16 @@ class BaseExactCountingJob(map_reduce.Job):
             self.batch[i] = {}
 
     def run_batch(self, batch):
+        print('running batch')
         c = config.Configuration()
-        self.fastq_file = open(c.fastq_file, 'r')
-        self.fastq_file_chunk_size = math.ceil(os.path.getsize(self.fastq_file.name) / float(self.num_threads))
-        self.fastq_file.seek(self.index * self.fastq_file_chunk_size, 0)
         self.transform()
-        self.output_batch(self.kmers)
 
     def transform(self):
+        print('here')
         c = config.Configuration()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
         command = " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0")
+        print(command)
         if c.debug:
             output = subprocess.call(os.path.join(cpp_dir, "counter_s.out") + command, shell = True)
         else:
