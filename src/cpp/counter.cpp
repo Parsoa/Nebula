@@ -355,7 +355,7 @@ void output_counts(string path, int index) {
 const int SEARCHING = 0 ;
 const int SKIPPING = 1 ;
 const int READING = 2 ;
-const unsigned long BLOCK_SIZE = 4096 ;
+const unsigned long BLOCK_SIZE = 4096 * 2 ;
 
 int process_fastq(string fastq, string path, int index, int threads) {
     std::ifstream in(fastq, std::ifstream::ate | std::ifstream::binary) ;
@@ -364,12 +364,15 @@ int process_fastq(string fastq, string path, int index, int threads) {
     cout << "Threads:" << threads << endl ;
     unsigned long chunk_size = size / threads ;
     unsigned long offset = index * chunk_size ;
-    if (offset % 4096 != 0) {
+    if (offset % BLOCK_SIZE != 0) {
         offset = BLOCK_SIZE * ((offset / BLOCK_SIZE) + 1) ;
     }
     unsigned long limit = (index + 1) * chunk_size ;
     if (limit % BLOCK_SIZE != 0) {
         limit = BLOCK_SIZE * ((limit / BLOCK_SIZE) + 1) ;
+        if (limit > size) {
+            limit = size ;
+        }
     }
     cout << "Chunk size: " << chunk_size << endl ;
     cout << "Offset: " << offset << endl ;
@@ -389,26 +392,26 @@ int process_fastq(string fastq, string path, int index, int threads) {
     size_t bytes_read ;
     while (true) {
         unsigned long l = ftell(fastq_file) ;
-        if (limit - l >= BLOCK_SIZE) {
-            //char ch = getchar() ;
-            //cout << "Attempting to read " << limit - l << " bytes" << endl ;
-            bytes_read = fread(buffer, 1, limit - l >= BLOCK_SIZE ? BLOCK_SIZE : BLOCK_SIZE, fastq_file) ;
-            //cout << "Read chunk with " << bytes_read << " bytes. Offset " <<  << endl ;
-            n += 1 ;
-            if (n == 100) {
-                n = 0 ;
-                unsigned long c = ftell(fastq_file) - index * chunk_size ;
-                time_t s ;
-                time(&s) ;
-                double p = c / double(chunk_size) ;
-                double e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600) ;
-                cout.precision(10) ;
-                if (s - t != 0 & DEBUG == 0) {
-                    cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
-                    cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
-                    cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
-                    cout << " reads per second: " << u / (s - t) << endl ;
-                }
+        if (l >= limit) {
+            break ;
+        }
+        //char ch = getchar() ;
+        bytes_read = fread(buffer, 1, limit - l >= BLOCK_SIZE ? BLOCK_SIZE : BLOCK_SIZE, fastq_file) ;
+        //cout << "Read chunk with " << bytes_read << " bytes. Offset " <<  << endl ;
+        n += 1 ;
+        if (n == 1000) {
+            n = 0 ;
+            unsigned long c = ftell(fastq_file) - index * chunk_size ;
+            time_t s ;
+            time(&s) ;
+            double p = c / double(chunk_size) ;
+            double e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600) ;
+            cout.precision(10) ;
+            if (s - t != 0 & DEBUG == 0) {
+                cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
+                cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
+                cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
+                cout << " reads per second: " << u / (s - t) << endl ;
             }
         }
         for (int i = 0; i < bytes_read; i++) {
@@ -460,89 +463,6 @@ int process_fastq(string fastq, string path, int index, int threads) {
             }
         }
         offset += bytes_read ;
-    }
-}
-
-int process_fastq2(string fastq, string path, int index, int threads) {
-    std::ifstream in(fastq, std::ifstream::ate | std::ifstream::binary) ;
-    unsigned long size = (unsigned long) in.tellg() ;
-    cout << "Size: " << size << endl ;
-    cout << "Threads:" << threads << endl ;
-    unsigned long chunk_size = size / threads ;
-    unsigned long offset = index * chunk_size ;
-    cout << "Chunk size: " << chunk_size << endl ;
-    cout << "Offset: " << offset << endl ;
-    FILE* fastq_file = fopen(fastq.c_str(), "r") ;
-    fseek(fastq_file, offset, SEEK_SET) ;
-    std::locale loc ;
-    size_t len_line = 0 ;
-    size_t len_ahead = 0 ;
-    char* line = NULL ;
-    char* ahead = NULL ;
-    int r = 0 ;
-    int state = HEADER_LINE ;
-    getline(&line, &len_line, fastq_file) ; 
-    getline(&ahead, &len_ahead, fastq_file) ; 
-    int n = 0 ;
-    int m = 0 ;
-    int u = 0 ;
-    int v = 2 ;
-    time_t t ;
-    time(&t) ;
-    while (true) {
-        if (state == HEADER_LINE) {
-            if (line[0] == '@' && ahead[0] != '@') {
-                long int l = ftell(fastq_file) ;
-                if (l >= (index + 1) * chunk_size) {
-                    cout << "Index " << index << " reached segment boundary" << endl ;
-                    break ;
-                }
-                state = SEQUENCE_LINE ;
-            }
-        }
-        else if (state == SEQUENCE_LINE) {
-            state = THIRD_LINE ;
-            n += 1 ;
-            u += 1 ;
-            if (n == 100000) {
-                n = 0 ;
-                m += 1 ;
-                unsigned long c = ftell(fastq_file) - index * chunk_size ;
-                time_t s ;
-                time(&s) ;
-                double p = c / double(chunk_size) ;
-                double e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600) ;
-                cout.precision(10) ;
-                if (s - t != 0 & DEBUG == 0) {
-                    cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
-                    cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
-                    cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
-                    cout << " reads per second: " << u / (s - t) << endl ;
-                }
-            }
-            //if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
-            //    process_read(line, u, v) ;
-            //} else if (JOB == COUNT_MIX_KMERS) {
-            //    process_read(line, u, v) ;
-            //    process_gapped_read(line, u, v) ;
-            //} else {
-            //    process_gapped_read(line, u, v) ;
-            //}
-        }
-        else if (state == THIRD_LINE) {
-            state = QUALITY_LINE ;
-        }
-        else if (state == QUALITY_LINE) {
-            state = HEADER_LINE ;
-        }
-        char* tmp = line ;
-        line = ahead ;
-        ahead = tmp ;
-        r = getline(&ahead, &len_ahead, fastq_file) ;
-        v++ ;
-        if (r == -1) {
-            break ;
-        }
     }
     if (DEBUG == 0) {
         output_counts(path, index) ;

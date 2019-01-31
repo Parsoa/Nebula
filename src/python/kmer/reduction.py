@@ -26,7 +26,7 @@ from kmer import (
     programming,
 )
 
-import scipy
+import numpy
 
 from kmer.debug import *
 from kmer.kmers import *
@@ -355,7 +355,7 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
     def reduce(self):
         c = config.Configuration()
         self.merge_counts()
-        self.estimate_depth_of_coverage()
+        #self.estimate_depth_of_coverage()
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
@@ -481,7 +481,7 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
 
     _name = 'LociIndicatorKmersIntegerProgrammingJob'
     _category = 'programming'
-    _previous_job = AdjustCoverageGcContentJob 
+    _previous_job = AdjustCoverageGcContentJob
     _kmer_type = 'inner'
 
     @staticmethod
@@ -508,8 +508,8 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
             unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) == 1, _kmers))
             non_unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) != 1, _kmers))
             # let's limit the number of kmers to 50 to help with integer programming runtime
-            #if len(unique_kmers) == 0:
-            #    return None
+            if len(unique_kmers) == 0:
+                return None
             if len(unique_kmers) >= 5:
                 kmers = {kmer: _kmers[kmer] for kmer in unique_kmers[:min(50, len(unique_kmers))]}
             else:
@@ -521,11 +521,11 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
             for kmer in kmers:
                 self.lp_kmers[kmer] = {}
                 self.lp_kmers[kmer]['type'] = self._kmer_type
-                self.lp_kmers[kmer]['count'] = kmers[kmer]['count']# if kmers[kmer]['reference'] == 1 else kmers[kmer]['total']
+                self.lp_kmers[kmer]['count'] = kmers[kmer]['count']
                 self.lp_kmers[kmer]['doubt'] = kmers[kmer]['doubt']
                 self.lp_kmers[kmer]['total'] = kmers[kmer]['total']
                 self.lp_kmers[kmer]['weight'] = 1.0
-                self.lp_kmers[kmer]['coverage'] = c.coverage#kmers[kmer]['coverage']
+                self.lp_kmers[kmer]['coverage'] = kmers[kmer]['coverage']
                 self.lp_kmers[kmer]['reference'] = len(kmers[kmer]['loci'])
                 self.lp_kmers[kmer]['reduction'] = kmers[kmer]['reference']
                 self.lp_kmers[kmer]['tracks'] = kmers[kmer]['tracks']
@@ -534,202 +534,6 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
         with open(path, 'w') as json_file:
             json.dump({kmer: self.lp_kmers[kmer] for kmer in kmers}, json_file, indent = 4, sort_keys = True)
         return path
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class GenotypingConfidenceJob(map_reduce.BaseGenotypingJob):
-
-    _name = 'GenotypingConfidenceJob'
-    _category = 'programming'
-    _previous_job = LociIndicatorKmersIntegerProgrammingJob
-    _kmer_type = None
-
-    @staticmethod
-    def launch(**kwargs):
-        job = GenotypingConfidenceJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        with open(os.path.join(self.get_previous_job_directory(), 'tracks.json'), 'r') as json_file:
-            self.tracks = json.load(json_file)
-        with open(os.path.join(self.get_previous_job_directory(), 'lp_kmers.json'), 'r') as json_file:
-            self.lp_kmers = json.load(json_file)
-        with open(os.path.join(self.get_previous_job_directory(), 'solution.json'), 'r') as json_file:
-            self.solution = json.load(json_file)['variables']
-        #self.errors = sorted(self.solution[len(self.tracks):])
-        #self.correct_errors = sorted(list(reduce(lambda x, y : x + y, [] + list(map(lambda track: [self.errors[i] for i in self.tracks[track]['kmers']], list(filter(lambda t: self.tracks[t]['lp_genotype'] == self.tracks[t]['actual_genotype'], self.tracks)))))))
-        #self.wrong_errors = sorted(list(reduce(lambda x, y: x + y, [] + list(map(lambda track: [self.errors[i] for i in self.tracks[track]['kmers']], list(filter(lambda t: self.tracks[t]['lp_genotype'] != self.tracks[t]['actual_genotype'], self.tracks)))))))
-        #self.estimate_distribution(self.correct_errors)
-        #self.estimate_distribution(self.wrong_errors)
-        #self.estimate_distribution(self.errors)
-        #visualizer.histogram(self.correct_errors, 'correct_errors', self.get_current_job_directory(), 'error', 'frequency')
-        #visualizer.histogram(self.wrong_errors, 'wrong_errors', self.get_current_job_directory(), 'error', 'frequency')
-        #visualizer.histogram(self.errors, 'errors', self.get_current_job_directory(), 'error', 'frequency')
-        #exit()
-        self.round_robin(self.tracks)
-
-    def estimate_distribution(self, x):
-        std = statistics.std(x)
-        mean = statistics.mean(x)
-        median = statistics.median(x)
-        print(mean, std, median)
-        x = list(filter(lambda x: x < 3 * mean, x))
-        std = statistics.std(x)
-        mean = statistics.mean(x)
-        median = statistics.median(x)
-        print(mean, std, median)
-        return
-        x = list(filter(lambda x: x < 3 * mean, x))
-        std = statistics.std(x)
-        mean = statistics.mean(x)
-        print(mean, std)
-
-    def transform(self, _, track):
-        print(cyan(track))
-        l = len(self.lp_kmers)
-        current = 0
-        n = len(self.tracks[track]['kmers'])
-        self.tracks[track]['bootstrap'] = {'00': [], '10': [], '11': [], 'genotypes': []}
-        kmers = list(filter(lambda k: len(self.lp_kmers[k]['tracks']) == 1, self.tracks[track]['kmers']))
-        kmers = [self.lp_kmers[i] for i in self.tracks[track]['kmers']]
-        for i in range(n):
-            kmers[i]['coefficient'] = 0
-            if len(kmers[i]['tracks']) > 1:
-                for t in kmers[i]['tracks']:
-                    if t != track:
-                        kmers[i]['count'] -= self.tracks[t]['lp_value'] * 0.97 * kmers[i]['coverage'] * kmers[i]['tracks'][t]
-        for i in range(n):
-            print(green('iterarion', i))
-            kmers[i]['coefficient'] = 1
-            problem = self.generate_linear_program(kmers, track)
-            problem.solve()
-            self.solution = problem.solution.get_values()
-            s = int(round(2 * self.solution[0]))
-            g = '00' if s == 2 else '10' if s == 1 else '11'
-            self.tracks[track]['bootstrap']['genotypes'].append(g)
-            self.tracks[track]['bootstrap'][g].append(i)
-        with open(os.path.join(self.get_current_job_directory(), 'bootstrap_' + track + '.json'), 'w') as json_file:
-            json.dump(self.tracks[track], json_file, indent = 4)
-        return None
-
-    def generate_linear_program(self, kmers, track):
-        c = config.Configuration()
-        globals()['cplex'] = __import__('cplex')
-        problem = cplex.Cplex()
-        problem.set_log_stream(None)
-        problem.set_error_stream(None)
-        problem.set_warning_stream(None)
-        problem.set_results_stream(None)
-        problem.objective.set_sense(problem.objective.sense.minimize)
-        # the coverage of each event
-        problem.variables.add(names = ['t'],
-            ub = [1.0],
-        )
-        # the real-valued error parameter for inner_kmer
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(kmers)],
-            ub = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue']) for kmer in kmers],
-            lb = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in kmers],
-        )
-        # absolute value of the inner_kmer error parameter
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(kmers)],
-            obj = [1.0] * len(kmers),
-        )
-        offset = len(self.tracks) + 2 * len(kmers)
-        for index, kmer in enumerate(kmers):
-            if kmer['coefficient'] == 0:
-                continue
-            # TxR + E = C - 
-            #ref = kmer['reference']
-            ind = [0]
-            #ind += [offset + i for i in range(0, ref)] #SNP
-            ind.append(1 + index) # Objective
-            val = [kmer['coefficient'] * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03)] #Coverage corrected for errors
-            #val += [-kmer['coverage']] * ref #SNP
-            val.append(1.0) #Objective
-            #offset += ref
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = ind,
-                    val = val,
-                )],
-                rhs = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'])],
-                senses = ['E']
-            )
-            self.add_error_absolute_value_constraints(problem, index, kmers)
-            n = n + 1
-            if n % 1000 == 0:
-                t = time.time()
-                p = float(n) / len(kmers)
-                eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
-                #print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
-        return problem
-
-    def add_error_absolute_value_constraints(self, problem, index, kmers):
-        problem.linear_constraints.add(
-            lin_expr = [cplex.SparsePair(
-                ind = [1 + len(kmers) + index, 1 + index],
-                val = [1.0, 1.0],
-            )],
-            rhs = [0],
-            senses = ['G']
-        )
-        problem.linear_constraints.add(
-            lin_expr = [cplex.SparsePair(
-                ind = [1 + len(kmers) + index, 1 + index],
-                val = [1.0, -1.0],
-            )],
-            rhs = [0],
-            senses = ['G']
-        )
-
-    def reduce(self):
-        remove = []
-        for track in self.tracks:
-            path = os.path.join(self.get_current_job_directory(), 'bootstrap_' + track + '.json')
-            try:
-                with open(path, 'r') as json_file:
-                    self.tracks[track] = json.load(json_file)
-            except:
-                remove.append(track)
-        for track in remove:
-            self.tracks.pop(track, None)
-        with open(os.path.join(self.get_current_job_directory(), 'bootstrap.bed'), 'w') as bed_file:
-            for track in self.tracks:
-                t = bed.track_from_name(track)
-                bed_file.write(t.chrom + '\t' +
-                    str(t.begin) + '\t' +
-                    str(t.end)   + '\t' +
-                    str(self.tracks[track]['lp_value'])  + '\t' +
-                    str(self.tracks[track]['lp_rounding'])  + '\t' +
-                    str(self.tracks[track]['lp_genotype'])  + '\t' +
-                    str(self.tracks[track]['actual_genotype']) + '\t' +
-                    str(len(self.tracks[track]['kmers'])) + '\t' +
-                    str(self.tracks[track]['confidence_score']) + '\t' +
-                    compactify(self.tracks[track]['bootstrap']['00'])  + '\t' +
-                    compactify(self.tracks[track]['bootstrap']['10'])  + '\t' +
-                    compactify(self.tracks[track]['bootstrap']['11'])  + '\t' +
-                    compactify(self.tracks[track]['bootstrap']['genotypes'])  + '\n')
-        self.plot_rounding_gap()
-
-    def plot_rounding_gap(self):
-        x = []
-        s = []
-        for track in self.tracks:
-            x.append('Correct' if self.tracks[track]['lp_genotype'] == self.tracks[track]['actual_genotype'] else 'Wrong')
-            if len(self.tracks[track]['bootstrap']['genotypes']) == 1:
-                s.append(-1)
-            else:
-                g = self.tracks[track]['bootstrap']['genotypes']
-                s.append(sum(map(lambda i: 1 if g[i] != g[i - 1] else 0, range(1, len(g))))) 
-        visualizer.violin(x, s, 'rounding_gap_distribution', self.get_current_job_directory(), 'Prediction', 'Confidence')
 
 # ============================================================================================================================ #
 # Main

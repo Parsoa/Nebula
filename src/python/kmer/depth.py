@@ -79,7 +79,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                 if self.acc[count] % 1000 == 0:
                     print(self.acc[count], 'kmers with a count of', count, 'so far')
         print('Counting', green(len(self.kmers)), 'unique kmers')
-        with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
         self.round_robin()
 

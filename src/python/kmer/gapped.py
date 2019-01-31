@@ -465,7 +465,6 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
         print(cyan(track_name))
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
-            n = len(kmers['inner']) + len(kmers['outer'])
             for side in ['outer']:
                 for kmer in kmers[side]:
                     if not kmer in self.lp_kmers:
@@ -479,7 +478,7 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                             'reference': kmers[side][kmer]['tracks'][track_name],
                             'actual_gap': kmers[side][kmer]['actual_gap'] if 'actual_gap' in kmers[side][kmer] else -1,
                         }
-                    self.lp_kmers[kmer]['tracks'][track_name] = 1#kmers[side][kmer]['track']
+                    self.lp_kmers[kmer]['tracks'][track_name] = 1
         path = os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(
@@ -492,8 +491,9 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
     def calculate_residual_coverage(self):
         c = config.Configuration()
         for kmer in self.lp_kmers:
-            kmer['residue'] = 0
             kmer['coverage'] = c.coverage
+            kmer['residue'] = 0
+            kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
 
     def generate_linear_program(self):
         print('generating linear program')
@@ -522,34 +522,6 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
         n = 0
         start = time.time()
         for index, kmer in enumerate(self.lp_kmers):
-            #if kmer['side'] == 'outer':
-            #    # (1 - T)xR + E = C -> -TxR + E = C - R
-            #    ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            #    ind.append(len(self.tracks) + index)
-            #    val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-            #    val.append(1.0)
-            #    problem.linear_constraints.add(
-            #        lin_expr = [cplex.SparsePair(
-            #            ind = ind,
-            #            val = val,
-            #        )],
-            #        rhs = [kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
-            #        senses = ['G']
-            #    )
-            #    ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            #    ind.append(len(self.tracks) + index)
-            #    val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-            #    val.append(1.0)
-            #    problem.linear_constraints.add(
-            #        lin_expr = [cplex.SparsePair(
-            #            ind = ind,
-            #            val = val,
-            #        )],
-            #        rhs = [-kmer['count'] + sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
-            #        senses = ['G']
-            #    )
-            #else:
-            # TxR + E = C
             ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
             ind.append(len(self.tracks) + index)
             val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))

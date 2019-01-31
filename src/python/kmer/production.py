@@ -279,13 +279,12 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
             r = 0
             for track in kmer['tracks']:
                 r += kmer['tracks'][track]
-            kmer['residue'] = 0 if kmer['type'] == 'gapped' else kmer['reference'] - r
             kmer['coverage'] = c.coverage if kmer['type'] == 'gapped' else kmer['coverage']
-            l = len(self.tracks[kmer['tracks'].keys()[0]]['inner_kmers'])
-            #kmer['weight'] = 1.0 if kmer['type'] != 'gapped' else 2 * l if l != 0 else 1.0
+            kmer['residue'] = 0 if kmer['type'] == 'gapped' else kmer['reference'] - r
             kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
+            l = len(self.tracks[kmer['tracks'].keys()[0]]['inner_kmers'])
             l = l if l else 1
-            kmer['weight'] = 2 * l if kmer['type'] == 'gapped' else 1.0#0.5 + abs(kmer['count'] - (kmer['coverage'] / 2.0)) / (kmer['coverage'] / 2.0) if kmer['reference'] == 1 else 0.5
+            kmer['weight'] = 2 * l if kmer['type'] == 'gapped' else 1.0
 
     def generate_linear_program(self):
         c = config.Configuration()
@@ -387,58 +386,6 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), 'kmers_' + track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
-        #self.plot_confidence_parameters()
-
-    def plot_confidence_parameters(self):
-        x = []
-        lengths = []
-        errors_std = []
-        errors_mean = []
-        counts_std = []
-        counts_mean = []
-        numbers = []
-        error_ratios = []
-        scores = []
-        n = 0
-        with open(os.path.join(self.get_current_job_directory(), 'confidence.bed'), 'w') as bed_file:
-            for track in self.tracks:
-                #if self.tracks[track]['actual_genotype'] == '10' and self.tracks[track]['lp_genotype'] == '11':
-                #    continue
-                if len(self.tracks[track]['kmers']['inner_kmers']) >= 1:
-                    m = 0.01
-                    for index in self.tracks[track]['indices']['inner_kmers']:
-                        kmer = self.lp_kmers[index]
-                        m += max(abs(kmer['count'] - kmer['coverage'] * kmer['residue']),\
-                            abs(kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])))
-                    error_ratios.append(sum(self.tracks[track]['errors']['inner_kmers']) / m)
-                    #x.append(self.tracks[track]['actual_genotype'] + '_as_' + self.tracks[track]['lp_genotype'])
-                    if self.tracks[track]['actual_genotype'] == '10' and self.tracks[track]['lp_genotype'] == '11':
-                        n += 1
-                        x.append('True')
-                    else:
-                        x.append('True' if self.tracks[track]['actual_genotype'] == self.tracks[track]['lp_genotype'] else 'False')
-                    t = bed.track_from_name(track)
-                    lengths.append(t.end - t.begin)
-                    errors_std.append(statistics.std(self.tracks[track]['errors']['inner_kmers']))
-                    errors_mean.append(statistics.mean(self.tracks[track]['errors']['inner_kmers']))
-                    counts_std.append(statistics.std([self.lp_kmers[index]['count'] for index in self.tracks[track]['indices']['inner_kmers']]))
-                    counts_mean.append(statistics.mean([self.lp_kmers[index]['count'] for index in self.tracks[track]['indices']['inner_kmers']]))
-                    numbers.append(len(self.tracks[track]['indices']['inner_kmers']))
-                    scores.append(self.calculate_confidence_score(self.tracks[track]))
-                    bed_file.write(t.chrom + '\t' +
-                        str(t.begin) + '\t' +
-                        str(t.end) + '\t' +
-                        str(x[-1]) + '\t' +
-                        str(scores[-1]) + '\n')
-        print(n)
-        visualizer.violin(x, numbers, 'numbers_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, counts_std, 'counts_std_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, counts_mean, 'counts_mean_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, errors_std, 'errors_std_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, errors_mean, 'errors_mean_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, error_ratios, 'error_ratio_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, lengths, 'event_lenght_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
-        visualizer.violin(x, scores, 'confidence_score_distribution', self.get_current_job_directory(), 'Prediction', 'Error')
 
     def calculate_confidence_score(self, track):
         score = 0

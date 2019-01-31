@@ -49,6 +49,8 @@ def parse_args():
     parser.add_argument("--gap", default = None, type = int)
     # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
     parser.add_argument("--snp")
+    # std of the kmer normal distribution 
+    parser.add_argument("--std", default = 15, type = int)
     # the seed to use for random number generation 
     parser.add_argument("--seed", type = int)
     # triggers the debug mode 
@@ -81,6 +83,8 @@ def parse_args():
     parser.add_argument("--threads", type = int, default = 48)
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = float, default = 50)
+    # whether to do dynamic rounding or not 
+    parser.add_argument("--rounding", action = 'store_true')
     # the path to a jellyfish generated kmer count index
     parser.add_argument("--jellyfish", nargs = '*')
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
@@ -113,6 +117,7 @@ def configure(args):
         job = args.job,
         gap = args.gap,
         snp = args.snp,
+        std = args.std,
         seed = args.seed,
         chrom = args.chrom,
         debug = args.debug,

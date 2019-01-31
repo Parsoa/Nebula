@@ -40,7 +40,6 @@ class BaseExactCountingJob(map_reduce.Job):
             self.batch[i] = {}
 
     def run_batch(self, batch):
-        print('running batch')
         c = config.Configuration()
         self.transform()
 
@@ -48,24 +47,37 @@ class BaseExactCountingJob(map_reduce.Job):
         print('here')
         c = config.Configuration()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
-        command = " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0")
-        print(command)
-        if c.debug:
-            output = subprocess.call(os.path.join(cpp_dir, "counter_s.out") + command, shell = True)
+        if c.simulation:
+            for i in range(1, 3):
+                fastq_file = os.path.join(self.get_simulation_directory(), 'test.1.fq')
+                command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
+                print(command)
+                output = subprocess.call(command, shell = True)
+                command = "mv " + os.path.join(self.get_current_job_directory(), 'c_batch_' + str(self.index) + '.json') + " " + os.path.join(self.get_current_job_directory(), 'c_batch_' + str(self.index) + '.' + str(i) + '.json')
+                print(command)
+                output = subprocess.call(command, shell = True)
         else:
-            output = subprocess.call(os.path.join(cpp_dir, "counter.out") + command, shell = True)
+            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
+            print(command)
+            output = subprocess.call(command, shell = True)
         exit()
 
     def merge_count(self, kmer, tokens):
         pass
 
     def merge_counts(self):
+        c = config.Configuration()
         for i in range(0, self.num_threads):
+            if c.simulation:
+                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.2.json'), os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.1.json')]
+            else:
+                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json')]
             print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                line = json_file.readline()
-                while line:
-                    tokens = line.split(':')
-                    self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
+            for path in paths:
+                print(path)
+                with open (path, 'r') as json_file:
                     line = json_file.readline()
+                    while line:
+                        tokens = line.split(':')
+                        self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
+                        line = json_file.readline()
