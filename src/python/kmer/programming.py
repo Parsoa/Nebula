@@ -238,6 +238,21 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 senses = ['L']
             )
 
+    # We allow up to 3% of the kmers to be affected by SNPs
+    def add_snp_linear_constraints(self, problem):
+        problem.variables.add(names = ['i' + str(index) for index, kmer in enumerate(self.lp_kmers)], ub = [1.0] * len(self.lp_kmers))
+        offset = len(self.tracks) + 2 * len(self.lp_kmers)
+        for track in self.tracks:
+            ind = [len(self.tracks) + 2 * len(self.lp_kmers) + index for index in self.tracks[track]['kmers']]
+            problem.linear_constraints.add(
+                lin_expr = [cplex.SparsePair(
+                    ind = ind,
+                    val = [1.0] * len(ind),
+                )],
+                rhs = [math.floor(0.1 * len(ind))],
+                senses = ['L']
+            )
+
     def add_error_absolute_value_constraints(self, problem, index):
         globals()['cplex'] = __import__('cplex')
         problem.linear_constraints.add(
@@ -279,15 +294,13 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             for track in kmer['tracks']:
                 self.tracks[track]['lp_kmers'].append(kmer)
         self.find_rounding_break_points()
-        if not c.rounding:
-            self.b2 = 0.75
-            self.b1 = 0.25
+        print('Rounding', len(self.tracks), 'tracks')
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
             for track in self.tracks:
                 index = self.tracks[track]['index']
                 t = bed.track_from_name(track)
-                if t.chrom.lower() == 'chrx' and c.simulation:
-                    continue
+                #if t.chrom.lower() == 'chrx' and c.simulation:
+                #    continue
                 g = self.round_genotype(self.solution[index])
                 bed_file.write(t.chrom + '\t' +
                     str(t.begin) + '\t' +
@@ -298,14 +311,16 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def find_rounding_break_points(self):
         c = config.Configuration()
-        d_0 = statistics.NormalDistribution(0, 3)
+        d_0 = statistics.NormalDistribution(0, min(c.std / 4.0, 3))
         d_1 = statistics.NormalDistribution(c.coverage / 2, c.std / 2)
         d_2 = statistics.NormalDistribution(c.coverage, c.std)
         distributions = [{'inner': d_0, 'gapped': d_2}, {'inner': d_1, 'gapped': d_1}, {'inner': d_2, 'gapped': d_0}]
         m = None
         step = 0.05
-        self.b2 = 0.90
-        self.b1 = 0.10
+        self.b2 = 0.75
+        self.b1 = 0.25
+        if not c.rounding:
+            return
         for b1 in range(int(0.1 / step), int(0.5 / step)):
             for b2 in range(int(0.55 / step), int(1.0 / step)):
                 print(b1, b2)
@@ -360,9 +375,21 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                     self.tracks[str(track)]['actual_genotype'] = r
         with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
             json.dump(self.tracks, json_file, indent = 4)
-        self.plot_lp_values()
+        #self.plot_lp_values()
+        self.calculate_length_accuracy_correlation()
+
+    def calculate_length_accuracy_correlation(self):
+        l = []
+        z = []
+        for track in self.tracks:
+            t = bed.track_from_name(track)
+            l.append(t.end - t.begin)
+            z.append(self.tracks[track]['lp_genotype'] == self.tracks[track]['actual_genotype'])
+        from scipy import stats
+        print(stats.pearsonr(l, z))
 
     def plot_lp_values(self):
+        print(len(self.tracks))
         x = []
         for track in self.tracks:
             x.append(self.tracks[track]['lp_value'])

@@ -397,7 +397,6 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
         with open(os.path.join(self.get_current_job_directory(), 'stats_' + str(c.ksize) + '.json'), 'w') as json_file:
             json.dump({ 'mean': self.mean, 'std': self.std }, json_file, sort_keys = True, indent = 4)
 
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -431,33 +430,13 @@ class AdjustCoverageGcContentJob(map_reduce.BaseGenotypingJob):
         gc_coverage_job = depth.ChromosomeGcContentEstimationJob()
         with open(os.path.join(gc_coverage_job.get_current_job_directory(), 'coverage.json'), 'r') as json_file:
             self.coverage = json.load(json_file)
-        self.round_robin(self.kmers)
-        self.batch_kmers = {}
-
-    def transform(self, kmer, k):
-        coverage = []
-        for locus in kmer['loci']:
-            gc = calculate_gc_content(kmer['loci'][locus]['seq']['all'])
-            kmer['loci'][locus]['coverage'] = self.coverage[gc]
-            coverage.append(self.coverage[gc])
-        kmer['coverage'] = statistics.mean(coverage)
-        self.batch_kmers[k] = kmer
-        return None
-
-    def output_batch(self, batch):
-        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
-        json.dump(self.batch_kmers, json_file, sort_keys = True, indent = 4)
-        json_file.close()
-        exit()
-
-    def reduce(self):
-        self.kmers = {}
-        for batch in self.load_output():
-            for kmer in batch:
-                self.kmers[kmer] = batch[kmer]
-        print(len(self.kmers))
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4)
+        print('Adjusting GC coverage for', green(len(self.kmers)), 'kmers')
+        n = 0
+        for kmer in self.kmers:
+            self.transform(self.kmers[kmer], kmer)
+            n += 1
+            if n % 1000 == 0:
+                print(n, 'out of', len(self.kmers))
         self.tracks = {}
         for kmer in self.kmers:
             for track in self.kmers[kmer]['tracks']:
@@ -470,6 +449,15 @@ class AdjustCoverageGcContentJob(map_reduce.BaseGenotypingJob):
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+        exit()
+
+    def transform(self, kmer, k):
+        coverage = []
+        for locus in kmer['loci']:
+            gc = calculate_gc_content(kmer['loci'][locus]['seq']['all'])
+            kmer['loci'][locus]['coverage'] = self.coverage[gc]
+            coverage.append(self.coverage[gc])
+        kmer['coverage'] = statistics.mean(coverage)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -508,8 +496,8 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
             unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) == 1, _kmers))
             non_unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) != 1, _kmers))
             # let's limit the number of kmers to 50 to help with integer programming runtime
-            if len(unique_kmers) == 0:
-                return None
+            #if len(unique_kmers) == 0:
+            #    return None
             if len(unique_kmers) >= 5:
                 kmers = {kmer: _kmers[kmer] for kmer in unique_kmers[:min(50, len(unique_kmers))]}
             else:

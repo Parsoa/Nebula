@@ -261,6 +261,7 @@ class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
+        print(cyan(self.get_previous_job_directory()))
         tracks = self.load_previous_job_results()
         self.half_mers = {}
         n = 0
@@ -269,7 +270,7 @@ class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                for side in ['inner', 'outer']:
+                for side in ['outer']:
                     for kmer in kmers[side]:
                         if kmers[side][kmer]['gap'] == 5:
                             left = kmer[:c.hsize]

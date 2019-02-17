@@ -261,6 +261,9 @@ class Job(object):
                     '../../../' + self._category + '/' + bed_file_name + '/' + str(c.ksize) + 'k/'))
 
     def get_previous_job_directory(self):
+        c = config.Configuration()
+        if c.previous:
+            return c.previous
         if self._previous_job:
             return os.path.abspath(os.path.join(self.get_output_directory(), self._previous_job._name))
         else:
@@ -312,6 +315,8 @@ class BaseGenotypingJob(Job):
 
     def get_previous_job_directory(self):
         c = config.Configuration()
+        if c.previous:
+            return c.previous
         if c.simulation:
             return Job.get_previous_job_directory(self)
         else:
@@ -330,6 +335,8 @@ class FirstGenotypingJob(BaseGenotypingJob):
     def get_previous_job_directory(self):
         c = config.Configuration()
         d = Job.get_output_directory(self)
+        if c.previous:
+            return c.previous
         return os.path.abspath(os.path.join(d, self._previous_job._name))
 
 # ============================================================================================================================ #

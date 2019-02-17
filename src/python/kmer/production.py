@@ -221,9 +221,8 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.gapped_tracks = copy.deepcopy(self.gapped_kmers_solver.index_tracks())
         with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
             json.dump({'gapped_kmers': self.gapped_kmers, 'tracks': self.gapped_tracks}, json_file, indent = 4)
-        self.gapped_kmers_solver.calculate_residual_coverage()
-        self.gapped_kmers_solver.solve()
-        self.gapped_tracks = copy.deepcopy(self.gapped_kmers_solver.solve())
+        #self.gapped_kmers_solver.calculate_residual_coverage()
+        #self.gapped_kmers_solver.solve()
 
     def load_inner_kmers(self):
         print(cyan('=============================================================================================='))
@@ -244,8 +243,8 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.inner_tracks = copy.deepcopy(self.inner_kmers_solver.index_tracks())
         with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
             json.dump({'inner_kmers': self.inner_kmers, 'tracks': self.inner_tracks}, json_file, indent = 4)
-        self.inner_kmers_solver.calculate_residual_coverage()
-        self.inner_kmers_solver.solve()
+        #self.inner_kmers_solver.calculate_residual_coverage()
+        #self.inner_kmers_solver.solve()
 
     def merge_kmers(self):
         c = config.Configuration()
@@ -257,7 +256,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.lp_kmers = self.gapped_kmers + self.inner_kmers
         for track in tmp:
             self.tracks[track] = {'index': n,
-                'inner_kmers': self.inner_tracks[track]['kmers'] if track in self.inner_tracks else [],
+                'inner_kmers': [index + len(self.gapped_kmers) for index in self.inner_tracks[track]['kmers']] if track in self.inner_tracks else [],
                 'gapped_kmers': self.gapped_tracks[track]['kmers'] if track in self.gapped_tracks else [],
             }
             n += 1
@@ -288,7 +287,7 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     def generate_linear_program(self):
         c = config.Configuration()
-        import cplex
+        globals()['cplex'] = __import__('cplex')
         problem = cplex.Cplex()
         problem.objective.set_sense(problem.objective.sense.minimize)
         # the coverage of each event
@@ -301,77 +300,61 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         )
         # the real-valued error parameter for kmer
         problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            #lb = [-1 * kmer['weight'] * (kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.lp_kmers]
             lb = [-100000000 for kmer in self.lp_kmers]
         )
         # absolute value of the kmer error parameter
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            obj = [1.0 for index, kmer in enumerate(self.lp_kmers)]
+            obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
         )
+        #self.add_snp_linear_constraints(problem)
         for index, kmer in enumerate(self.lp_kmers):
             self.add_error_absolute_value_constraints(problem, index)
             if kmer['type'] == 'inner':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
                 ind.append(len(self.tracks) + index) # Objective
-                val = list(map(lambda track: kmer['weight'] * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+                #ind.append(len(self.tracks) + 2 * len(self.lp_kmers) + index)
+                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
                 val.append(1.0) #Objective
+                #val.append(kmer['count'] - kmer['coverage'] * kmer['residue'])
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
                         val = val,
                     )],
-                    rhs = [kmer['weight'] * (kmer['count'] - kmer['coverage'] * kmer['residue'])],
+                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
             if kmer['type'] == 'gapped' and kmer['side'] == 'outer':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
-                val = list(map(lambda track: -1 * kmer['weight'] * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
+                #ind.append(len(self.tracks) + 2 * len(self.lp_kmers) + index)
+                val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
+                #val.append(kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))))
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
                         val = val,
                     )],
-                    rhs = [kmer['weight'] * (kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))))],
-                    senses = ['G']
-                )
-                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                ind.append(len(self.tracks) + index)
-                val = list(map(lambda track: kmer['weight'] * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-                val.append(1.0)
-                problem.linear_constraints.add(
-                    lin_expr = [cplex.SparsePair(
-                        ind = ind,
-                        val = val,
-                    )],
-                    rhs = [kmer['weight'] * (-kmer['count'] + sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))))],
-                    senses = ['G']
+                    rhs = [kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
+                    senses = ['E']
                 )
         return problem
 
-    def add_snp_linear_constraint(self, problem):
+    def add_snp_linear_constraints(self, problem):
+        problem.variables.add(names = ['i' + str(index) for index, kmer in enumerate(self.lp_kmers)], ub = [1.0] * len(self.lp_kmers))
         offset = len(self.tracks) + 2 * len(self.lp_kmers)
-        n = 0
-        for index, kmer in enumerate(self.inner_kmers):
-            ref = kmer['reference']
-            problem.variables.add(names = ['s' + str(index) + 'L' + str(i) for i in range(0, ref)],
-                obj = [1.0] * ref,
-                lb  = [0.0] * ref,
-                ub  = [1.0] * ref,
-            )
-            offset += ref
         for track in self.tracks:
-            ind = [len(self.tracks) + 2 * len(self.lp_kmers) + index for index in self.tracks[track][kmers]]
+            ind = [len(self.tracks) + 2 * len(self.lp_kmers) + index for index in self.tracks[track]['inner_kmers'] + self.tracks[track]['gapped_kmers']]
             problem.linear_constraints.add(
                 lin_expr = [cplex.SparsePair(
                     ind = ind,
                     val = [1.0] * len(ind),
                 )],
-                rhs = [math.floor(len(ind) / 3)],
+                rhs = [math.floor(0.1 * len(ind))],
                 senses = ['L']
             )
-    
+
     def solve(self):
         programming.IntegerProgrammingJob.solve(self)
         for track in self.tracks:

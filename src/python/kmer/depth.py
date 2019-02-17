@@ -74,24 +74,28 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                     if len(self.acc) == 0:
                         break
                     continue
-                self.kmers[canonicalize(kmer)] = {'ref': count, 'count': 0}
+                self.kmers[canonicalize(kmer)] = 0 
                 self.acc[count] += 1
                 if self.acc[count] % 1000 == 0:
                     print(self.acc[count], 'kmers with a count of', count, 'so far')
         print('Counting', green(len(self.kmers)), 'unique kmers')
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
+        del self.kmers
         self.round_robin()
 
     def merge_count(self, kmer, tokens):
         count = tokens[0] 
         canon = canonicalize(kmer)
-        self.kmers[canon]['count'] += count / 2
+        if not canon in self.kmers:
+            self.kmers[canon] = 0
+        self.kmers[canon] += count / 2
 
     def reduce(self):
         c = config.Configuration()
+        self.kmers = {}
         self.merge_counts()
-        self.counts = list(map(lambda kmer: self.kmers[kmer]['count'], self.kmers))
+        self.counts = list(map(lambda kmer: self.kmers[kmer], self.kmers))
         self.mean = numpy.mean(self.counts)
         self.std = numpy.std(self.counts)
         print(len(self.counts))
@@ -144,11 +148,10 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
         job.execute()
 
     def pre_process(self):
-        #job = GappedKmersDepthOfCoverageEstimationJob.ExtractExonGappedKmersHelper()
-        #job.execute()
-        #job = GappedKmersDepthOfCoverageEstimationJob.ScoreExonGappedKmersHelper()
-        #job.execute()
-        pass
+        job = GappedKmersDepthOfCoverageEstimationJob.ExtractExonGappedKmersHelper()
+        job.execute()
+        job = GappedKmersDepthOfCoverageEstimationJob.ScoreExonGappedKmersHelper()
+        job.execute()
 
     # ============================================================================================================================ #
     # ============================================================================================================================ #
@@ -173,7 +176,7 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
             chromosome = extract_chromosome(track.chrom.lower())
             sequence = chromosome[track.begin: track.end]
             for i in range(0, len(sequence) - 50):
-                kmer = canonicalize(sequence[i: i + 37])
+                kmer = canonicalize(sequence[i: i + 42])
                 self.kmers[kmer] = 0
             return None
 
@@ -204,11 +207,17 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                 for kmer in kmers:
                     left = kmer[:c.hsize]
                     right = kmer[-c.hsize:]
-                    self.half_mers[left] = True
-                    #self.half_mers[right] = True
-                    #self.half_mers[reverse_complement(left)] = True
-                    self.half_mers[reverse_complement(right)] = True
-                    self.kmers[left + right] = 0
+                    kmer = left + right
+                    if not left in half_mers:
+                        self.half_mers[left] = {}
+                    self.half_mers[left][kmer] = True
+                    if not reverse_complement(right) in half_mers:
+                        self.half_mers[reverse_complement(right)] = {}
+                    self.half_mers[reverse_complement(right)][kmer] = True
+                    self.kmers[kmer] = {}
+                    for gap in range(0, 11):
+                        self.kmers[kmer][str(gap)] = 0
+                    self.kmers[kmer]['count'] = 0
             print('scoring', len(self.kmers), 'kmers')
             print('scoring', len(self.half_mers), 'kmers')
             self.chroms = extract_whole_genome()
@@ -227,11 +236,18 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                 half_mer = sequence[index: index + c.hsize]
                 if not half_mer in self.half_mers:
                     continue
-                for k in range(32, 38):
+                for k in range(32, 43):
                     kmer = canonicalize(sequence[index: index + k])
                     kmer = kmer[:c.hsize] + kmer[-c.hsize:]
                     if kmer in self.kmers:
-                        self.kmers[kmer] += 1
+                        if self.kmers[kmer]['count'] != 0:
+                            self.kmers.pop(kmer, None)
+                            self.half_mers[half_mer].pop(kmer, None)
+                            if len(self.half_mers[half_mer] == 0):
+                                self.half_mers.pop(half_mer, None)
+                        else:
+                            self.kmers[kmer][str(k - 32)] += 1
+                            self.kmers[kmer]['count'] += 1
     
         def output_batch(self, batch):
             json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
@@ -248,12 +264,24 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                 with open (path, 'r') as json_file:
                     batch = json.load(json_file)
                     for kmer in batch:
-                        self.kmers[kmer] += batch[kmer]
+                        for gap in range(0, 11):
+                            self.kmers[kmer][str(gap)] += batch[kmer][str(gap)]
+            self.gapped_kmers = {}
+            gaps = {}
+            for gap in range(0, 11):
+                gaps[str(gap)] = 0
+            for kmer in self.kmers:
+                l = list(filter(lambda gap: self.kmers[kmer][gap] != 0, self.kmers[kmer]))
+                if len(l) == 1 and self.kmers[kmer][l[0]] == 1:
+                    self.gapped_kmers[kmer] = l[0]
+                    gaps[l[0]] += 1
+            for gap in range(0, 11):
+                print(green(gaps[str(gap)]), 'kmers with gap size', gap)
 
         def reduce(self):
             self.merge_counts()
             with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
-                json.dump(self.kmers, json_file, indent = 4)
+                json.dump(self.gapped_kmers, json_file, indent = 4)
 
     # ============================================================================================================================ #
     # ============================================================================================================================ #
@@ -265,19 +293,15 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
         c = config.Configuration()
         self.kmers = {}
         self.half_mers = {}
-        path = os.path.join(self.get_current_job_directory(), 'gapped_kmers.json')
-        print(path)
-        with open(path, 'r') as json_file:
+        with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'r') as json_file:
             kmers = json.load(json_file)
-        kmers = list(filter(lambda k: kmers[k] == 1, kmers))
-        print(len(kmers))
-        if len(kmers) > 100000:
-            kmers = [kmers[i] for i in sorted(random.sample(xrange(len(kmers)), 100000))]
+        #if len(kmers) > 100000:
+        #    kmers = [kmers[i] for i in sorted(random.sample(xrange(len(kmers)), 100000))]
         print('Counting', cyan(len(kmers)), 'gapped kmers')
         for kmer in kmers:
             left = kmer[:c.hsize]
             right = kmer[-c.hsize:]
-            self.kmers[kmer] = {"gap": 5} 
+            self.kmers[kmer] = {"gap": kmers[kmer]} 
             if not left in self.half_mers:
                 self.half_mers[left] = {}
             self.half_mers[left][right] = kmer
@@ -388,6 +412,7 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
         c = config.Configuration()
         self.num_threads = 24
         self.kmers = {}
+        print('Lopading kmers')
         random.seed(c.seed)
         for batch in self.load_output():
             for i in range(0, 101):
@@ -403,7 +428,7 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
                 for kmer in self.gc[gc]:
                     self.kmers[kmer] = 0
         print('counting', len(self.kmers), 'kmers')
-        job = ChromosomeGcContentEstimationJob.CounterHelper(resume_from_reduce = True)
+        job = ChromosomeGcContentEstimationJob.CounterHelper(resume_from_reduce = False)
         job.kmers = self.kmers
         kmers = job.execute()
         with open(os.path.join(self.get_current_job_directory(), 'gc.json'), 'w') as json_file:
@@ -455,7 +480,7 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
 
         def load_inputs(self):
             self.num_threads = 4
-            with open(os.path.join(self.get_current_job_directory(), 'pre_kmers.json'), 'w') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
                 json.dump(self.kmers, json_file, indent = 4)
             self.round_robin()
             self.num_threads = 4

@@ -205,10 +205,12 @@ class Simulation(map_reduce.Job):
         strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
         if c.diploid:
             self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
+            exit()
             self.export_fastq(seq, chrom + '_diploid')
         else:
             self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
             self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
+            exit()
             self.export_fastq(seq, chrom + '_strand_1')
             self.export_fastq(seq, chrom + '_strand_2')
         exit()
@@ -218,8 +220,11 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), chrom + '_diploid.fa'), 'w') as fasta_file:
             for i in range(0, 2):
-                fasta_file.write('>' + chrom + '_' + str(i + 1) + '\n')
                 seq = strands[i]
+                fasta_file.write('>' + chrom + '_' + str(i + 1) + '\n')
+                fasta_file.write(seq.strip())
+                fasta_file.write('\n')
+                continue
                 l = len(seq)
                 n = 100
                 num_lines = l / n
@@ -232,6 +237,9 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         with open(os.path.join(self.get_current_job_directory(), name + '.fa'), 'w') as fasta_file:
             fasta_file.write('>' + chrom + '\n')
+            fasta_file.write(seq.strip())
+            fasta_file.write('\n')
+            return
             l = len(seq)
             n = 100
             num_lines = l / n
@@ -306,7 +314,7 @@ class Simulation(map_reduce.Job):
             command += ' > '
             command += os.path.join(self.get_current_job_directory(), 'test.1.fq')
             print(command)
-            output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+            #output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
             command = 'cat '
             command += os.path.join(self.get_current_job_directory(), 'chr*.2.fq')
             command += ' > '

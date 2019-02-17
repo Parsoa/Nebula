@@ -81,6 +81,8 @@ def parse_args():
     parser.add_argument("--diploid", action = 'store_true')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
+    # maximum number of cpu cores to use
+    parser.add_argument("--previous", default = None)
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = float, default = 50)
     # whether to do dynamic rounding or not 
@@ -131,6 +133,8 @@ def configure(args):
         bam_file = args.bam,
         bed_file = args.bed,
         coverage = round(1 * args.coverage) if args.simulation else (args.coverage),
+        rounding = args.rounding,
+        previous = args.previous,
         is_dummy = args.dummy,
         jellyfish = args.jellyfish, 
         reference = args.reference,

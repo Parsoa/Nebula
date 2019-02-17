@@ -128,4 +128,9 @@ def find_all(string, substring):
     return l
 
 def calculate_gc_content(seq):
-    return len(list(filter(lambda x: x == 'G' or x == 'C', seq)))
+    n = 0
+    for c in seq:
+        if c == 'C' or c == 'G':
+            n += 1
+    return n
+    #return len(list(filter(lambda x: x == 'G' or x == 'C', seq)))
