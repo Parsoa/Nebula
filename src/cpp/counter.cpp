@@ -10,8 +10,6 @@
 #include <cstdint>
 #include <string>
 #include <stdio.h>
-#include <execinfo.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <bitset>
@@ -231,8 +229,8 @@ void process_read(char* seq, int read, int line) {
                 int* total = totals->at(kmer->first) ;
                 *total += 1 ;
                 if (masks->find(k) == masks->end()) {
-                    int* count = counts->at(kmer->first) ;
-                    *count += 1 ;
+                    //int* count = counts->at(kmer->first) ;
+                    //*count += 1 ;
                 } else {
                     std::vector<uint64_t>* m = masks->at(k) ;
                     for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
@@ -490,12 +488,16 @@ int transform(int index, string path) {
         *total = 0 ;
         totals->emplace(std::make_pair(k, total)) ;
         totals->emplace(std::make_pair(rc_k, total)) ;
+        cout << "here" << endl ;
         if (JOB == COUNT_INNER_KMERS) {
             std::vector<uint64_t> *m = new std::vector<uint64_t> ;
-            for (json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
-                for (json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
-                    m->push_back(encode_kmer(mask.key().c_str())) ;
-                    m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
+            if (kmer["loci"].size()) {
+                cout << kmer["loci"].size() << endl ;
+                for (json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
+                    for (json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
+                        m->push_back(encode_kmer(mask.key().c_str())) ;
+                        m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
+                    }
                 }
             }
             masks->emplace(std::make_pair(k, m)) ;

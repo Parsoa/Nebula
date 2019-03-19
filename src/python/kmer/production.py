@@ -17,6 +17,7 @@ from kmer import (
     config,
     gapped,
     counter,
+    dynamic,
     reduction,
     simulator,
     counttable,
@@ -63,8 +64,10 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         self.depth_kmers = {}
         self.inner_kmers = {}
         self.gapped_kmers = {}
+        self.junction_kmers = {}
         self.load_inner_kmers()
-        self.load_gapped_kmers()
+        #self.load_gapped_kmers()
+        self.load_junction_kmers()
         self.round_robin()
 
     def load_inner_kmers(self):
@@ -72,19 +75,21 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         job = reduction.CountLociIndicatorKmersJob()
         with open(os.path.join(job.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             self.inner_kmers = json.load(json_file)
-        self.load_depth_of_coverage_kmers()
+        #self.load_depth_of_coverage_kmers()
+        self.load_junction_kmers()
         print('Counting', green(len(self.inner_kmers)), 'inner kmers')
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             _kmers = {}
             for kmer in self.inner_kmers:
                 _kmers[kmer] = {}
                 _kmers[kmer]['loci'] = {}
+                _kmers[kmer]['tracks'] = self.inner_kmers[kmer]['tracks']
                 for locus in self.inner_kmers[kmer]['loci']:
                     _kmers[kmer]['loci'][locus] = {}
                     _kmers[kmer]['loci'][locus]['masks'] = self.inner_kmers[kmer]['loci'][locus]['masks']
-            for kmer in self.depth_kmers:
-                _kmers[kmer] = {}
-                _kmers[kmer]['loci'] = {}
+            #for kmer in self.depth_kmers:
+            #    _kmers[kmer] = {}
+            #    _kmers[kmer]['loci'] = {}
             json.dump(_kmers, json_file, indent = 4)
 
     def load_depth_of_coverage_kmers(self):
@@ -100,6 +105,19 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
                         break
         print('Counting', green(len(self.depth_kmers)), 'depth kmers')
         self.unload_reference_counts_provider()
+
+    def load_junction_kmers(self):
+        c = config.Configuration()
+        job = dynamic.CountDynamicGappedKmersJob()
+        with open(os.path.join(job.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+            kmers = json.load(json_file)
+            for kmer in kmers:
+                kmer = canonicalize(kmer)
+                if kmer in self.inner_kmers:
+                    self.inner_kmers.pop(kmer, None)
+                else:
+                    self.inner_kmers[kmer] = kmers[kmer]
+                    self.junction_kmers[kmer] = kmers[kmer]
 
     # There shouldn't be any overlap between gapped kmers and other kmers because of the filtering applied to them
     def load_gapped_kmers(self):
@@ -134,15 +152,15 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
     def merge_count(self, kmer, tokens):
         if kmer in self.gapped_kmers:
             count = tokens[0] 
-            self.gapped_kmers[kmer]['count'][i] += count
-        else:
+            self.gapped_kmers[kmer]['count'] += count
+        elif kmer in self.inner_kmers:
             count = tokens[0] 
             total = tokens[1] 
             canon = canonicalize(kmer)
             self.inner_kmers[canon]['count'] += count / 2
             self.inner_kmers[canon]['total'] += total / 2
 
-    def reduce():
+    def reduce(self):
         c = config.Configuration()
         self.merge_counts()
         with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
@@ -159,7 +177,12 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
             for track in self.gapped_kmers[kmer]['tracks']:
                 if not track in self.tracks:
                     self.tracks[track] = {'gapped_kmers': {}, 'inner_kmers': {}}
-                self.tracks[track]['gapped_kmers'][kmer] = self.kmers[kmer]
+                self.tracks[track]['gapped_kmers'][kmer] = self.gapped_kmers[kmer]
+        for track in self.tracks:
+            with open(os.path.join(self.get_current_job_directory(), 'lp_kmers_' + track + '.json'), 'w') as json_file:
+                json.dump(self.tracks[track], json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: 'lp_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -221,8 +244,6 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.gapped_tracks = copy.deepcopy(self.gapped_kmers_solver.index_tracks())
         with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
             json.dump({'gapped_kmers': self.gapped_kmers, 'tracks': self.gapped_tracks}, json_file, indent = 4)
-        #self.gapped_kmers_solver.calculate_residual_coverage()
-        #self.gapped_kmers_solver.solve()
 
     def load_inner_kmers(self):
         print(cyan('=============================================================================================='))
@@ -243,8 +264,6 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.inner_tracks = copy.deepcopy(self.inner_kmers_solver.index_tracks())
         with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
             json.dump({'inner_kmers': self.inner_kmers, 'tracks': self.inner_tracks}, json_file, indent = 4)
-        #self.inner_kmers_solver.calculate_residual_coverage()
-        #self.inner_kmers_solver.solve()
 
     def merge_kmers(self):
         c = config.Configuration()
@@ -385,4 +404,4 @@ class MixIntegerProgrammingJob(programming.IntegerProgrammingJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

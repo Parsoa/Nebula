@@ -21,6 +21,7 @@ from kmer import (
     config,
     gapped,
     counter,
+    reduction,
     map_reduce,
     statistics,
     visualizer,
@@ -39,9 +40,9 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class ExtractAluReadsJob(map_reduce.Job):
+class ExtractDynamicGappedKmersJob(map_reduce.Job):
 
-    _name = 'ExtractAluReadsJob'
+    _name = 'ExtractDynamicGappedKmersJob'
     _category = 'programming'
     _previous_job = None
 
@@ -51,7 +52,7 @@ class ExtractAluReadsJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = ExtractAluReadsJob(**kwargs)
+        job = ExtractDynamicGappedKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -66,16 +67,21 @@ class ExtractAluReadsJob(map_reduce.Job):
         self.num_threads = 1
 
     def transform(self, track, track_name):
-        gapped_kmers = {'outer': {}, 'inner': {}}
+        c = config.Configuration()
+        gapped_kmers = {} 
         slack = 70
-        self.sv_type = self.get_sv_type() 
-        reads = chain(self.bamfile.fetch(region = track.chrom.lower() + ':' + str(track.begin - slack) + ':' + str(track.begin + slack)), self.bamfile.fetch(region = track.chrom.lower() + ':' + str(track.end - slack) + ':' + str(track.end + slack)))
+        stride = c.ksize
+        self.sv_type = self.get_sv_type()
+        if not c.simulation:
+            track = track.lift()
+        reads = chain(self.bamfile.fetch(track.chrom, track.begin - slack, track.begin + slack), self.bamfile.fetch(track.chrom, track.end - slack, track.end + slack))
         n = 0
+        strid = c.ksize
         for read in reads:
             n += 1
             if read.query_alignment_length != len(read.query_sequence):
                 seq = read.query_sequence
-                if read.reference_start >= track.begin - slack and read.reference_start <= track.begin + slack:
+                if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
                     cigar = read.cigartuples
                     clips = []
                     offset = 0
@@ -84,25 +90,38 @@ class ExtractAluReadsJob(map_reduce.Job):
                             clips.append((offset, offset + c[1]))
                         offset += c[1]
                     index = 0
-                    for kmer in stream_kmers(37, False, seq):
-                        if self.is_clipped((index, index + 37), clips):
-                            if not kmer in gapped_kmers['outer']:
-                                gapped_kmers['outer'][kmer] = 0
-                            gapped_kmers['outer'][kmer] += 1
+                    for kmer in stream_kmers(stride, False, seq):
+                        if self.is_clipped((index, index + stride), clips):
+                            if not kmer in gapped_kmers:
+                                gapped_kmers[kmer] = {
+                                    'count': 0,
+                                    'loci': {
+                                        'break_point_' + track_name: {
+                                            'masks': {
+                                                'left': None,
+                                                'right': None
+                                            }
+                                        }
+                                    }
+                                }
+                            if len(seq[index - stride: index]) == stride:
+                                gapped_kmers[kmer]['loci']['break_point_' + track_name]['masks']['left'] = seq[index - stride: index]
+                            if len(seq[index + stride: index + stride + stride]) == stride:
+                                gapped_kmers[kmer]['loci']['break_point_' + track_name]['masks']['right'] = seq[index + stride: index + stride + stride]
+                            gapped_kmers[kmer]['count'] += 1
                         index += 1
-        print(n)
-        _gapped_kmers = {'outer': {}, 'inner': {}}
-        for kmer in gapped_kmers['outer']:
-            if gapped_kmers['outer'][kmer] >= 3:
-                _gapped_kmers['outer'][kmer] = gapped_kmers['outer'][kmer]
-        path = os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track_name + '.json')
-        with open(path, 'w') as json_file:
-            json.dump(_gapped_kmers, json_file, indent = 4)
-        return path
+        _gapped_kmers = {} 
+        for kmer in gapped_kmers:
+            if gapped_kmers[kmer]['count'] >= 3 and gapped_kmers[kmer]['loci']['break_point_' + track_name]['masks']['right'] and gapped_kmers[kmer]['loci']['break_point_' + track_name]['masks']['left']:
+                _gapped_kmers[kmer] = gapped_kmers[kmer]
+        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+        if len(_gapped_kmers) > 0:
+            with open(path, 'w') as json_file:
+                json.dump(_gapped_kmers, json_file, indent = 4)
+            return path
+        return None
 
     def is_clipped(self, kmer, clips):
-        if self.sv_type == 'DEL':
-            return True
         for clip in clips:
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
                 return True
@@ -117,11 +136,11 @@ class ExtractAluReadsJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueAluGappedKmersJob(gapped.UniqueGappedKmersJob):
+class UniqueDynamicGappedKmersJob(gapped.UniqueGappedKmersJob):
 
-    _name = 'UniqueAluGappedKmersJob'
+    _name = 'UniqueDynamicGappedKmersJob'
     _category = 'programming'
-    _previous_job = ExtractAluReadsJob
+    _previous_job = ExtractDynamicGappedKmersJob
 
     # ============================================================================================================================ #
     # Launcher
@@ -129,7 +148,7 @@ class UniqueAluGappedKmersJob(gapped.UniqueGappedKmersJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = UniqueAluGappedKmersJob(**kwargs)
+        job = UniqueDynamicGappedKmersJob(**kwargs)
         job.execute()
 
 # ============================================================================================================================ #
@@ -138,11 +157,11 @@ class UniqueAluGappedKmersJob(gapped.UniqueGappedKmersJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueAluGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
+class DynamicGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
 
-    _name = 'UniqueAluGappedKmersScoringJob'
+    _name = 'DynamicGappedKmersScoringJob'
     _category = 'programming'
-    _previous_job = UniqueAluGappedKmersJob
+    _previous_job = UniqueDynamicGappedKmersJob
 
     # ============================================================================================================================ #
     # Launcher
@@ -150,14 +169,14 @@ class UniqueAluGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = UniqueAluGappedKmersScoringJob(**kwargs)
+        job = DynamicGappedKmersScoringJob(**kwargs)
         job.execute()
 
     def transform(self, sequence, chrom):
         c = config.Configuration()
         t = time.time()
         l = len(sequence)
-        for index in range(0, l - 50):
+        for index in range(0, l - 100):
             if index % 100000 == 1:
                 s = time.time()
                 p = index / float(len(sequence))
@@ -166,11 +185,17 @@ class UniqueAluGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
             half_mer = sequence[index: index + c.hsize]
             if not half_mer in self.half_mers:
                 continue
-            for k in range(37, 38):
+            for k in range(32, 33):
                 kmer = canonicalize(sequence[index: index + k])
                 kmer = kmer[:c.hsize] + kmer[-c.hsize:]
                 if kmer in self.kmers:
                     self.kmers[kmer]['count'] += 1
+                    self.kmers[kmer]['loci'][chrom + '_' + str(index)] = {
+                            'masks': {
+                                'left': sequence[index - c.ksize: index],
+                                'right': sequence[index + k: index + k + c.ksize]
+                            }
+                        }
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -178,20 +203,19 @@ class UniqueAluGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class SelectUniqueAluGappedKmersJob(gapped.SelectUniqueGappedKmersJob):
-
-    _name = 'SelectUniqueAluGappedKmersJob'
-    _category = 'programming'
-    _previous_job = UniqueAluGappedKmersScoringJob
-    _counter_mode = 2
+class FilterDynamicGappedKmersJob(reduction.FilterLociIndicatorKmersJob):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
+    _name = 'FilterDynamicGappedKmersJob'
+    _category = 'programming'
+    _previous_job = DynamicGappedKmersScoringJob 
+
     @staticmethod
     def launch(**kwargs):
-        job = SelectUniqueAluGappedKmersJob(**kwargs)
+        job = FilterDynamicGappedKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -201,36 +225,41 @@ class SelectUniqueAluGappedKmersJob(gapped.SelectUniqueGappedKmersJob):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
-        self.half_mers = {}
-        tracks = self.load_previous_job_results()
-        m = {}
-        for track in tracks:
-            with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
-                kmers = json.load(json_file)
-                for kmer in kmers['outer']:
-                    if kmers['outer'][kmer]['count'] == 0:
-                        left = kmer[:c.hsize]
-                        right = kmer[-c.hsize:]
-                        self.kmers[kmer] = {'tracks': kmers['outer'][kmer]['tracks'], 'side': 'outer', 'count': {}}
-                        for i in range(0, 11):
-                            self.kmers[kmer]['count'][i] = 0
-                        if not left in self.half_mers:
-                            self.half_mers[left] = {}
-                        self.half_mers[left][right] = kmer 
-                        left = reverse_complement(left)
-                        right = reverse_complement(right)
-                        if not right in self.half_mers:
-                            self.half_mers[right] = {}
-                        self.half_mers[right][left] = kmer 
-                        if track not in m:
-                            m[track] = 0
-                        m[track] += 1
-        visualizer.histogram(list(map(lambda track: m[track], m)), 'gapped_kmers_per_alu', self.get_current_job_directory(), 'number of kmers', 'number of events')
-        print(len(tracks), 'total events')
-        print(len(self.kmers), 'kmers')
-        print(len(m), 'events with kmers')
-        self.export_accelerator_input()
-        self.round_robin()
+        self.tracks = self.load_previous_job_results()
+        self.round_robin(self.tracks)
+
+    def transform(self, track, track_name):
+        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
+            kmers = json.load(json_file)
+            t = bed.track_from_name(track_name)
+            for kmer in kmers:
+                if kmers[kmer]['count'] <= 3:
+                    interest_kmers = {}
+                    self.kmers[kmer] = {}
+                    self.kmers[kmer]['loci'] = kmers[kmer]['loci']
+                    self.kmers[kmer]['total'] = 0
+                    self.kmers[kmer]['count'] = 0
+                    self.kmers[kmer]['doubt'] = 0
+                    self.kmers[kmer]['tracks'] = kmers[kmer]['tracks']
+                    self.kmers[kmer]['reference'] = kmers[kmer]['count']
+                    self.kmers[kmer]['interest_masks'] = {}
+                    for locus in self.kmers[kmer]['loci']:
+                        self.kmers[kmer]['loci'][locus]['masks'] = {self.kmers[kmer]['loci'][locus]['masks']['left']: True, self.kmers[kmer]['loci'][locus]['masks']['right']: True}
+                    for locus in self.kmers[kmer]['loci']:
+                        if 'break_point_' in locus:
+                            self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
+            return None
+
+    def output_batch(self, batch):
+        for kmer in self.kmers:
+            for locus in self.kmers[kmer]['loci'].keys():
+                l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
+                if l == 0:
+                    self.kmers[kmer]['loci'].pop(locus, None)
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
+        json_file.close()
+        exit()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -238,20 +267,20 @@ class SelectUniqueAluGappedKmersJob(gapped.SelectUniqueGappedKmersJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
-
-    _name = 'CountUniqueAluGappedKmersJob'
-    _category = 'programming'
-    _previous_job = SelectUniqueAluGappedKmersJob
-    _counter_mode = 1
+class CountDynamicGappedKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
+    _name = 'CountDynamicGappedKmersJob'
+    _category = 'programming'
+    _previous_job = FilterDynamicGappedKmersJob 
+    _counter_mode = 0
+
     @staticmethod
     def launch(**kwargs):
-        job = CountUniqueAluGappedKmersJob(**kwargs)
+        job = CountDynamicGappedKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -260,35 +289,49 @@ class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
 
     def load_inputs(self):
         c = config.Configuration()
+        tracks = {}
         self.kmers = {}
-        print(cyan(self.get_previous_job_directory()))
-        tracks = self.load_previous_job_results()
-        self.half_mers = {}
-        n = 0
-        for track in tracks:
-            n += 1
-            print(cyan(track))
-            with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
-                kmers = json.load(json_file)
-                for side in ['outer']:
-                    for kmer in kmers[side]:
-                        if kmers[side][kmer]['gap'] == 5:
-                            left = kmer[:c.hsize]
-                            right = kmer[-c.hsize:]
-                            self.kmers[kmer] = kmers[side][kmer]
-                            self.kmers[kmer]['count'] = 0
-                            self.kmers[kmer]['doubt'] = 0
-                            if not left in self.half_mers:
-                                self.half_mers[left] = {}
-                            self.half_mers[left][right] = kmer 
-                            left = reverse_complement(left)
-                            right = reverse_complement(right)
-                            if not right in self.half_mers:
-                                self.half_mers[right] = {}
-                            self.half_mers[right][left] = kmer
+        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+            kmers = json.load(json_file)
+            for kmer in kmers:
+                self.kmers[kmer] = {}
+                self.kmers[kmer]['loci'] = kmers[kmer]['loci']
+                self.kmers[kmer]['count'] = 0 
+                self.kmers[kmer]['doubt'] = 0 
+                self.kmers[kmer]['total'] = 0 
+                self.kmers[kmer]['tracks'] = kmers[kmer]['tracks']
+                for track in self.kmers[kmer]['tracks']:
+                    tracks[track] = True
+        with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
         print(len(self.kmers), 'kmers')
-        self.export_accelerator_input()
+        print(len(tracks), 'events with kmers')
         self.round_robin()
+
+    def merge_count(self, kmer, tokens):
+        count = tokens[0] 
+        total = tokens[1] 
+        canon = canonicalize(kmer)
+        self.kmers[canon]['count'] += count / 2
+        self.kmers[canon]['total'] += total / 2
+
+    def reduce(self):
+        c = config.Configuration()
+        self.merge_counts()
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
+        self.tracks = {}
+        for kmer in self.kmers:
+            for track in self.kmers[kmer]['tracks']:
+                if not track in self.tracks:
+                    self.tracks[track] = {}
+                self.tracks[track][kmer] = self.kmers[kmer]
+        for track in self.tracks:
+            print('exporting track', track)
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
+                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -297,21 +340,43 @@ class CountUniqueAluGappedKmersJob(gapped.CountUniqueGappedKmersJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class AluGappedKmersIntegerProgrammingJob(gapped.GappedKmersIntegerProgrammingJob):
+class DynamicGappedKmersIntegerProgrammingJob(gapped.GappedKmersIntegerProgrammingJob):
 
-    _name = 'AluGappedKmersIntegerProgrammingJob'
+    _name = 'DynamicGappedKmersIntegerProgrammingJob'
     _category = 'programming'
-    _previous_job = CountUniqueAluGappedKmersJob
+    _previous_job = CountDynamicGappedKmersJob
     _kmer_type = 'gapped'
 
     @staticmethod
     def launch(**kwargs):
-        job = AluGappedKmersIntegerProgrammingJob(**kwargs)
+        job = DynamicGappedKmersIntegerProgrammingJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        print(cyan(track_name))
+        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
+            kmers = json.load(json_file)
+            for kmer in kmers:
+                self.lp_kmers[kmer] = {
+                    'loci': kmers[kmer]['loci'],
+                    'type': self._kmer_type,
+                    'count': kmers[kmer]['count'],
+                    'doubt': kmers[kmer]['doubt'],
+                    'total': kmers[kmer]['total'],
+                    'tracks': kmers[kmer]['tracks'],
+                    'weight': 1.0,
+                    'coverage': c.coverage,
+                    'reference': len(kmers[kmer]['loci']),
+                }
+        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump({ kmer: self.lp_kmers[kmer] for kmer in kmers }, json_file, indent = 4, sort_keys = True)
+        return path
 
     def generate_linear_program(self):
         print('generating linear program')

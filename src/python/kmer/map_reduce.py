@@ -73,7 +73,7 @@ class Job(object):
 
     def find_thread_count(self):
         c = config.Configuration()
-        self.num_threads = c.max_threads
+        self.num_threads = c.threads
 
     def prepare(self):
         pass
@@ -92,20 +92,20 @@ class Job(object):
 
     def round_robin(self, tracks, name_func = lambda x: x, filter_func = lambda x: False):
         c = config.Configuration()
-        print('round robin', c.max_threads)
+        print('round robin', c.threads)
         n = 0
         self.batch = {}
         for track in tracks:
             track_name = name_func(track)
             if filter_func(tracks[track]):
                 continue
-            index = n % c.max_threads
+            index = n % c.threads
             if not index in self.batch:
                 self.batch[index] = {}
             self.batch[index][track_name] = tracks[track]
             print(blue('assigned ', track_name, ' to ', index))
             n = n + 1
-            self.num_threads = min(c.max_threads, n)
+            self.num_threads = min(c.threads, n)
 
     def distribute_workload(self):
         for index in range(0, self.num_threads):
@@ -222,11 +222,11 @@ class Job(object):
         if c.simulation:
             return bed.load_tracks_from_file_as_dict(os.path.join(self.get_simulation_directory(), name))
         else:
-            return bed.load_tracks_from_file_as_dict(c.bed_file)
+            return bed.load_tracks_from_file_as_dict(c.bed)
 
     def get_sv_type(self):
         c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
+        bed_file_name = c.bed.split('/')[-1]
         if bed_file_name.find('DEL') != -1:
             return 'DEL'
         if bed_file_name.find('INV') != -1:
@@ -237,7 +237,7 @@ class Job(object):
 
     def load_reference_counts_provider(self):
         c = config.Configuration()
-        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish[1])
+        self.reference_counts_provider = counttable.JellyfishCountsProvider(c.jellyfish)
 
     def unload_reference_counts_provider(self):
         del self.reference_counts_provider
@@ -248,17 +248,20 @@ class Job(object):
 
     def get_output_directory(self):
         c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
+        bed_file_name = c.bed.split('/')[-1]
         if c.simulation:
-            return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/' + str(c.ksize) + 'k/'))
+            return os.path.abspath(os.path.join(c.working_directory,\
+                'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/'))
         else:
             if self._category == 'misc':
-                return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                    '../../../' + self._category + '/'))
+                return os.path.abspath(os.path.join(c.working_directory,
+                    self._category + '/'))
             else:
-                return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                    '../../../' + self._category + '/' + bed_file_name + '/' + str(c.ksize) + 'k/'))
+                return os.path.abspath(os.path.join(c.working_directory, 
+                    self._category + '/' + bed_file_name + '/'))
+
+    def get_current_job_directory(self):
+        return os.path.abspath(os.path.join(self.get_output_directory(), self._name))
 
     def get_previous_job_directory(self):
         c = config.Configuration()
@@ -269,14 +272,11 @@ class Job(object):
         else:
             return None
 
-    def get_current_job_directory(self):
-        return os.path.abspath(os.path.join(self.get_output_directory(), self._name))
-
     def get_simulation_directory(self):
         c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
-        return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-            '../../../simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/' + str(c.ksize) + 'k/Simulation/'))
+        bed_file_name = c.bed.split('/')[-1]
+        return os.path.abspath(os.path.join(c.working_directory,\
+            'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/Simulation/'))
 
     def create_output_directories(self):
         dir = self.get_output_directory()
@@ -298,19 +298,19 @@ class BaseGenotypingJob(Job):
     
     def get_output_directory(self):
         c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
+        bed_file_name = c.bed.split('/')[-1]
         if c.simulation:
             return Job.get_output_directory(self)
         else:
-            return os.path.abspath(os.path.join(os.path.dirname(__file__),\
-                '../../../' + self._category + '/genotyping/' + c.genome))
+            return os.path.abspath(os.path.join(c.working_directory,\
+                self._category + '/genotyping/' + c.genome))
 
     def get_current_job_directory(self):
         c = config.Configuration()
         if c.simulation:
             return Job.get_current_job_directory(self)
         else:
-            bed_file_name = c.bed_file.split('/')[-1]
+            bed_file_name = c.bed.split('/')[-1]
             return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._name))
 
     def get_previous_job_directory(self):
@@ -320,7 +320,7 @@ class BaseGenotypingJob(Job):
         if c.simulation:
             return Job.get_previous_job_directory(self)
         else:
-            bed_file_name = c.bed_file.split('/')[-1]
+            bed_file_name = c.bed.split('/')[-1]
             return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._previous_job._name))
 
 # ============================================================================================================================ #

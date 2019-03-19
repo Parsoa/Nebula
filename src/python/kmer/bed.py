@@ -6,6 +6,7 @@ import pwd
 import sys
 import json
 import time
+import subprocess
 
 from kmer import (
     config,
@@ -34,6 +35,18 @@ class BedTrack:
     def __str__(self):
         return self.chrom + '_' + str(self.begin) + '_' + str(self.end)
 
+    # TODO: This is really ugly, hopefully won't happen in practice
+    def lift(self):
+        with open('liftover_tmp.bed', 'w') as b:
+            b.write(self.chrom + '\t' + str(self.begin) + '\t' + str(self.end) + '\n')
+        command = '/home/pkhorsand/local/bin/liftOver ' + 'liftover_tmp.bed' + ' /afs/genomecenter.ucdavis.edu/home/pkhorsand/hg19ToHg38.over.chain liftover_res.bed liftover_un.bed'
+        output = subprocess.call(command, shell = True)
+        track = load_tracks_from_file('liftover_res.bed')[0]
+        os.remove('liftover_tmp.bed')
+        os.remove('liftover_res.bed')
+        os.remove('liftover_un.bed')
+        return track
+
     def export(self):
         s = self.chrom + '\t' + str(self.begin) + '\t' + str(self.end)
         for k, v in self.kwargs.items():
@@ -45,7 +58,7 @@ class BedTrack:
         c = config.Configuration()
         # this is the largest sequence that we will ever need for this track
         # <- Slack -><-actual sequence-><- Slack ->
-        self.slack = c.read_length - c.ksize
+        self.slack = c.readlength - c.ksize
         begin = self.begin - self.slack
         end = self.end + self.slack
         chromosome = extract_chromosome(self.chrom.lower())
@@ -78,27 +91,26 @@ class BedTrack:
         self.extract_base_sequence()
         begin = self.slack
         end = len(self.sequence) - self.slack
-        outer_gapped_kmers = {}
-        inner_gapped_kmers = {}
+        gapped_kmers = {}
         h = c.hsize
-        # each half is 16 bases plus 10 bases in between, say nearly 45: 25 bases remain for each end
-        b = self.sequence[begin - h - 2 - 25: begin + 3 + h + 25]
-        kmer = self.sequence[begin - h - 2: begin + 3 + h]
-        prefix = self.sequence[begin - h - 2 - 25: begin - h - 2]
-        suffix = self.sequence[begin + 3 + h: begin + 3 + h + 25]
-        inner_gapped_kmers[kmer] = {'prefix': prefix, 'suffix': suffix}
         #
-        e = self.sequence[end - h - 2 - 25: end + 3 + h + 25]
+        b = self.sequence[begin - h - 2 - c.ksize: begin + 3 + h + c.ksize]
+        kmer = self.sequence[begin - h - 2: begin + 3 + h]
+        prefix = self.sequence[begin - h - 2 - c.ksize: begin - h - 2]
+        suffix = self.sequence[begin + 3 + h: begin + 3 + h + c.ksize]
+        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'inner'}
+        #
+        e = self.sequence[end - h - 2 - c.ksize: end + 3 + h + c.ksize]
         kmer = self.sequence[end - h - 2: end + 3 + h]
-        prefix = self.sequence[end - h - 2 - 25: end - h - 2]
-        suffix = self.sequence[end + 3 + h: end + 3 + h + 25]
-        inner_gapped_kmers[kmer] = {'prefix': prefix, 'suffix': suffix}
+        prefix = self.sequence[end - h - 2 - c.size: end - h - 2]
+        suffix = self.sequence[end + 3 + h: end + 3 + h + c.ksize]
+        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'inner'}
         #
         kmer = self.sequence[begin - 2 - h: begin + 3] + self.sequence[end - 2: end + 3 + h]
-        prefix = self.sequence[begin - h - 2 - 25: begin - h - 2]
-        suffix = self.sequence[end + 3 + h: end + 3 + h + 25]
-        outer_gapped_kmers[kmer] = {'prefix': prefix, 'suffix': suffix}
-        return {'inner': inner_gapped_kmers, 'outer': outer_gapped_kmers, 'begin': b, 'end': e, 'sequence': self.sequence}
+        prefix = self.sequence[begin - h - 2 - c.ksize: begin - h - 2]
+        suffix = self.sequence[end + 3 + h: end + 3 + h + c.ksize]
+        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'outer'}
+        return gapped_kmers
 
 # ============================================================================================================================ #
 # BED Tracks
@@ -135,3 +147,5 @@ def load_tracks_from_file(path, keywords = []):
 
 def load_tracks_from_file_as_dict(path, keywords = []):
     return {str(track): track for track in load_tracks_from_file(path, keywords)}
+
+

@@ -59,14 +59,18 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
     # ============================================================================================================================ #
 
     def load_inputs(self):
-        print(self.get_current_job_directory())
         c = config.Configuration()
-        self.load_reference_counts_provider() 
-        self.kmers = {}
+        self.load_depth_of_coverage_kmers()
+        self.export_accelerator_input()
+        self.round_robin()
+
+    def load_depth_of_coverage_kmers(self):
         n = 0
         self.acc = {}
+        self.kmers = {}
         for i in range(1, 2):
             self.acc[i] = 0
+        self.load_reference_counts_provider() 
         for kmer, count in self.reference_counts_provider.stream_kmers():
             if count in self.acc:
                 if self.acc[count] == 1000000:
@@ -79,10 +83,12 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
                 if self.acc[count] % 1000 == 0:
                     print(self.acc[count], 'kmers with a count of', count, 'so far')
         print('Counting', green(len(self.kmers)), 'unique kmers')
+        self.unload_reference_counts_provider()
+
+    def export_accelerator_input(self):
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
         del self.kmers
-        self.round_robin()
 
     def merge_count(self, kmer, tokens):
         count = tokens[0] 
@@ -379,7 +385,7 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
         self.gc = {}
         for i in range(0, 101):
             self.gc[i] = {}
-        if c.resume_from_reduce:
+        if c.reduce:
             return
         self.chromosomes = extract_whole_genome()
         self.load_reference_counts_provider() 
@@ -505,4 +511,4 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

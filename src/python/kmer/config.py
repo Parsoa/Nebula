@@ -9,18 +9,22 @@ import argparse
 
 class Configuration:
 
-    kmer_cache_size = 10000
-
     class __impl:
-        def __init__(self, **kwargs):
-            for k, v in kwargs.items():
-                setattr(self, k, v)
+        def __init__(self, args):
+            for arg in args:
+                for attr, value in arg.__dict__.iteritems():
+                    print attr, value
+                    setattr(self, attr, value)
+            setattr(self, 'hsize', self.ksize / 2)
+            if hasattr(self, 'simulation'):
+                if self.simulation:
+                    self.simulation = int(self.simulation[:-1])
 
     __instance = None
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args):
         if Configuration.__instance is None:
-            Configuration.__instance = Configuration.__impl(**kwargs)
+            Configuration.__instance = Configuration.__impl(args)
 
     def __getattr__(self, attr):
         return getattr(self.__instance, attr)
@@ -34,124 +38,79 @@ class Configuration:
 
 def init():
     print('configuring...')
-    configure(parse_args())
+    genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
+    genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/GRC38.fasta'
+    Configuration(parse_args())
     print('configuration created')
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    # path to a BAM files, for jobs that need one as input
-    parser.add_argument("--bam", default = None)
+    parser = argparse.ArgumentParser(add_help = False)
+    ################## General arguments
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", default = None)
+    # path to a BAM files, for jobs that need one as input
+    parser.add_argument("--bam", default = None) #TODO: move to extract
+    #gap size, should be odd
+    parser.add_argument("--gap", default = None, type = int) #TODO: move to extract
     # the job to execute from this file
     parser.add_argument("--job")
-    #gap size, should be odd
-    parser.add_argument("--gap", default = None, type = int)
-    # path to a BED-like file containing a set of common SNVs to be considered when generating breakpoints
-    parser.add_argument("--snp")
-    # std of the kmer normal distribution 
+    # std of the kmer normal distribution
     parser.add_argument("--std", default = 15, type = int)
-    # the seed to use for random number generation 
+    # the seed to use for random number generation
     parser.add_argument("--seed", type = int)
-    # triggers the debug mode 
+    # triggers the debug mode
     parser.add_argument("--debug", action = 'store_true')
     # length of the kmers 
-    parser.add_argument("--ksize", default = '31k')
-    # specifies that this counttable should return dummy values
-    parser.add_argument("--dummy", action='store_true')
-    # the chromosome to simulate
-    parser.add_argument("--chrom", default = 'chr1')
+    parser.add_argument("--ksize", default = 32, type = int)
     # set of exons for the current reference
     parser.add_argument("--exons", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/Exons/hg38.exons.filtered.bed')
     # path to a FASTQ files, for jobs that need one as input
     parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
-    # path to a FASTQ files, for jobs that need one as input
-    parser.add_argument("--genes", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/hgnc.txt')
     # generic flag for passing input arguments
     parser.add_argument("--input")
-    # whether to do a whole genome simulation or not 
-    parser.add_argument("--whole", action = 'store_true')
     # the name of the genome being genotyped or whatver 
     parser.add_argument("--genome")
-    # whether to generate random events during simulation or not
-    parser.add_argument("--random", action = 'store_true')
     # whether to resume this job from reduce or not
     parser.add_argument("--reduce", action = 'store_true')
-    # whether to do a diploid simulation or two haploid ones 
-    parser.add_argument("--diploid", action = 'store_true')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
-    # maximum number of cpu cores to use
+    # alternate directory for previous job
     parser.add_argument("--previous", default = None)
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = float, default = 50)
-    # whether to do dynamic rounding or not 
-    parser.add_argument("--rounding", action = 'store_true')
     # the path to a jellyfish generated kmer count index
-    parser.add_argument("--jellyfish", nargs = '*')
+    parser.add_argument("--jellyfish")
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
-    parser.add_argument("--reference", default = 'hg19')
+    parser.add_argument("--reference", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
+    # tmp file directory 
+    parser.add_argument("--working_directory", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/output')
+    # whether to generate random events during simulation or not
+    parser.add_argument("--random", action = 'store_true')
+    # whether to do a diploid simulation or two haploid ones 
+    parser.add_argument("--diploid", action = 'store_true')
     # indicates if this is part of a simulation
     parser.add_argument("--simulation", default = None)
+    # if we only want to simulate a certain chromosome
+    parser.add_argument("--chromosomes", default = None, nargs = '*')
     # the size of the reads in the fastq file 
     parser.add_argument("--readlength", type = int, default = 100)
     # description of this simulation 
     parser.add_argument("--description")
-    # whether the simulation should be heterozygous
-    parser.add_argument("--heterozygous", action = 'store_true')
-    # whether to use C acceleration 
-    parser.add_argument("--accelerate", action = 'store_true')
     # rate of SNPs in simulation 
     parser.add_argument("--mutation_rate", type = float, default = 0.0)
     # rate of sequencing error in simulation
     parser.add_argument("--sequencing_error_rate", type = float, default = 0.0)
-    args = parser.parse_args()
+    # whether to do dynamic rounding or not 
+    parser.add_argument("--rounding", action = 'store_true')
     #
+    main = argparse.ArgumentParser(prog = 'nebula', add_help = False)
+    subparsers = main.add_subparsers(dest = 'command')
+    ################## Preprocessing arguments
+    extract_parser = subparsers.add_parser('preprocess', parents = [parser])
+    ################## Genotyping arguments
+    genotype_parser = subparsers.add_parser('genotype', parents = [parser])
+    ################## Simulation arguments
+    simulation_parser = subparsers.add_parser('simulate', parents = [parser])
+    ################## End of arguments
+    args = main.parse_args()
     return args
-
-def configure(args):
-    genome_hg19 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref'
-    genome_hg38 = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg38/GRC38.fasta'
-    reference_genome = genome_hg19 if args.reference == 'hg19' else genome_hg38 if args.reference == 'hg38' else args.reference
-    max_threads = args.threads
-    # set up configuration
-    Configuration(
-        job = args.job,
-        gap = args.gap,
-        snp = args.snp,
-        std = args.std,
-        seed = args.seed,
-        chrom = args.chrom,
-        debug = args.debug,
-        exons = args.exons,
-        hsize = 16,
-        ksize = int(args.ksize[:-1]),
-        input = args.input,
-        genome = args.genome,
-        random = args.random,
-        diploid = args.diploid,
-        bam_file = args.bam,
-        bed_file = args.bed,
-        coverage = round(1 * args.coverage) if args.simulation else (args.coverage),
-        rounding = args.rounding,
-        previous = args.previous,
-        is_dummy = args.dummy,
-        jellyfish = args.jellyfish, 
-        reference = args.reference,
-        accelerate = args.accelerate,
-        fastq_file = os.path.abspath(args.fastq),
-        simulation = int(args.simulation[:-1]) if args.simulation else None,
-        genome_hg19 = genome_hg19,
-        genome_hg38 = genome_hg38,
-        description = args.description,
-        max_threads = 1 if args.debug else args.threads,
-        read_length = args.readlength,
-        heterozygous = args.heterozygous,
-        whole_genome = args.whole,
-        mutation_rate = args.mutation_rate,
-        jellyfish_base = '/share/hormozdiarilab/Experiments/Jellyfish',
-        reference_genome = reference_genome,
-        output_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../output')),
-        resume_from_reduce = args.reduce,
-        sequencing_error_rate = args.sequencing_error_rate
-    )

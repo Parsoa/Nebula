@@ -9,6 +9,17 @@ if __name__ == '__main__':
     to = int(sys.argv[2]) if len(sys.argv) == 3 else 38
     name = bed[:bed.find('.bed')]
     FNULL = open(os.devnull, 'w')
+    if len(sys.argv) == 4:
+        with open('tmp.bed', 'w') as b:
+            b.write(sys.argv[1] + '\t' + sys.argv[2] + '\t' + sys.argv[3] + '\n')
+        command = '/home/pkhorsand/local/bin/liftOver ' + 'tmp.bed' + ' /afs/genomecenter.ucdavis.edu/home/pkhorsand/hg19ToHg38.over.chain res.bed un.bed'
+        output = subprocess.call(command, shell = True)
+        command = 'cat res.bed'
+        output = subprocess.call(command, shell = True)
+        #os.remove('tmp.bed')
+        #os.remove('res.bed')
+        #os.remove('un.bed')
+        exit()
     with open(name + '.convert.bed', 'w') as c:
         with open(bed) as f:
             for line in f.readlines():

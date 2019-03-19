@@ -67,10 +67,10 @@ class ExtractGappedKmersJob(map_reduce.Job):
         print(cyan(track_name))
         c = config.Configuration()
         gapped_kmers = track.extract_boundary_gapped_kmers()
-        path = os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track_name  + '.json')
-        json_file = open(path, 'w')
-        json.dump(gapped_kmers, json_file, sort_keys = True, indent = 4)
-        return 'gapped_kmers_' + track_name + '.json'
+        path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(gapped_kmers, json_file, sort_keys = True, indent = 4)
+        return path
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -99,59 +99,38 @@ class UniqueGappedKmersJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.gapped_kmers = {'inner': {}, 'outer': {}}
+        self.gapped_kmers = {} 
         tracks = self.load_previous_job_results()
         for track in tracks:
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 gapped_kmers = json.load(json_file)
-                for side in ['inner', 'outer']:
-                    for kmer in gapped_kmers[side]:
-                        k = canonicalize(kmer)
-                        k = k[:c.hsize] + k[-c.hsize:]
-                        if not k in self.gapped_kmers[side]:
-                            self.gapped_kmers[side][k] = {'tracks': {}}
-                        if track in self.gapped_kmers[side][k]:
-                            self.gapped_kmers[side][k]['tracks'][track] += 1
-                        else:
-                            self.gapped_kmers[side][k]['tracks'][track] = 1
+                for kmer in gapped_kmers:
+                    k = canonicalize(kmer)
+                    k = k[:c.hsize] + k[-c.hsize:]
+                    if not k in self.gapped_kmers:
+                        self.gapped_kmers[k] = gapped_kmers[kmer]
+                        self.gapped_kmers[k]['tracks'] = {}
+                    if not track in self.gapped_kmers[k]:
+                        self.gapped_kmers[k]['tracks'][track] = 0
+                    self.gapped_kmers[k]['tracks'][track] += 1
         self.round_robin(tracks)
 
     def transform(self, track, track_name):
         c = config.Configuration()
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             _gapped_kmers = json.load(json_file)
-        gapped_kmers = {'inner': {}, 'outer': {}}
-        for side in ['inner', 'outer']:
-            for kmer in _gapped_kmers[side]:
-                if 'N' in kmer:
-                    continue
-                k = canonicalize(kmer)
-                k = k[:c.hsize] + k[-c.hsize:]
-                unique = 0
-                unique += len(self.gapped_kmers['inner'][k]['tracks']) if k in self.gapped_kmers['inner'] else 0
-                unique += len(self.gapped_kmers['outer'][k]['tracks']) if k in self.gapped_kmers['outer'] else 0
-                # The kmer is not shared with a kmer of opposite side of another event
-                if unique == 1:
-                    gapped_kmers[side][k] = self.gapped_kmers[side][k]
-        path = os.path.join(self.get_current_job_directory(), 'unique_gapped_kmers_' + track_name  + '.json') 
-        json_file = open(path, 'w')
-        json.dump(gapped_kmers, json_file, sort_keys = True, indent = 4)
-        return 'unique_gapped_kmers_' + track_name  + '.json'
-
-    def plot(self, tracks):
-        x = {'inner': [], 'outer': []}
-        y = {'inner': [], 'outer': []}
-        print(len(tracks))
-        for track in tracks:
-            print(track)
-            with open(os.path.join(self.get_current_job_directory(), tracks[track]), 'r') as json_file:
-                gapped_kmers = json.load(json_file)
-                for side in ['inner', 'outer']:
-                    print(side)
-                    x[side].append(len(gapped_kmers[side]))
-        visualizer.histogram(x = x['inner'], name = 'number of unique inner gapped kmers', x_label = 'number of unique gapped kmers', y_label = 'number of events', path = self.get_current_job_directory())
-        visualizer.histogram(x = x['outer'], name = 'number of unique outer gapped kmers', x_label = 'number of unique gapped kmers', y_label = 'number of events', path = self.get_current_job_directory())
+        gapped_kmers = {} 
+        for kmer in _gapped_kmers:
+            if 'N' in kmer:
+                continue
+            k = canonicalize(kmer)
+            k = k[:c.hsize] + k[-c.hsize:]
+            gapped_kmers[k] = self.gapped_kmers[k]
+        path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(gapped_kmers, json_file, sort_keys = True, indent = 4)
+        return path
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -186,17 +165,13 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                for side in ['outer', 'inner']:
-                    for kmer in kmers[side]:
-                        self.kmers[kmer] = kmers[side][kmer]
-                        self.kmers[kmer]['count'] = 0
-                        self.kmers[kmer]['side'] = side
-                        left = kmer[:c.hsize]
-                        right = kmer[-c.hsize:]
-                        self.half_mers[left] = True
-                        #self.half_mers[right] = True
-                        #self.half_mers[reverse_complement(left)] = True
-                        self.half_mers[reverse_complement(right)] = True
+                for kmer in kmers:
+                    self.kmers[kmer] = kmers[kmer]
+                    self.kmers[kmer]['count'] = 0
+                    left = kmer[:c.hsize]
+                    right = kmer[-c.hsize:]
+                    self.half_mers[left] = True
+                    self.half_mers[reverse_complement(right)] = True
         print('scoring', len(self.kmers), 'kmers')
         self.chroms = extract_whole_genome()
         self.round_robin(self.chroms)
@@ -214,7 +189,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
             half_mer = sequence[index: index + c.hsize]
             if not half_mer in self.half_mers:
                 continue
-            for k in range(32, 43):
+            for k in range(32, 38):
                 kmer = canonicalize(sequence[index: index + k])
                 kmer = kmer[:c.hsize] + kmer[-c.hsize:]
                 if kmer in self.kmers:
@@ -238,21 +213,22 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
                 batch = json.load(json_file)
                 for kmer in batch:
                     self.kmers[kmer]['count'] += batch[kmer]['count']
+                    if 'loci' in batch[kmer]:
+                        self.kmers[kmer]['loci'].update(batch[kmer]['loci'])
 
     def reduce(self):
         self.merge_counts()
-        self.tracks = self.load_previous_job_results()
-        for track in self.tracks.keys():
-            with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
-                self.tracks[track] = json.load(json_file)
+        self.tracks = {}
         for kmer in self.kmers:
             for track in self.kmers[kmer]['tracks']:
-                self.tracks[track][self.kmers[kmer]['side']][kmer] = self.kmers[kmer]
+                if not track in self.tracks:
+                    self.tracks[track] = {}
+                self.tracks[track][kmer] = self.kmers[kmer]
         for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track + '.json'), 'w') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'gapped_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -286,16 +262,14 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
         self.half_mers = {}
         tracks = self.load_previous_job_results()
         m = 0
-        x = []
         for track in tracks:
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                for kmer in kmers['outer']:
-                    x.append(kmers['outer'][kmer]['count'])
-                    if kmers['outer'][kmer]['count'] == 0:
+                for kmer in kmers:
+                    if kmers[kmer]['count'] == 0:
                         left = kmer[:c.hsize]
                         right = kmer[-c.hsize:]
-                        self.kmers[kmer] = {'tracks': kmers['outer'][kmer]['tracks'], 'side': 'outer', 'count': {}}
+                        self.kmers[kmer] = {'tracks': kmers[kmer]['tracks'], 'count': {}, 'side': 'outer'}
                         for i in range(0, 11):
                             self.kmers[kmer]['count'][i] = 0
                         if not left in self.half_mers:
@@ -307,7 +281,6 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
                             self.half_mers[right] = {}
                         self.half_mers[right][left] = kmer 
                         m += 1
-        visualizer.histogram(x, 'outer_gapped_kmer_count', self.get_current_job_directory(), 'count', 'number of kmers')
         print(len(tracks), 'total events')
         print(len(self.kmers), 'kmers')
         print(m, 'events with kmers')
@@ -332,7 +305,6 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
         print(len(self.kmers))
         keys = list(self.kmers.keys())
         for kmer in keys:
-            side = self.kmers[kmer]['side']
             gap = max(self.kmers[kmer]['count'].items(), key = operator.itemgetter(1))[0]
             total = sum(map(lambda x: self.kmers[kmer]['count'][x], self.kmers[kmer]['count']))
             self.kmers[kmer]['gap'] = gap if self.kmers[kmer]['count'][gap] != 0 else -1
@@ -341,15 +313,15 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
             self.kmers[kmer]['actual_gap'] = -1
             for track in self.kmers[kmer]['tracks']:
                 if not track in self.tracks:
-                    self.tracks[track] = {'inner': {}, 'outer': {}}
-                self.tracks[track][side][kmer] = self.kmers[kmer]
+                    self.tracks[track] = {}
+                self.tracks[track][kmer] = self.kmers[kmer]
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
         for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track + '.json'), 'w') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'gapped_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'gaps.bed'), 'w') as bed_file:
             for kmer in self.kmers:
                 for track in self.kmers[kmer]['tracks']:
@@ -393,22 +365,21 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
             print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                for side in ['inner', 'outer']:
-                    for kmer in kmers[side]:
-                        if kmers[side][kmer]['gap'] != -1:
-                            left = kmer[:c.hsize]
-                            right = kmer[-c.hsize:]
-                            self.kmers[kmer] = kmers[side][kmer]
-                            self.kmers[kmer]['count'] = 0
-                            self.kmers[kmer]['doubt'] = 0
-                            if not left in self.half_mers:
-                                self.half_mers[left] = {}
-                            self.half_mers[left][right] = kmer 
-                            left = reverse_complement(left)
-                            right = reverse_complement(right)
-                            if not right in self.half_mers:
-                                self.half_mers[right] = {}
-                            self.half_mers[right][left] = kmer
+                for kmer in kmers:
+                    if kmers[kmer]['gap'] != -1:
+                        left = kmer[:c.hsize]
+                        right = kmer[-c.hsize:]
+                        self.kmers[kmer] = kmers[kmer]
+                        self.kmers[kmer]['count'] = 0
+                        self.kmers[kmer]['doubt'] = 0
+                        if not left in self.half_mers:
+                            self.half_mers[left] = {}
+                        self.half_mers[left][right] = kmer 
+                        left = reverse_complement(left)
+                        right = reverse_complement(right)
+                        if not right in self.half_mers:
+                            self.half_mers[right] = {}
+                        self.half_mers[right][left] = kmer
         print(len(self.kmers), 'kmers')
         self.export_accelerator_input()
         self.round_robin()
@@ -425,17 +396,15 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
         # output kmers per track
         self.tracks = {}
         for kmer in self.kmers:
-            side = self.kmers[kmer]['side']
             for track in self.kmers[kmer]['tracks']:
                 if not track in self.tracks:
-                    self.tracks[track] = {'inner': {}, 'outer': {}}
-                self.tracks[track][side][kmer] = self.kmers[kmer]
+                    self.tracks[track] = {} 
+                self.tracks[track][kmer] = self.kmers[kmer]
         for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track + '.json'), 'w') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
-        # merge
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'gapped_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -465,20 +434,19 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
         print(cyan(track_name))
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
-            for side in ['outer']:
-                for kmer in kmers[side]:
-                    if not kmer in self.lp_kmers:
-                        self.lp_kmers[kmer] = {
-                            'gap': kmers[side][kmer]['gap'],
-                            'side': side,
-                            'type': self._kmer_type,
-                            'count': kmers[side][kmer]['count'],
-                            'tracks': {},
-                            'weight': 1.0,
-                            'reference': kmers[side][kmer]['tracks'][track_name],
-                            'actual_gap': kmers[side][kmer]['actual_gap'] if 'actual_gap' in kmers[side][kmer] else -1,
-                        }
-                    self.lp_kmers[kmer]['tracks'][track_name] = 1
+            for kmer in kmers:
+                if not kmer in self.lp_kmers:
+                    self.lp_kmers[kmer] = {
+                        'gap': kmers[kmer]['gap'],
+                        'side': side,
+                        'type': self._kmer_type,
+                        'count': kmers[kmer]['count'],
+                        'tracks': {},
+                        'weight': 1.0,
+                        'reference': kmers[kmer]['tracks'][track_name],
+                        'actual_gap': kmers[kmer]['actual_gap'] if 'actual_gap' in kmers[kmer] else -1,
+                    }
+                self.lp_kmers[kmer]['tracks'][track_name] = 1
         path = os.path.join(self.get_current_job_directory(), 'gapped_kmers_' + track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(
@@ -561,4 +529,4 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

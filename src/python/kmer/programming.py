@@ -80,6 +80,55 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class FilterInnerKmersJob(map_reduce.Job):
+
+    _name = 'FilterInnerKmersJob'
+    _category = 'programming'
+    _previous_job = None
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = FilterInnerKmersJob(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        self.kmers = {}
+        self.tracks = self.load_previous_job_results()
+        for track in self.tracks:
+            print(cyan(track))
+            with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
+                kmers = json.load(json_file)
+        print('scoring', len(self.kmers), 'kmers')
+        self.chroms = extract_whole_genome()
+        self.round_robin(self.chroms)
+
+    def transform(self, sequence, chrom):
+        c = config.Configuration()
+        t = time.time()
+        l = len(sequence)
+        for index in range(0, l - 50):
+            if index % 100000 == 1:
+                s = time.time()
+                p = index / float(len(sequence))
+                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+            kmer = canonicalize(sequence[index: index + c.ksize])
+            self.kmers[kmer]['reference'] += 1
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
 # Models the problem as an integer program and uses CPLEX to solve it
 # This won't need any parallelization
 # ============================================================================================================================ #
@@ -117,6 +166,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         c = config.Configuration()
         self.index_kmers()
         self.index_tracks()
+        self.calculate_residual_coverage()
         print('exporting kmers...')
         with open(os.path.join(self.get_current_job_directory(), 'lp_kmers.json'), 'w') as json_file:
             json.dump(self.lp_kmers, json_file, indent = 4, sort_keys = True)
@@ -145,7 +195,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                             if not track in self.tracks:
                                 self.tracks[track] = {}
         print(green(len(self.lp_kmers)), 'kmers')
-        self.calculate_residual_coverage()
         return self.lp_kmers
 
     def index_tracks(self):
@@ -376,17 +425,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
             json.dump(self.tracks, json_file, indent = 4)
         #self.plot_lp_values()
-        self.calculate_length_accuracy_correlation()
-
-    def calculate_length_accuracy_correlation(self):
-        l = []
-        z = []
-        for track in self.tracks:
-            t = bed.track_from_name(track)
-            l.append(t.end - t.begin)
-            z.append(self.tracks[track]['lp_genotype'] == self.tracks[track]['actual_genotype'])
-        from scipy import stats
-        print(stats.pearsonr(l, z))
+        #self.calculate_length_accuracy_correlation()
 
     def plot_lp_values(self):
         print(len(self.tracks))
@@ -402,4 +441,4 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

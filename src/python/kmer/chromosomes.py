@@ -35,8 +35,8 @@ def extract_chromosome(chromosome):
         print(red('chromosome not found'), chromosome)
     c = config.Configuration()
     sequence = ''
-    print(yellow(c.reference_genome))
-    ref = open(c.reference_genome)
+    print(yellow(c.reference))
+    ref = open(c.reference)
     line = ref.readline().lower().strip()
     found = False
     while True:
@@ -57,14 +57,14 @@ def extract_chromosome(chromosome):
 
 def extract_chromosomes(chromosomes):
     c = config.Configuration()
-    sequence = ''
-    ref = open(c.reference_genome)
+    m = 0
+    ref = open(c.reference)
     line = ref.readline().lower().strip()
     found = False
-    m = 0
+    sequence = ''
     while True:
         if line.startswith('>chr'):
-            chrom = line[line.find('>') + 1:].lower()
+            chrom = line[line.find('>') + 1:].strip().lower()
             if chrom in chromosomes:
                 print('extracting ' + chrom)
                 while True:
@@ -88,11 +88,15 @@ def extract_chromosomes(chromosomes):
             break
 
 def extract_whole_genome():
+    c = config.Configuration()
     print('extracting whole genome')
-    c = ['chr' + str(x) for x in range(1, 23)]
-    c.append('chrx')
-    c.append('chry')
-    for seq, chrom in extract_chromosomes(c):
+    if not c.chromosomes:
+        a = ['chr' + str(x) for x in range(1, 23)]
+        a.append('chrx')
+        a.append('chry')
+    else:
+        a = [d.lower() for d in c.chromosomes]
+    for seq, chrom in extract_chromosomes(a):
         chroms[chrom] = seq
     return chroms
 

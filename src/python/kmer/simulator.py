@@ -70,10 +70,10 @@ class Simulation(map_reduce.Job):
         if c.diploid:
             print('Starting diploid simulation...')
         #
-        self.extract_whole_genome()
+        self.extract_chromosomes()
         self.round_robin(self.chroms)
 
-    def extract_whole_genome(self):
+    def extract_chromosomes(self):
         self.chroms = extract_whole_genome()
         for chrom, seq in self.chroms.iteritems():
             print(chrom, 'with', len(seq), 'bases')
@@ -100,11 +100,11 @@ class Simulation(map_reduce.Job):
 
     def load_structural_variations(self):
         c = config.Configuration()
-        print('loading SVs from file', c.bed_file)
+        print('loading SVs from file', c.bed)
         self.sv_type = self.get_sv_type()
         print('Type of events:', cyan(self.sv_type))
         tracks = []
-        for track in bed.load_tracks_from_file(c.bed_file, [('zygosity', None)]):
+        for track in bed.load_tracks_from_file(c.bed, [('zygosity', None)]):
             if track.end - track.begin > 1000000:
                 print(red('too large, skipping', track))
                 continue
@@ -116,14 +116,14 @@ class Simulation(map_reduce.Job):
 
     def get_sv_type(self):
         c = config.Configuration()
-        bed_file_name = c.bed_file.split('/')[-1]
+        bed_file_name = c.bed.split('/')[-1]
         if bed_file_name.find('DEL') != -1:
             return 'DEL'
         if bed_file_name.find('INV') != -1:
             return 'INV'
         if bed_file_name.find('ALU') != -1:
             return 'ALU'
-        return Deletion
+        return 'DEL'
 
     def filter_overlapping_intervals(self, intervals):
         remove = []
@@ -205,12 +205,10 @@ class Simulation(map_reduce.Job):
         strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
         if c.diploid:
             self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
-            exit()
             self.export_fastq(seq, chrom + '_diploid')
         else:
             self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
             self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
-            exit()
             self.export_fastq(seq, chrom + '_strand_1')
             self.export_fastq(seq, chrom + '_strand_2')
         exit()
@@ -279,7 +277,7 @@ class Simulation(map_reduce.Job):
     def reduce(self):
         c = config.Configuration()
         self.export_reference_genome()
-        self.export_reference_jellyfish_table()
+        #self.export_reference_jellyfish_table()
         self.merge_fastq_files()
 
     def export_reference_genome(self):
@@ -371,4 +369,4 @@ class Simulation(map_reduce.Job):
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

@@ -96,10 +96,6 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
                         'right': sequence[index + c.ksize: index + c.ksize + slack]
                     }
                 }
-                self.inner_kmers[kmer]['loci'][locus]['kmers'] = {
-                    'left': extract_kmers(c.ksize, True, self.inner_kmers[kmer]['loci'][locus]['seq']['left']),
-                    'right': extract_kmers(c.ksize, True, self.inner_kmers[kmer]['loci'][locus]['seq']['right'])
-                }
             index += 1
             if index % 10000 == 0:
                 s = time.time()
@@ -186,26 +182,33 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                     continue
                 seed = sum(list(map(lambda s: ord(s), kmer)))
                 if not kmer in self.kmers:
-                    interest_kmers = {}
                     self.kmers[kmer] = {}
+                    self.kmers[kmer]['loci'] = kmers[kmer]['loci']
                     self.kmers[kmer]['total'] = 0
                     self.kmers[kmer]['count'] = 0
                     self.kmers[kmer]['doubt'] = 0
-                    self.kmers[kmer]['tracks'] = {}
-                    self.kmers[kmer]['reference'] = kmers[kmer]['reference']
-                    self.kmers[kmer]['interest_kmers'] = {}
-                    self.kmers[kmer]['interest_masks'] = {}
-                    self.kmers[kmer]['loci'] = kmers[kmer]['loci']
                     self.kmers[kmer]['tracks'] = kmers[kmer]['tracks']
+                    self.kmers[kmer]['reference'] = kmers[kmer]['reference']
+                    self.kmers[kmer]['interest_masks'] = {}
                     for locus in self.kmers[kmer]['loci']:
-                        self.kmers[kmer]['loci'][locus]['kmers'] = {k: True for k in self.kmers[kmer]['loci'][locus]['kmers']['left'].keys() + self.kmers[kmer]['loci'][locus]['kmers']['right'].keys()}
-                        self.kmers[kmer]['loci'][locus]['masks'] = self.generate_kmer_mask(kmer, self.kmers[kmer]['loci'][locus]['seq']['left'], self.kmers[kmer]['loci'][locus]['seq']['right'], seed)
+                        self.kmers[kmer]['loci'][locus]['masks'] = {self.kmers[kmer]['loci'][locus]['seq']['left']: True, self.kmers[kmer]['loci'][locus]['seq']['right']: True}
                 for locus in self.kmers[kmer]['loci']:
                     tokens = locus.split('_')
                     if tokens[0].lower() == t.chrom.lower() and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end:
-                        self.kmers[kmer]['interest_kmers'].update(self.kmers[kmer]['loci'][locus]['kmers'])
                         self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
         return None
+
+    def output_batch(self, batch):
+        for kmer in self.kmers:
+            for locus in self.kmers[kmer]['loci'].keys():
+                l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
+                if l == 0:
+                    self.kmers[kmer]['loci'].pop(locus, None)
+            self.kmers[kmer].pop('interest_masks', None)
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
+        json_file.close()
+        exit()
 
     def get_shared_masks(self, interest_kmers, kmers):
         l = []
@@ -216,58 +219,12 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                     break
         return len(l)
 
-    def generate_kmer_mask(self, kmer, left, right, seed):
-        c = config.Configuration()
-        return {left: True, right: True}
-        random.seed(seed)
-        masks = {}
-        for seq in [left, right]:
-            for j in range(0, 5):
-                indices = {}
-                mask = 'N' * len(seq)
-                while len(indices) != c.ksize - 2:
-                    i = random.randint(0, len(seq) - 1)
-                    if not i in indices:
-                        indices[i] = True
-                        mask = mask[:i] + seq[i] + mask[i + 1:]
-                masks[mask] = True
-        return masks
-
-    def output_batch(self, batch):
-        for kmer in self.kmers:
-            self.kmers[kmer]['indicator_kmers'] = {}
-            self.kmers[kmer]['non_indicator_kmers'] = {}
-            self.kmers[kmer]['non_indicator_masks'] = {}
-            n = 0
-            for locus in self.kmers[kmer]['loci'].keys():
-                l = self.get_shared_masks(self.kmers[kmer]['interest_kmers'], self.kmers[kmer]['loci'][locus]['kmers'])
-                if l != 0:
-                    for ukmer in self.kmers[kmer]['loci'][locus]['kmers']:
-                        self.kmers[kmer]['indicator_kmers'][ukmer] = True
-                    n += 1
-                else:
-                    for ukmer in self.kmers[kmer]['loci'][locus]['kmers']:
-                        self.kmers[kmer]['non_indicator_kmers'][ukmer] = True
-                    self.kmers[kmer]['loci'].pop(locus, None)
-            self.kmers[kmer].pop('interest_kmers', None)
-        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
-        json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
-        json_file.close()
-        exit()
-
     def reduce(self):
         self.kmers = {}
-        n = 0
-        m = 0
         for batch in self.load_output():
             for kmer in batch:
-                if batch[kmer]['reference'] != 1:
-                    n += 1
-                    if len(batch[kmer]['loci']) == 1:
-                        m += 1
                 self.kmers[kmer] = batch[kmer]
         #
-        print(n, m)
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
         self.tracks = {}
@@ -276,10 +233,10 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
-        visualizer.histogram(list(map(lambda kmer: len(self.kmers[kmer]['loci']), self.kmers)), 'number_of_loci', self.get_current_job_directory(), 'number of loci', 'number of kmers')
-        print(len(self.tracks))
+        #visualizer.histogram(list(map(lambda kmer: len(self.kmers[kmer]['loci']), self.kmers)), 'number_of_loci', self.get_current_job_directory(), 'number of loci', 'number of kmers')
+        #print(len(self.tracks))
         for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
 
 # ============================================================================================================================ #
@@ -530,4 +487,4 @@ class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob)
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.resume_from_reduce)
+    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)
