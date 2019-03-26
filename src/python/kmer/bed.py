@@ -77,40 +77,12 @@ class BedTrack:
         begin = self.slack
         end = len(self.sequence) - self.slack
         inner_seq = self.sequence[begin : end + 1 - c.ksize]
-        #print(inner_seq)
-        #print(len(inner_seq))
         inner_kmers = c_extract_kmers(c.ksize, counter, count, overlap, canonical, inner_seq)
         if len(inner_kmers) <= n:
             return inner_kmers
         else:
             items = sorted(inner_kmers.items(), key = lambda item: item[1])[0:n]
             return {item[0]: item[1] for item in items}
-
-    def extract_boundary_gapped_kmers(self, counter = lambda x: 1, count = 1):
-        c = config.Configuration()
-        self.extract_base_sequence()
-        begin = self.slack
-        end = len(self.sequence) - self.slack
-        gapped_kmers = {}
-        h = c.hsize
-        #
-        b = self.sequence[begin - h - 2 - c.ksize: begin + 3 + h + c.ksize]
-        kmer = self.sequence[begin - h - 2: begin + 3 + h]
-        prefix = self.sequence[begin - h - 2 - c.ksize: begin - h - 2]
-        suffix = self.sequence[begin + 3 + h: begin + 3 + h + c.ksize]
-        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'inner'}
-        #
-        e = self.sequence[end - h - 2 - c.ksize: end + 3 + h + c.ksize]
-        kmer = self.sequence[end - h - 2: end + 3 + h]
-        prefix = self.sequence[end - h - 2 - c.size: end - h - 2]
-        suffix = self.sequence[end + 3 + h: end + 3 + h + c.ksize]
-        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'inner'}
-        #
-        kmer = self.sequence[begin - 2 - h: begin + 3] + self.sequence[end - 2: end + 3 + h]
-        prefix = self.sequence[begin - h - 2 - c.ksize: begin - h - 2]
-        suffix = self.sequence[end + 3 + h: end + 3 + h + c.ksize]
-        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'outer'}
-        return gapped_kmers
 
 # ============================================================================================================================ #
 # BED Tracks

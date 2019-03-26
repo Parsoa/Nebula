@@ -62,15 +62,40 @@ class ExtractGappedKmersJob(map_reduce.Job):
         self.tracks = self.load_tracks()
         self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
 
-    # These kmers ARE NOT CANONICAL
     def transform(self, track, track_name):
         print(cyan(track_name))
         c = config.Configuration()
-        gapped_kmers = track.extract_boundary_gapped_kmers()
+        gapped_kmers = self.extract_boundary_gapped_kmers(track)
         path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
         with open(path, 'w') as json_file:
             json.dump(gapped_kmers, json_file, sort_keys = True, indent = 4)
-        return path
+        return track_name + '.json'
+
+    # These kmers ARE NOT CANONICAL
+    def extract_boundary_gapped_kmers(self, track):
+        c = config.Configuration()
+        sequence = track.extract_base_sequence()
+        begin = track.slack
+        end = len(sequence) - track.slack
+        gapped_kmers = {}
+        #
+        b = track.sequence[begin - c.hsize - 2 - c.ksize: begin + 3 + c.hsize + c.ksize]
+        kmer = track.sequence[begin - c.hsize - 2: begin + 3 + c.hsize]
+        prefix = track.sequence[begin - c.hsize - 2 - c.ksize: begin - c.hsize - 2]
+        suffix = track.sequence[begin + 3 + c.hsize: begin + 3 + c.hsize + c.ksize]
+        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'inner'}
+        #
+        e = track.sequence[end - c.hsize - 2 - c.ksize: end + 3 + c.hsize + c.ksize]
+        kmer = track.sequence[end - c.hsize - 2: end + 3 + c.hsize]
+        prefix = track.sequence[end - c.hsize - 2 - c.size: end - c.hsize - 2]
+        suffix = track.sequence[end + 3 + c.hsize: end + 3 + c.hsize + c.ksize]
+        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'inner'}
+        #
+        kmer = track.sequence[begin - 2 - c.hsize: begin + 3] + track.sequence[end - 2: end + 3 + c.hsize]
+        prefix = track.sequence[begin - c.hsize - 2 - c.ksize: begin - c.hsize - 2]
+        suffix = track.sequence[end + 3 + c.hsize: end + 3 + c.hsize + c.ksize]
+        gapped_kmers[kmer] = {'left': prefix, 'right': suffix, 'side': 'outer'}
+        return gapped_kmers
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -130,7 +155,7 @@ class UniqueGappedKmersJob(map_reduce.Job):
         path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
         with open(path, 'w') as json_file:
             json.dump(gapped_kmers, json_file, sort_keys = True, indent = 4)
-        return path
+        return track_name + '.json'
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -269,7 +294,7 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
                     if kmers[kmer]['count'] == 0:
                         left = kmer[:c.hsize]
                         right = kmer[-c.hsize:]
-                        self.kmers[kmer] = {'tracks': kmers[kmer]['tracks'], 'count': {}, 'side': 'outer'}
+                        self.kmers[kmer] = {'tracks': kmers[kmer]['tracks'], 'count': {}, 'side': kmers[kmer]['side']}
                         for i in range(0, 11):
                             self.kmers[kmer]['count'][i] = 0
                         if not left in self.half_mers:
@@ -438,7 +463,7 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 if not kmer in self.lp_kmers:
                     self.lp_kmers[kmer] = {
                         'gap': kmers[kmer]['gap'],
-                        'side': side,
+                        'side': kmers[kmer]['side'],
                         'type': self._kmer_type,
                         'count': kmers[kmer]['count'],
                         'tracks': {},

@@ -66,8 +66,7 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         self.gapped_kmers = {}
         self.junction_kmers = {}
         self.load_inner_kmers()
-        #self.load_gapped_kmers()
-        self.load_junction_kmers()
+        self.load_gapped_kmers()
         self.round_robin()
 
     def load_inner_kmers(self):
@@ -75,18 +74,19 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         job = reduction.CountLociIndicatorKmersJob()
         with open(os.path.join(job.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             self.inner_kmers = json.load(json_file)
-        #self.load_depth_of_coverage_kmers()
         self.load_junction_kmers()
+        #self.load_depth_of_coverage_kmers()
         print('Counting', green(len(self.inner_kmers)), 'inner kmers')
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             _kmers = {}
-            for kmer in self.inner_kmers:
-                _kmers[kmer] = {}
-                _kmers[kmer]['loci'] = {}
-                _kmers[kmer]['tracks'] = self.inner_kmers[kmer]['tracks']
-                for locus in self.inner_kmers[kmer]['loci']:
-                    _kmers[kmer]['loci'][locus] = {}
-                    _kmers[kmer]['loci'][locus]['masks'] = self.inner_kmers[kmer]['loci'][locus]['masks']
+            for kmers in [self.inner_kmers, self.junction_kmers]:
+                for kmer in kmers:
+                    _kmers[kmer] = {}
+                    _kmers[kmer]['loci'] = {}
+                    _kmers[kmer]['tracks'] = kmers[kmer]['tracks']
+                    for locus in kmers[kmer]['loci']:
+                        _kmers[kmer]['loci'][locus] = {}
+                        _kmers[kmer]['loci'][locus]['masks'] = kmers[kmer]['loci'][locus]['masks']
             #for kmer in self.depth_kmers:
             #    _kmers[kmer] = {}
             #    _kmers[kmer]['loci'] = {}
@@ -108,7 +108,7 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
 
     def load_junction_kmers(self):
         c = config.Configuration()
-        job = dynamic.CountDynamicGappedKmersJob()
+        job = dynamic.CountJunctionKmersJob()
         with open(os.path.join(job.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             kmers = json.load(json_file)
             for kmer in kmers:
@@ -116,9 +116,9 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
                 if kmer in self.inner_kmers:
                     self.inner_kmers.pop(kmer, None)
                 else:
-                    self.inner_kmers[kmer] = kmers[kmer]
                     self.junction_kmers[kmer] = kmers[kmer]
 
+    # TODO: Remove side from this
     # There shouldn't be any overlap between gapped kmers and other kmers because of the filtering applied to them
     def load_gapped_kmers(self):
         c = config.Configuration()
@@ -153,12 +153,16 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         if kmer in self.gapped_kmers:
             count = tokens[0] 
             self.gapped_kmers[kmer]['count'] += count
-        elif kmer in self.inner_kmers:
+        else:
             count = tokens[0] 
             total = tokens[1] 
             canon = canonicalize(kmer)
-            self.inner_kmers[canon]['count'] += count / 2
-            self.inner_kmers[canon]['total'] += total / 2
+            if canon in self.inner_kmers:
+                self.inner_kmers[canon]['count'] += count / 2
+                self.inner_kmers[canon]['total'] += total / 2
+            else:
+                self.junction_kmers[canon]['count'] += count / 2
+                self.junction_kmers[canon]['total'] += total / 2
 
     def reduce(self):
         c = config.Configuration()
@@ -167,22 +171,32 @@ class MixCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
             json.dump(self.inner_kmers, json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
             json.dump(self.gapped_kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'junction_kmers.json'), 'w') as json_file:
+            json.dump(self.junction_kmers, json_file, indent = 4)
         self.tracks = {}
         for kmer in self.inner_kmers:
             for track in self.inner_kmers[kmer]['tracks']:
                 if not track in self.tracks:
-                    self.tracks[track] = {'gapped_kmers': {}, 'inner_kmers': {}}
+                    self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['inner_kmers'][kmer] = self.inner_kmers[kmer]
+                self.tracks[track]['inner_kmers'][kmer]['type'] = 'inner'
         for kmer in self.gapped_kmers:
             for track in self.gapped_kmers[kmer]['tracks']:
                 if not track in self.tracks:
-                    self.tracks[track] = {'gapped_kmers': {}, 'inner_kmers': {}}
+                    self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['gapped_kmers'][kmer] = self.gapped_kmers[kmer]
+                self.tracks[track]['gapped_kmers'][kmer]['type'] = 'gapped'
+        for kmer in self.junction_kmers:
+            for track in self.junction_kmers[kmer]['tracks']:
+                if not track in self.tracks:
+                    self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
+                self.tracks[track]['junction_kmers'][kmer] = self.junction_kmers[kmer]
+                self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
         for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'lp_kmers_' + track + '.json'), 'w') as json_file:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'lp_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

@@ -205,6 +205,8 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                 if l == 0:
                     self.kmers[kmer]['loci'].pop(locus, None)
             self.kmers[kmer].pop('interest_masks', None)
+            self.kmers[kmer]['reduction'] = self.kmers[kmer]['reference']
+            self.kmers[kmer]['reference'] = len(self.kmers[kmer]['loci'])
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()

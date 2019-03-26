@@ -174,7 +174,7 @@ class Simulation(map_reduce.Job):
                     else:
                         self.absent.append(track)
                 else:
-                    r = random.randint(0, 2)
+                    r = random.randint(0, 1)
                     if r == 2:
                         self.absent.append(track)
                         track.zygosity = '0|0'

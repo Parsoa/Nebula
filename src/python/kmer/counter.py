@@ -47,13 +47,14 @@ class BaseExactCountingJob(map_reduce.Job):
         pass
 
     def transform(self):
-        print('here')
+        #print('here')
         c = config.Configuration()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
         if c.simulation:
             for i in range(1, 3):
-                fastq_file = os.path.join(self.get_simulation_directory(), 'test.' + str(i) + '.fq')
-                #fastq_file = os.path.join(self.get_simulation_directory(), 'chr17_diploid.' + str(i) + '.fq')
+                #fastq_file = os.path.join(self.get_simulation_directory(), 'test.' + str(i) + '.fq')
+                fastq_file = os.path.join(self.get_simulation_directory(), 'chr17_diploid.' + str(i) + '.fq')
+                #fastq_file = "/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed1300SnpError0.001/20x/Simulation/reads.sorted.bam"
                 command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
                 print(command)
                 output = subprocess.call(command, shell = True)
@@ -73,7 +74,7 @@ class BaseExactCountingJob(map_reduce.Job):
         c = config.Configuration()
         for i in range(0, self.num_threads):
             if c.simulation:
-                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.2.json'), os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.1.json')]
+                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.1.json'), os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.2.json')]
             else:
                 paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json')]
             print('adding batch', i)

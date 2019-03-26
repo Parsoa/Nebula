@@ -80,55 +80,6 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class FilterInnerKmersJob(map_reduce.Job):
-
-    _name = 'FilterInnerKmersJob'
-    _category = 'programming'
-    _previous_job = None
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        job = FilterInnerKmersJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        self.kmers = {}
-        self.tracks = self.load_previous_job_results()
-        for track in self.tracks:
-            print(cyan(track))
-            with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
-                kmers = json.load(json_file)
-        print('scoring', len(self.kmers), 'kmers')
-        self.chroms = extract_whole_genome()
-        self.round_robin(self.chroms)
-
-    def transform(self, sequence, chrom):
-        c = config.Configuration()
-        t = time.time()
-        l = len(sequence)
-        for index in range(0, l - 50):
-            if index % 100000 == 1:
-                s = time.time()
-                p = index / float(len(sequence))
-                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-            kmer = canonicalize(sequence[index: index + c.ksize])
-            self.kmers[kmer]['reference'] += 1
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
 # Models the problem as an integer program and uses CPLEX to solve it
 # This won't need any parallelization
 # ============================================================================================================================ #

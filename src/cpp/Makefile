@@ -1,18 +1,14 @@
-CC = g++
-CFLAGS = 
+CC = /software/gcc/8.2.0/lssc0-linux/bin/g++
+CFLAGS = -O3 -funroll-loops -std=c++11 -I htslib/htslib -std=c++11
+LDFLAGS = /software/htslib/1.8/lssc0-linux/lib/libhts.a -lz -lm -lpthread -llzma -lbz2 -lcurl -lcrypto
+SOURCES = counter.cpp
+OBJECTS = $(SOURCES:.cpp=.o)
 
-encoder.o: encoder.cpp encoder.hpp
-	$(CC) $(CFLAGS) -c encoder.cpp
+counter.o: counter.cpp
+	$(CC) -g $(CFLAGS) -c $^ -o $@
 
-main.o: main.cpp
-	$(CC) $(CFLAGS) -c main.cpp
+counter: counter.o
+	$(CC) counter.o -o counter.out $(LDFLAGS)
 
-main: main.o encoder.o
-	$(CC) $(CFLAGS) -o a.out main.o encoder.o
-
-counter: counter.cpp
-	/software/gcc/8.2.0/lssc0-linux/bin/g++ -std=c++11 -O3 -o counter.out counter.cpp
-string: counter_s.cpp
-	/software/gcc/8.2.0/lssc0-linux/bin/g++ -std=c++11 -o counter_s.out counter_s.cpp
 debug: counter.cpp
-	/software/gcc/8.2.0/lssc0-linux/bin/g++ -std=c++11 -ggdb -o counter.out counter.cpp
+	$(CC) -g $(CFLAGS) counter.cpp -o counter.out $(LDFLAGS)

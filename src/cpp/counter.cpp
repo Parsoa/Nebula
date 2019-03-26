@@ -14,10 +14,13 @@
 #include <unistd.h>
 #include <bitset>
 
+#include <sam.h>
+#include <hts.h>
+
 #include "json.hpp"
 
 using namespace std ;
-using json = nlohmann::json ;
+//using nson = nlohmann::json ;
 
 int JOB = 0 ;
 bool DEBUG = false ;
@@ -319,7 +322,7 @@ void process_gapped_read(char* seq, int read, int line) {
 }
 
 void output_counts(string path, int index) {
-    json payload ;
+    nlohmann::json payload ;
     cout << "dumping kmer counts..." << endl ;
     string p = path + "/c_batch_" + std::to_string(index) + ".json" ;
     cout << path << endl ;
@@ -354,6 +357,80 @@ const int SEARCHING = 0 ;
 const int SKIPPING = 1 ;
 const int READING = 2 ;
 const unsigned long BLOCK_SIZE = 4096 * 2 ;
+
+int get_number_of_alignments(samFile* bam_file, bam_hdr_t* bam_header, bam1_t* alignment) {
+    cout << "Estimating number of reads" << endl ;
+    int n = 0 ;
+    time_t t ;
+    time(&t) ;
+    while (sam_read1(bam_file, bam_header, alignment) > 0) {
+        n++ ;
+    }
+    time_t s ;
+    time(&s) ;
+    cout << "Found " << n << " reads in " << s - t << " seconds." << endl ;
+    return n ;
+}
+
+int process_bam(string bam, string path, int index, int threads) {
+    samFile *bam_file = hts_open(bam.c_str(), "r") ;
+    bam_hdr_t *bam_header = sam_hdr_read(bam_file) ; //read header
+    bam1_t *alignment = bam_init1(); //initialize an alignment
+    int n = 0 ;
+    int u = 0 ;
+    uint32_t len = 0 ;
+    char* line ; //= (char*) malloc(200) ;
+    // Timing
+    time_t t ;
+    time(&t) ;
+    cout << "Processig BAM file" << endl ;
+    //int m = get_number_of_alignments(bam) ;
+    while (sam_read1(bam_file, bam_header, alignment) > 0){
+        //cout << u << endl ;
+        uint32_t l = alignment->core.l_qseq ; //length of the read
+        if (l > len) {
+            if (len > 0) {
+                free(line) ;
+            }
+            len = l ;
+            line = (char*) malloc(len + 1) ;
+        }
+        uint8_t *q = bam_get_seq(alignment) ; //quality string
+        for (int i = 0; i < len; i++){
+            line[i] = seq_nt16_str[bam_seqi(q, i)]; //gets nucleotide id and converts them into IUPAC id.
+        }
+        line[len] = '\0' ;
+        //cout << "#" << line << "#" << endl ;
+        n += 1 ;
+        u += 1 ;
+        if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
+            process_read(line, u, u) ;
+        } else if (JOB == COUNT_MIX_KMERS) {
+            process_read(line, u, u) ;
+            process_gapped_read(line, u, u) ;
+        } else {
+            process_gapped_read(line, u, u) ;
+        }
+        if (n == 10000) {
+            n = 0 ;
+            time_t s ;
+            time(&s) ;
+            cout.precision(10) ;
+            cout << s - t << endl ;
+            if (s - t != 0 && DEBUG == 0) {
+                cout << std::left << setw(2) << index << "processed " << setw(12) << u << " reads, " ;
+                cout << " took: " << setw(7) << std::fixed << s - t ;
+                cout << " reads per second: " << u / (s - t) << endl ;
+            }
+        }
+    }
+    bam_destroy1(alignment) ;
+    sam_close(bam_file) ;
+    if (DEBUG == 0) {
+        output_counts(path, index) ;
+    }
+    return u ;
+}
 
 int process_fastq(string fastq, string path, int index, int threads) {
     std::ifstream in(fastq, std::ifstream::ate | std::ifstream::binary) ;
@@ -405,7 +482,7 @@ int process_fastq(string fastq, string path, int index, int threads) {
             double p = c / double(chunk_size) ;
             double e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600) ;
             cout.precision(10) ;
-            if (s - t != 0 & DEBUG == 0) {
+            if (s - t != 0 && DEBUG == 0) {
                 cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
                 cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
                 cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
@@ -472,9 +549,9 @@ int transform(int index, string path) {
     // load json file
     cout << "loading kmers" << endl ;
     ifstream json_file(path + "/pre_inner_kmers.json") ;
-    json kmers_json ;
+    nlohmann::json kmers_json ;
     json_file >> kmers_json ;
-    for (json::iterator it = kmers_json.begin(); it != kmers_json.end(); ++it) {
+    for (nlohmann::json::iterator it = kmers_json.begin(); it != kmers_json.end(); ++it) {
         auto kmer = it.value() ;
         uint64_t k = encode_kmer(std::string(it.key()).c_str()) ;
         uint64_t rc_k = encode_kmer(reverse_complement(std::string(it.key())).c_str()) ;
@@ -488,13 +565,12 @@ int transform(int index, string path) {
         *total = 0 ;
         totals->emplace(std::make_pair(k, total)) ;
         totals->emplace(std::make_pair(rc_k, total)) ;
-        cout << "here" << endl ;
         if (JOB == COUNT_INNER_KMERS) {
             std::vector<uint64_t> *m = new std::vector<uint64_t> ;
             if (kmer["loci"].size()) {
                 cout << kmer["loci"].size() << endl ;
-                for (json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
-                    for (json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
+                for (nlohmann::json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
+                    for (nlohmann::json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
                         m->push_back(encode_kmer(mask.key().c_str())) ;
                         m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
                     }
@@ -512,10 +588,10 @@ int transform_gapped(int index, string path) {
     // load json file
     cout << "loading kmers" << endl ;
     ifstream kmers_json_file(path + "/pre_gapped_kmers.json") ;
-    json kmers_json ;
+    nlohmann::json kmers_json ;
     kmers_json_file >> kmers_json ;
     //
-    for (json::iterator i = kmers_json.begin(); i != kmers_json.end(); ++i) {
+    for (nlohmann::json::iterator i = kmers_json.begin(); i != kmers_json.end(); ++i) {
         auto kmer = i.value() ;
         uint64_t k = encode_kmer(std::string(i.key()).c_str()) ;
         types->insert(std::make_pair(k, KMER_TYPE_GAPPED)) ;
@@ -537,13 +613,13 @@ int transform_gapped(int index, string path) {
     // 
     cout << "loading half mers" << endl ;
     ifstream half_mer_json_file(path + "/half_mers.json") ;
-    json half_mers_json ;
+    nlohmann::json half_mers_json ;
     half_mer_json_file >> half_mers_json ;
     //
-    for (json::iterator i = half_mers_json.begin(); i != half_mers_json.end(); ++i) {
+    for (nlohmann::json::iterator i = half_mers_json.begin(); i != half_mers_json.end(); ++i) {
         auto half_mer = i.value() ;
         std::unordered_map<uint32_t, uint64_t>* map = new std::unordered_map<uint32_t, uint64_t> ;
-        for (json::iterator j = half_mer.begin(); j != half_mer.end(); ++j) { 
+        for (nlohmann::json::iterator j = half_mer.begin(); j != half_mer.end(); ++j) { 
             uint32_t h = encode_half_mer(std::string(j.key()).c_str()) ;
             map->insert(std::make_pair(h, encode_kmer(std::string(j.value().get<std::string>()).c_str()))) ;
             other_mers->insert(std::make_pair(h, true)) ;
@@ -574,7 +650,13 @@ int main(int argc, char** argv) {
         transform_gapped(index, path) ;
         transform(index, path) ;
     }
-    int n = process_fastq(fastq, path, index, threads) ;
+    int n = 0;
+    if (fastq.compare(fastq.size() - 4, 4, ".bam") == 0) {
+        cout << "input is BAM file" << endl ;
+        n = process_bam(fastq, path, index, threads) ;
+    } else {
+        n = process_fastq(fastq, path, index, threads) ;
+    }
     time_t s ;
     time(&s) ;
     auto d = s - t ;

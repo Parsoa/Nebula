@@ -62,30 +62,30 @@ class RemnantCounterJob(production.MixCounterJob, map_reduce.BaseGenotypingJob):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def load_inputs(self):
-        c = config.Configuration()
-        self.half_mers = {}
-        self.inner_kmers = {}
-        self.gapped_kmers = {}
-        self.load_inner_kmers()
-        self.load_gapped_kmers()
-        self.round_robin()
-
     def load_inner_kmers(self):
         c = config.Configuration()
         with open(os.path.join(self.get_previous_job_directory(), 'inner_kmers.json'), 'r') as json_file:
             self.inner_kmers = json.load(json_file)
+        self.load_junction_kmers()
         print('Counting', green(len(self.inner_kmers)), 'inner kmers')
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             _kmers = {}
-            for kmer in self.inner_kmers:
-                _kmers[kmer] = {}
-                _kmers[kmer]['loci'] = {}
-                _kmers[kmer]['tracks'] = self.inner_kmers[kmer]['tracks']
-                for locus in self.inner_kmers[kmer]['loci']:
-                    _kmers[kmer]['loci'][locus] = {}
-                    _kmers[kmer]['loci'][locus]['masks'] = self.inner_kmers[kmer]['loci'][locus]['masks']
+            for kmers in [self.inner_kmers, self.junction_kmers]:
+                for kmer in kmers:
+                    _kmers[kmer] = {}
+                    _kmers[kmer]['loci'] = {}
+                    _kmers[kmer]['tracks'] = kmers[kmer]['tracks']
+                    for locus in kmers[kmer]['loci']:
+                        _kmers[kmer]['loci'][locus] = {}
+                        _kmers[kmer]['loci'][locus]['masks'] = kmers[kmer]['loci'][locus]['masks']
             json.dump(_kmers, json_file, indent = 4)
+
+    def load_junction_kmers(self):
+        c = config.Configuration()
+        with open(os.path.join(self.get_previous_job_directory(), 'junction_kmers.json'), 'r') as json_file:
+            kmers = json.load(json_file)
+            for kmer in kmers:
+                self.junction_kmers[kmer] = kmers[kmer]
 
     def load_gapped_kmers(self):
         c = config.Configuration()
@@ -96,7 +96,7 @@ class RemnantCounterJob(production.MixCounterJob, map_reduce.BaseGenotypingJob):
                 right = kmer[-c.hsize:]
                 if not left in self.half_mers:
                     self.half_mers[left] = {}
-                self.half_mers[left][right] = kmer 
+                self.half_mers[left][right] = kmer
                 left = reverse_complement(left)
                 right = reverse_complement(right)
                 if not right in self.half_mers:
@@ -135,54 +135,47 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
     # ============================================================================================================================ #
 
     def transform(self, track, track_name):
-        c = config.Configuration()
         print(green(track_name))
+        c = config.Configuration()
         t = bed.track_from_name(track_name)
         with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
-            _lp_kmers = {}
-            inner_kmers = kmers['inner_kmers']
-            _kmers = {kmer: inner_kmers[kmer] for kmer in list(filter(lambda kmer: len(inner_kmers[kmer]['tracks']) == 1, inner_kmers))}
-            unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) == 1, _kmers))
-            non_unique_kmers = list(filter(lambda kmer: len(_kmers[kmer]['loci']) != 1, _kmers))
-            if len(unique_kmers) >= 5:
-                inner_kmers = {kmer: _kmers[kmer] for kmer in unique_kmers[:min(50, len(unique_kmers))]}
-            else:
-                inner_kmers = {kmer: _kmers[kmer] for kmer in unique_kmers}
-                for kmer in non_unique_kmers:
-                    inner_kmers[kmer] = _kmers[kmer]
-                    if len(inner_kmers) > 50:
-                        break
-            for kmer in inner_kmers:
-                _lp_kmers[kmer] = True
-                self.lp_kmers[kmer] = {} 
-                self.lp_kmers[kmer]['type'] = 'inner'
-                self.lp_kmers[kmer]['count'] = inner_kmers[kmer]['count']
-                self.lp_kmers[kmer]['doubt'] = inner_kmers[kmer]['doubt']
-                self.lp_kmers[kmer]['total'] = inner_kmers[kmer]['total']
-                self.lp_kmers[kmer]['weight'] = 1.0
-                self.lp_kmers[kmer]['coverage'] = c.coverage#inner_kmers[kmer]['coverage']
-                self.lp_kmers[kmer]['reference'] = len(inner_kmers[kmer]['loci'])
-                self.lp_kmers[kmer]['reduction'] = inner_kmers[kmer]['reference']
-                self.lp_kmers[kmer]['tracks'] = inner_kmers[kmer]['tracks']
-                self.lp_kmers[kmer]['loci'] = list(map(lambda l: l, inner_kmers[kmer]['loci']))
-            gapped_kmers = kmers['gapped_kmers']
-            for kmer in gapped_kmers:
-                _lp_kmers[kmer] = True
-                self.lp_kmers[kmer] = {
-                    'gap': gapped_kmers[kmer]['gap'],
-                    'side': 'outer',
-                    'type': 'gapped', 
-                    'count': gapped_kmers[kmer]['count'],
-                    'tracks': {},
-                    'weight': 1.0,
-                    'reference': gapped_kmers[kmer]['tracks'][track_name],
-                }
-                self.lp_kmers[kmer]['tracks'][track_name] = 1
-        path = os.path.join(self.get_current_job_directory(), 'lp_kmers_' + track_name + '.json')
+            lp_kmers = {}
+            #inner_kmers = self.select_inner_kmers(kmers['inner_kmers'])
+            #TODO: these can be removed
+            for kmer in kmers['inner_kmers']:
+                lp_kmers[kmer] = True
+                self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
+                self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
+                self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
+            for kmer in kmers['junction_kmers']:
+                lp_kmers[kmer] = True
+                self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
+                self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
+                self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
+            for kmer in kmers['gapped_kmers']:
+                lp_kmers[kmer] = True
+                self.lp_kmers[kmer] = kmers['gapped_kmers'][kmer]
+                self.lp_kmers[kmer]['reference'] = 1 
+        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
         with open(path, 'w') as json_file:
-            json.dump({kmer: self.lp_kmers[kmer] for kmer in _lp_kmers}, json_file, indent = 4, sort_keys = True)
+            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)
         return path
+
+    # Should make sure that non-unique ones are considered the same in all events they appear in
+    def select_inner_kmers(self, kmers):
+        inner_kmers = list(filter(lambda kmer: kmers[kmer]['type'] == 'inner', kmers))
+        unique_kmers = list(filter(lambda kmer: len(kmers[kmer]['loci']) == 1, inner_kmers))
+        non_unique_kmers = sorted(list(filter(lambda kmer: len(kmers[kmer]['loci']) != 1, inner_kmers)), key = lambda x: len(kmers[x]['loci']))
+        if len(unique_kmers) >= 5:
+            inner_kmers = {kmer: kmers[kmer] for kmer in unique_kmers[:min(50, len(unique_kmers))]}
+        else:
+            inner_kmers = {kmer: kmers[kmer] for kmer in unique_kmers}
+            for kmer in non_unique_kmers:
+                inner_kmers[kmer] = kmers[kmer]
+                if len(inner_kmers) > 50:
+                    break
+        return inner_kmers
 
     def calculate_residual_coverage(self):
         c = config.Configuration()
@@ -190,12 +183,29 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
             r = 0
             for track in kmer['tracks']:
                 r += kmer['tracks'][track]
-            kmer['coverage'] = c.coverage# if kmer['type'] == 'gapped' else kmer['coverage']
-            kmer['residue'] = 0 if kmer['type'] == 'gapped' else kmer['reference'] - r
+            kmer['coverage'] = c.coverage
+            kmer['residue'] = kmer['reference'] - r
+            kmer['weight'] = 1.0
             kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
-            l = len(list(filter(lambda i: self.lp_kmers[i]['type'] == 'inner', self.tracks[kmer['tracks'].keys()[0]]['kmers'])))
-            l = l if l else 1
-            kmer['weight'] = 2 * l if kmer['type'] == 'gapped' else 1.0
+            #l = len(self.lp_kmers)
+            #l = len(list(filter(lambda i: self.lp_kmers[i]['type'] != 'gapped', self.tracks[kmer['tracks'].keys()[0]]['kmers'])))
+            #l = l if l else 1
+            #kmer['weight'] = l if kmer['type'] == 'gapped' else 1.0
+        self.calculate_error_weights()
+
+    def calculate_error_weights(self):
+        # assuming no kmers are shared
+        for track in self.tracks:
+            self.add_weights_to_track(track)
+
+    def add_weights_to_track(self, track):
+        l = self.tracks[track]['kmers']
+        inner = [self.lp_kmers[i] for i in l if self.lp_kmers[i]['type'] == 'inner']
+        gapped = [self.lp_kmers[i] for i in l if self.lp_kmers[i]['type'] == 'gapped']
+        junction = [self.lp_kmers[i] for i in l if self.lp_kmers[i]['type'] == 'junction']
+        for kmers in [inner, gapped, junction]:
+            for kmer in kmers:
+                kmer['weight'] = float(len(inner) + len(gapped) + len(junction)) / (3.0 * len(kmers))
 
     def generate_linear_program(self):
         c = config.Configuration()
@@ -236,7 +246,7 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
-            if kmer['type'] == 'gapped' and kmer['side'] == 'outer':
+            if kmer['type'] == 'gapped' and kmer['side'] == 'outer' or kmer['type'] == 'junction':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
                 #ind.append(len(self.tracks) + 2 * len(self.lp_kmers) + index)

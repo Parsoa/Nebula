@@ -40,9 +40,9 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class ExtractDynamicGappedKmersJob(map_reduce.Job):
+class ExtractJunctionKmersJob(map_reduce.Job):
 
-    _name = 'ExtractDynamicGappedKmersJob'
+    _name = 'ExtractJunctionKmersJob'
     _category = 'programming'
     _previous_job = None
 
@@ -52,7 +52,7 @@ class ExtractDynamicGappedKmersJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = ExtractDynamicGappedKmersJob(**kwargs)
+        job = ExtractJunctionKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -118,7 +118,7 @@ class ExtractDynamicGappedKmersJob(map_reduce.Job):
         if len(_gapped_kmers) > 0:
             with open(path, 'w') as json_file:
                 json.dump(_gapped_kmers, json_file, indent = 4)
-            return path
+            return track_name + '.json'
         return None
 
     def is_clipped(self, kmer, clips):
@@ -136,11 +136,11 @@ class ExtractDynamicGappedKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueDynamicGappedKmersJob(gapped.UniqueGappedKmersJob):
+class UniqueJunctionKmersJob(gapped.UniqueGappedKmersJob):
 
-    _name = 'UniqueDynamicGappedKmersJob'
+    _name = 'UniqueJunctionKmersJob'
     _category = 'programming'
-    _previous_job = ExtractDynamicGappedKmersJob
+    _previous_job = ExtractJunctionKmersJob
 
     # ============================================================================================================================ #
     # Launcher
@@ -148,7 +148,7 @@ class UniqueDynamicGappedKmersJob(gapped.UniqueGappedKmersJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = UniqueDynamicGappedKmersJob(**kwargs)
+        job = UniqueJunctionKmersJob(**kwargs)
         job.execute()
 
 # ============================================================================================================================ #
@@ -157,11 +157,11 @@ class UniqueDynamicGappedKmersJob(gapped.UniqueGappedKmersJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class DynamicGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
+class JunctionKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
 
-    _name = 'DynamicGappedKmersScoringJob'
+    _name = 'JunctionKmersScoringJob'
     _category = 'programming'
-    _previous_job = UniqueDynamicGappedKmersJob
+    _previous_job = UniqueJunctionKmersJob
 
     # ============================================================================================================================ #
     # Launcher
@@ -169,7 +169,7 @@ class DynamicGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
 
     @staticmethod
     def launch(**kwargs):
-        job = DynamicGappedKmersScoringJob(**kwargs)
+        job = JunctionKmersScoringJob(**kwargs)
         job.execute()
 
     def transform(self, sequence, chrom):
@@ -203,19 +203,19 @@ class DynamicGappedKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class FilterDynamicGappedKmersJob(reduction.FilterLociIndicatorKmersJob):
+class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
-    _name = 'FilterDynamicGappedKmersJob'
+    _name = 'FilterJunctionKmersJob'
     _category = 'programming'
-    _previous_job = DynamicGappedKmersScoringJob 
+    _previous_job = JunctionKmersScoringJob 
 
     @staticmethod
     def launch(**kwargs):
-        job = FilterDynamicGappedKmersJob(**kwargs)
+        job = FilterJunctionKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -267,20 +267,20 @@ class FilterDynamicGappedKmersJob(reduction.FilterLociIndicatorKmersJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class CountDynamicGappedKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob):
+class CountJunctionKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
-    _name = 'CountDynamicGappedKmersJob'
+    _name = 'CountJunctionKmersJob'
     _category = 'programming'
-    _previous_job = FilterDynamicGappedKmersJob 
+    _previous_job = FilterJunctionKmersJob 
     _counter_mode = 0
 
     @staticmethod
     def launch(**kwargs):
-        job = CountDynamicGappedKmersJob(**kwargs)
+        job = CountJunctionKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -340,16 +340,16 @@ class CountDynamicGappedKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class DynamicGappedKmersIntegerProgrammingJob(gapped.GappedKmersIntegerProgrammingJob):
+class JunctionKmersIntegerProgrammingJob(gapped.GappedKmersIntegerProgrammingJob):
 
-    _name = 'DynamicGappedKmersIntegerProgrammingJob'
+    _name = 'JunctionKmersIntegerProgrammingJob'
     _category = 'programming'
-    _previous_job = CountDynamicGappedKmersJob
-    _kmer_type = 'gapped'
+    _previous_job = CountJunctionKmersJob
+    _kmer_type = 'junction'
 
     @staticmethod
     def launch(**kwargs):
-        job = DynamicGappedKmersIntegerProgrammingJob(**kwargs)
+        job = JunctionKmersIntegerProgrammingJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
