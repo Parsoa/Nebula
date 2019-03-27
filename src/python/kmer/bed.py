@@ -77,6 +77,8 @@ class BedTrack:
         begin = self.slack
         end = len(self.sequence) - self.slack
         inner_seq = self.sequence[begin : end + 1 - c.ksize]
+        #print(inner_seq)
+        #print(len(inner_seq))
         inner_kmers = c_extract_kmers(c.ksize, counter, count, overlap, canonical, inner_seq)
         if len(inner_kmers) <= n:
             return inner_kmers

@@ -292,7 +292,7 @@ class ClusterIntegerProgrammingAnalysisJob(programming.IntegerProgrammingJob):
     def load_inputs(self):
         self.tracks = self.load_previous_job_results()
         print(self.tracks)
-        paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed' + str(i) + 'SnpError0.001/20x/ClusterIntegerProgrammingJob' for i in range(2001, 3000)]
+        paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed' + str(i) + 'SnpError0.001/20x/ClusterIntegerProgrammingJob' for i in range(2001, 2251)]
         for track in self.tracks:
             self.tracks[track] = {}
             for r in ['00', '10', '11']:

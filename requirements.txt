@@ -1,12 +1,6 @@
-cython
-pybedtools
-biopython
 colorama
-#memory_profiler
-pylru
+pandas
 plotly
-#pympler
-python-rapidjson
-# comment this line first
-#-e git+git@github.com:dib-lab/khmer.git#egg=khmer
-#-e git+git@github.com:dib-lab/kevlar.git#egg=kevlar
+scipy
+pysam
+numpy
