@@ -14,8 +14,8 @@
 #include <unistd.h>
 #include <bitset>
 
-#include <sam.h>
-#include <hts.h>
+#include <htslib/sam.h>
+#include <htslib/hts.h>
 
 #include "json.hpp"
 

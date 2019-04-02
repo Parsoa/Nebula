@@ -1,6 +1,9 @@
-CC = /software/gcc/8.2.0/lssc0-linux/bin/g++
-CFLAGS = -O3 -funroll-loops -std=c++11 -I htslib/htslib -std=c++11
+CC = g++
+CFLAGS = -O3 -funroll-loops -std=c++11 -I htslib/htslib
 LDFLAGS = /software/htslib/1.8/lssc0-linux/lib/libhts.a -lz -lm -lpthread -llzma -lbz2 -lcurl -lcrypto
+# Docker config
+DCFLAGS = -O3 -funroll-loops -std=c++11
+DLDFLAGS = -lz -lm -lpthread
 SOURCES = counter.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
@@ -12,3 +15,7 @@ counter: counter.o
 
 debug: counter.cpp
 	$(CC) -g $(CFLAGS) counter.cpp -o counter.out $(LDFLAGS)
+
+docker: counter.cpp
+	$(CC) -g $(DCFLAGS) counter.cpp -o counter.out $(DLDFLAGS)
+

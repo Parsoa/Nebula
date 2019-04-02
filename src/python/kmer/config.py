@@ -72,6 +72,8 @@ def parse_args():
     parser.add_argument("--genome")
     # whether to resume this job from reduce or not
     parser.add_argument("--reduce", action = 'store_true')
+    # which solver to use 
+    parser.add_argument("--solver", default = 'cplex')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # alternate directory for previous job

@@ -6,7 +6,6 @@ import pwd
 import sys
 import json
 import time
-import ctypes
 
 from kmer import (
     config,

@@ -33,6 +33,7 @@ from kmer.commons import *
 from kmer.chromosomes import *
 print = pretty_print
 
+from pulp import *
 import numpy as np
 np.set_printoptions(threshold = np.inf)
 
@@ -228,16 +229,13 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
             obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
         )
-        #self.add_snp_linear_constraints(problem)
         for index, kmer in enumerate(self.lp_kmers):
             self.add_error_absolute_value_constraints(problem, index)
             if kmer['type'] == 'inner':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
                 ind.append(len(self.tracks) + index) # Objective
-                #ind.append(len(self.tracks) + 2 * len(self.lp_kmers) + index)
                 val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
                 val.append(1.0) #Objective
-                #val.append(kmer['count'] - kmer['coverage'] * kmer['residue'])
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
@@ -249,10 +247,8 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
             if kmer['type'] == 'gapped' and kmer['side'] == 'outer' or kmer['type'] == 'junction':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 ind.append(len(self.tracks) + index)
-                #ind.append(len(self.tracks) + 2 * len(self.lp_kmers) + index)
                 val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
                 val.append(1.0)
-                #val.append(kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))))
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
@@ -262,6 +258,48 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     senses = ['E']
                 )
         return problem
+
+    def generate_mps_linear_program(self):
+        c = config.Configuration()
+        problem = LpProblem("Nebula", LpMinimize)
+        i = 0
+        names = [''] * len(self.tracks)
+        variables = [None] * (len(self.tracks) + 2 * len(self.lp_kmers))
+        for track in self.tracks:
+            tokens = track.split('_')
+            variables[self.tracks[track]['index']] = LpVariable('c' + tokens[1], 0, 1)
+            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintLE, 'c' + tokens[1] + '_ub', 1.0)
+            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintGE, 'c' + tokens[1] + '_lb', 0.0)
+            i += 1
+        # error variables
+        for index, kmer in enumerate(self.lp_kmers):
+            variables[i] = LpVariable('e' + str(index))
+            i += 1
+        # absolute value of the error variables
+        for index, kmer in enumerate(self.lp_kmers):
+            variables[i] = LpVariable('l' + str(index))
+            i += 1
+        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], kmer['weight']) for index, kmer in enumerate(self.lp_kmers)])
+        problem += expr
+        for i, kmer in enumerate(self.lp_kmers):
+            self.add_mps_error_absolute_value_constraints(problem, variables, i)
+            if kmer['type'] == 'inner':
+                indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                indices.append(len(self.tracks) + i)
+                coeffs = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                coeffs.append(1.0)
+                rhs = kmer['count'] - kmer['coverage'] * kmer['residue']
+                expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+            else:
+                indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                indices.append(len(self.tracks) + i)
+                coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
+                coeffs.append(1.0)
+                rhs = kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))
+                expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+        return problem, variables
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -332,8 +370,8 @@ class ClusterIntegerProgrammingAnalysisJob(programming.IntegerProgrammingJob):
             #            if self.tracks[track][p]['actual_genotype'] > self.tracks[track][q]['actual_genotype'] and self.tracks[track][p]['lp_value'] < self.tracks[track][q]['lp_value']
             print(len(x))
             print(len(y))
-            #visualizer.violin(x, y, 'cluster_' + track, self.get_current_job_directory(), 'genotype', 'lp value')
-            #visualizer.histogram(y, 'cluster_' + track, self.get_current_job_directory(), 'genotype', 'lp value', step = 0.05)
+            visualizer.violin(x, y, 'cluster_' + track, self.get_current_job_directory(), 'genotype', 'lp value')
+            visualizer.histogram(y, 'cluster_' + track, self.get_current_job_directory(), 'genotype', 'lp value', step = 0.05)
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
         exit()
@@ -379,7 +417,7 @@ class KMeansClusteringJob(map_reduce.Job):
     def load_inputs(self):
         self.tracks = self.load_previous_job_results()
         print(self.tracks)
-        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed' + str(i) + 'SnpError0.001/20x/ClusterIntegerProgrammingJob' for i in range(2001, 3000)]
+        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed' + str(i) + 'SnpError0.001/20x/ClusterIntegerProgrammingJob' for i in range(2001, 2251)]
         for track in self.tracks:
             self.tracks[track] = {}
             for r in ['00', '10', '11']:
@@ -407,6 +445,8 @@ class KMeansClusteringJob(map_reduce.Job):
             for p in ['00', '10', '11']:
                 print(yellow(r + '_as_' + p), ':', track[r + '_as_' + p])
         self.calculate_lp_false_rate(track_name)
+        self.get_num_inversions(track_name)
+        self.get_num_mistakes(track_name)
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump(track, json_file, indent = 4, sort_keys = True)
@@ -442,10 +482,18 @@ class KMeansClusteringJob(map_reduce.Job):
         for p in self.paths:
             for q in self.paths:
                 if p != q:
-                    if self.tracks[track][p]['lp_value'] > self.tracks[q]['lp_value']:
-                        if self.tracks[track][p]['actual_genptype'] > self.tracks[track][q]['actual_genotype']:
+                    if self.tracks[track][p]['lp_value'] > self.tracks[track][q]['lp_value']:
+                        if self.tracks[track][p]['actual_genotype'] > self.tracks[track][q]['actual_genotype']:
                             n += 1
         self.tracks[track]['inversions'] = n
+        return n
+
+    def get_num_mistakes(self, track):
+        n = 0
+        for p in self.paths:
+            if self.tracks[track][p]['lp_genotype'] != self.tracks[track][p]['actual_genotype']:
+                n += 1
+        self.tracks[track]['mistakes'] = n
         return n
 
     def calculate_lp_false_rate(self, track):
@@ -559,14 +607,16 @@ class KMeansClusteringJob(map_reduce.Job):
         return np.linalg.norm(a - b, axis = 1)
 
     def reduce(self):
-        improvement = []
+        for track in self.tracks:
+            self.tracks[track] = json.load(open(os.path.join(self.get_current_job_directory(), track + '.json'), 'r'))
+        performance = []
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'r') as json_file:
                 self.tracks[track] = json.load(json_file)
-                k, l = self.calculate_lp_false_rate(track)
-                improvement.append(l / k)
-        visualizer.histogram(improvement, 'false_prediction_lp_vs_kmeans', self.get_current_job_directory(), 'number of events', 'improvement ratio')
-
+                i, m = self.tracks[track]['inversions'], self.tracks[track]['mistakes']
+                if m != 0:
+                    performance.append(float(i) / float(m))
+        visualizer.histogram(performance, 'false_prediction_lp_vs_kmeans', self.get_current_job_directory(), 'number of events', 'improvement ratio')
 
     def verify_genotypes(self, path):
         print(path)
