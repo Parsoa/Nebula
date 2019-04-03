@@ -4,3 +4,4 @@ plotly
 scipy
 pysam
 numpy
+pulp

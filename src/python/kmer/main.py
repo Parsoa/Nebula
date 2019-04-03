@@ -19,12 +19,20 @@ from kmer.programming import *
 # ============================================================================================================================ #
 
 def preprocess():
-    job = programming.ExtractInnerKmersJob() 
+    job = dynamic.ExtractJunctionKmersJob()
     job.execute()
-    job = reduction.ExtractLociIndicatorKmersJob()
+    job = dynamic.UniqueJunctionKmersJob()
     job.execute()
-    job = reduction.FilterLociIndicatorKmersJob()
+    job = dynamic.JunctionKmersScoringJob()
     job.execute()
+    job = dynamic.FilterJunctionKmersJob()
+    job.execute()
+    #job = programming.ExtractInnerKmersJob() 
+    #job.execute()
+    #job = reduction.ExtractLociIndicatorKmersJob()
+    #job.execute()
+    #job = reduction.FilterLociIndicatorKmersJob()
+    #job.execute()
 
 # ============================================================================================================================ #
 
@@ -47,7 +55,11 @@ def genotype():
 if __name__ == '__main__':
     config.init()
     c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)
+    if c.command == 'preprocess':
+        preprocess()
+    if c.command == 'genotype':
+        genotype()
+    #getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)
     # continue
     # if c.command == 'simulate':
     #    Simulation().launch(resume_from_reduce = c.reduce)

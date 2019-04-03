@@ -1,21 +1,32 @@
-FROM python:2.7
+FROM gcc:latest
 
-WORKDIR /nebula
+MAINTAINER Parsoa Khorsand
 
-COPY . /nebula
+WORKDIR /share/hormozdiarilab/Codes/NebulousSerendipity/
 
-RUN ls -lh
+COPY . /share/hormozdiarilab/Codes/NebulousSerendipity/
 
-RUN pip install -r requirements.txt
+#RUN apt-get update && apt-get install -y python2.7 python-pip
+
+#RUN pip2 install -r requirements.txt
 
 #RUN apt-get install software-properties-common
 
 #RUN add-apt-repository main
 
-RUN apt-get update &&  apt-get install build-essential
+#RUN apt-get update &&  apt-get install build-essential
 
-RUN apt-get install pkg-config
+#RUN apt-get install pkg-config
 
-RUN ./jellyfish.sh
+#RUN ./htslib.sh
 
-RUN python ./test.py
+#RUN ./jellyfish.sh
+
+RUN ./coin.sh
+
+#RUN python2.7 ./test.py
+
+ENV PATH="/share/hormozdiarilab/Codes/NebulousSerendipity/scripts:${PATH}"
+
+CMD /bin/bash
+
