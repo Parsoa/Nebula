@@ -53,6 +53,7 @@ def genotype():
 # ============================================================================================================================ #
 
 if __name__ == '__main__':
+    'Nebula, ultra-efficient mapping-free structural variation genotyper'
     config.init()
     c = config.Configuration()
     if c.command == 'preprocess':

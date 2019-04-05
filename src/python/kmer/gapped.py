@@ -25,7 +25,6 @@ from kmer import (
     programming,
 )
 
-from kmer.sv import StructuralVariation, Inversion, Deletion
 from kmer.kmers import *
 from kmer.commons import *
 from kmer.chromosomes import *

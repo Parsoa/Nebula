@@ -11,7 +11,6 @@ import json
 import math
 import time
 import atexit
-import psutil
 import argparse
 import traceback
 

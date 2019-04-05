@@ -1,4 +1,4 @@
-FROM gcc:latest
+FROM ubuntu 
 
 MAINTAINER Parsoa Khorsand
 
@@ -6,27 +6,17 @@ WORKDIR /share/hormozdiarilab/Codes/NebulousSerendipity/
 
 COPY . /share/hormozdiarilab/Codes/NebulousSerendipity/
 
-#RUN apt-get update && apt-get install -y python2.7 python-pip
+RUN apt-get update && apt-get install -y gcc make g++ gfortran zlib1g-dev pkg-config python2.7 python-pip git wget tmux vim
 
-#RUN pip2 install -r requirements.txt
+RUN pip2 install -r requirements.txt
 
-#RUN apt-get install software-properties-common
+RUN ./htslib.sh
 
-#RUN add-apt-repository main
-
-#RUN apt-get update &&  apt-get install build-essential
-
-#RUN apt-get install pkg-config
-
-#RUN ./htslib.sh
-
-#RUN ./jellyfish.sh
+RUN ./jellyfish.sh
 
 RUN ./coin.sh
 
-#RUN python2.7 ./test.py
-
 ENV PATH="/share/hormozdiarilab/Codes/NebulousSerendipity/scripts:${PATH}"
 
-CMD /bin/bash
+CMD nebula preprocess
 

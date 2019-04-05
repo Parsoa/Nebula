@@ -1,7 +1,7 @@
 #!/bin/bash
 wget https://github.com/gmarcais/Jellyfish/releases/download/v2.2.10/jellyfish-2.2.10.tar.gz
 tar -xzvf jellyfish-2.2.10.tar.gz
-cd jellyfish-2.2.10.tar.gz
+cd jellyfish-2.2.10
 ./configure --enable-python-binding
 make
 make install
