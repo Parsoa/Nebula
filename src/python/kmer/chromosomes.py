@@ -25,6 +25,7 @@ from kmer.commons import *
 # ============================================================================================================================ #
 
 chroms = {}
+whole_genome_extracted = False
 
 def extract_chromosome(chromosome):
     chromosome = chromosome.lower()
@@ -89,6 +90,9 @@ def extract_chromosomes(chromosomes):
 
 def extract_whole_genome():
     c = config.Configuration()
+    global whole_genome_extracted
+    if whole_genome_extracted:
+        return chroms
     print('extracting whole genome')
     if not c.chromosomes:
         a = ['chr' + str(x) for x in range(1, 23)]
@@ -98,5 +102,6 @@ def extract_whole_genome():
         a = [d.lower() for d in c.chromosomes]
     for seq, chrom in extract_chromosomes(a):
         chroms[chrom] = seq
+    whole_genome_extracted = True
     return chroms
 

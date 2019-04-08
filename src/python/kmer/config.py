@@ -21,9 +21,16 @@ class Configuration:
                     self.simulation = int(self.simulation[:-1])
 
     __instance = None
+    __cmd_options = None
+
+    @staticmethod
+    def update(d):
+        for key in d:
+            setattr(Configuration.__instance, key, d[key])
 
     def __init__(self, *args):
         if Configuration.__instance is None:
+            Configuration.__cmd_options = args
             Configuration.__instance = Configuration.__impl(args)
 
     def __getattr__(self, attr):
@@ -49,9 +56,11 @@ def parse_args():
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", default = None)
     # path to a BAM files, for jobs that need one as input
-    parser.add_argument("--bam", default = None) #TODO: move to extract
+    parser.add_argument("--bam", default = None)
+    # whether we are running on CGC or not 
+    parser.add_argument("--cgc", action = 'store_true')
     #gap size, should be odd
-    parser.add_argument("--gap", default = None, type = int) #TODO: move to extract
+    parser.add_argument("--gap", default = None, type = int) #TODO: depracate
     # the job to execute from this file
     parser.add_argument("--job")
     # std of the kmer normal distribution
@@ -60,32 +69,38 @@ def parse_args():
     parser.add_argument("--seed", type = int)
     # triggers the debug mode
     parser.add_argument("--debug", action = 'store_true')
-    # length of the kmers 
-    parser.add_argument("--ksize", default = 32, type = int)
     # set of exons for the current reference
     parser.add_argument("--exons", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/Exons/hg38.exons.filtered.bed')
     # path to a FASTQ files, for jobs that need one as input
-    parser.add_argument("--fastq", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
+    parser.add_argument("--fastq")
     # generic flag for passing input arguments
     parser.add_argument("--input")
+    # a JSON file containing the list of kmers to count
+    parser.add_argument("--kmers")
+    # length of the kmers 
+    parser.add_argument("--ksize", default = 32, type = int)
     # the name of the genome being genotyped or whatver 
     parser.add_argument("--genome")
+    # a JSON file containing the list of tracks and their kmers
+    parser.add_argument("--tracks")
     # whether to resume this job from reduce or not
     parser.add_argument("--reduce", action = 'store_true')
     # which solver to use 
-    parser.add_argument("--solver", default = 'cplex')
+    parser.add_argument("--solver", default = 'coin')
     # maximum number of cpu cores to use
     parser.add_argument("--threads", type = int, default = 48)
     # alternate directory for previous job
     parser.add_argument("--previous", default = None)
     # expected depth of coverage for the FASTQ file
-    parser.add_argument("--coverage", type = float, default = 50)
+    parser.add_argument("--coverage", type = float, default = 40)
     # the path to a jellyfish generated kmer count index
     parser.add_argument("--jellyfish")
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
     parser.add_argument("--reference", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # tmp file directory 
-    parser.add_argument("--working_directory", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/output')
+    parser.add_argument("--workdir", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/output')
+
+    ## Simulation options
     # whether to generate random events during simulation or not
     parser.add_argument("--random", action = 'store_true')
     # whether to do a diploid simulation or two haploid ones 

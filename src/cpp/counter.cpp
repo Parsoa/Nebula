@@ -219,7 +219,7 @@ void process_read(char* seq, int read, int line) {
         cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
         */
         if (kmer != counts->end()) {
-            if (JOB == COUNT_INNER_KMERS) {
+            if (JOB == COUNT_INNER_KMERS || JOB == COUNT_MIX_KMERS) {
                 //cout << line << " " << read << endl ;
                 //cout << i << " " << l << endl ;
                 //string d_l = decode_kmer(left) ;
@@ -232,8 +232,8 @@ void process_read(char* seq, int read, int line) {
                 int* total = totals->at(kmer->first) ;
                 *total += 1 ;
                 if (masks->find(k) == masks->end()) {
-                    //int* count = counts->at(kmer->first) ;
-                    //*count += 1 ;
+                    int* count = counts->at(kmer->first) ;
+                    *count += 1 ;
                 } else {
                     std::vector<uint64_t>* m = masks->at(k) ;
                     for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {

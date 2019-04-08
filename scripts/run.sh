@@ -11,4 +11,4 @@ source BAM.sh
 source FASTQ.sh
 source JELLYFISH.sh
 echo "$@"
-python -m kmer.main $CMD --job $JOB --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --reference $REF --jellyfish $RJF --fastq $FSQ --bam $BAM --genome $GEN --readlength 100 $SIM --seed 165784623 $DESCP --working_directory /share/hormozdiarilab/Codes/NebulousSerendipity/output "$@"
+python -m kmer.main $CMD --job $JOB --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/$BED --threads 48 --reference $REF --jellyfish $RJF --fastq $FSQ --bam $BAM --genome $GEN --readlength 100 $SIM --seed 165784623 $DESCP --workdir /share/hormozdiarilab/Codes/NebulousSerendipity/output "$@"

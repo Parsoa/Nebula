@@ -8,6 +8,7 @@ echo BED_GENOME $BED_GENOME
 TARGET_BED="$GEN.$(echo $BED | sed 's|[^.]*\.||')"
 echo TARGET_BED $TARGET_BED
 F="merge.bed"
+TARGET_BED="HG00513.hg19.DEL.bed"
 ################################################################################
 awk 'BEGIN {FS = "\t"} { if ($4 ~ /00/)    { print $0 } }' $F > 00.bed
 awk 'BEGIN {FS = "\t"} { if ($4 ~ /11|10/) { print $0 } }' $F > present.bed

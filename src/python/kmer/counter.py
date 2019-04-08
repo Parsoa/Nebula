@@ -55,6 +55,7 @@ class BaseExactCountingJob(map_reduce.Job):
                 #fastq_file = os.path.join(self.get_simulation_directory(), 'test.' + str(i) + '.fq')
                 fastq_file = os.path.join(self.get_simulation_directory(), 'chr17_diploid.' + str(i) + '.fq')
                 #fastq_file = "/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed1300SnpError0.001/20x/Simulation/reads.sorted.bam"
+                print(yellow(fastq_file))
                 command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
                 print(command)
                 output = subprocess.call(command, shell = True)
@@ -62,7 +63,9 @@ class BaseExactCountingJob(map_reduce.Job):
                 print(command)
                 output = subprocess.call(command, shell = True)
         else:
-            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
+            reads_file = c.fastq if c.fastq else c.bam
+            print(yellow(reads_file))
+            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + reads_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
             print(command)
             output = subprocess.call(command, shell = True)
         exit()

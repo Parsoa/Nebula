@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -O3 -funroll-loops -std=c++11 -I htslib/htslib
+CFLAGS = -O3 -funroll-loops -std=c++11 -I htslib
 LDFLAGS = /software/htslib/1.8/lssc0-linux/lib/libhts.a -lz -lm -lpthread -llzma -lbz2 -lcurl -lcrypto
 # Docker config
 DCFLAGS = -O3 -funroll-loops -std=c++11

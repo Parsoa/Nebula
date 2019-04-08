@@ -16,7 +16,10 @@ RUN ./jellyfish.sh
 
 RUN ./coin.sh
 
+RUN ./counter.sh
+
 ENV PATH="/share/hormozdiarilab/Codes/NebulousSerendipity/scripts:${PATH}"
 
-CMD nebula preprocess
+WORKDIR /output/cgc/CgcIntegerProgrammingJob
 
+CMD nebula preprocess

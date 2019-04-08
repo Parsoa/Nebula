@@ -47,7 +47,6 @@ class Job(object):
         self.run_for_certain_batches_only = False
         self.resume_from_reduce = False
         for k, v in kwargs.items():
-            print('adding attr', green(k), blue(v))
             setattr(self, k, v)
 
     def execute(self):
@@ -57,7 +56,7 @@ class Job(object):
         self.find_thread_count()
         self.prepare()
         self.load_inputs()
-        if not self.resume_from_reduce:
+        if not self.resume_from_reduce: 
             print('normal execution flow')
             self.distribute_workload()
             self.wait_for_children()
@@ -249,14 +248,14 @@ class Job(object):
         c = config.Configuration()
         bed_file_name = c.bed.split('/')[-1]
         if c.simulation:
-            return os.path.abspath(os.path.join(c.working_directory,\
+            return os.path.abspath(os.path.join(c.workdir,\
                 'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/'))
         else:
             if self._category == 'misc':
-                return os.path.abspath(os.path.join(c.working_directory,
+                return os.path.abspath(os.path.join(c.workdir,
                     self._category + '/'))
             else:
-                return os.path.abspath(os.path.join(c.working_directory, 
+                return os.path.abspath(os.path.join(c.workdir, 
                     self._category + '/' + bed_file_name + '/'))
 
     def get_current_job_directory(self):
@@ -274,7 +273,7 @@ class Job(object):
     def get_simulation_directory(self):
         c = config.Configuration()
         bed_file_name = c.bed.split('/')[-1]
-        return os.path.abspath(os.path.join(c.working_directory,\
+        return os.path.abspath(os.path.join(c.workdir,\
             'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/Simulation/'))
 
     def create_output_directories(self):
@@ -300,14 +299,18 @@ class BaseGenotypingJob(Job):
         bed_file_name = c.bed.split('/')[-1]
         if c.simulation:
             return Job.get_output_directory(self)
+        elif c.cgc:
+            return os.path.abspath(os.path.join(c.workdir, 'cgc'))
         else:
-            return os.path.abspath(os.path.join(c.working_directory,\
+            return os.path.abspath(os.path.join(c.workdir,\
                 self._category + '/genotyping/' + c.genome))
 
     def get_current_job_directory(self):
         c = config.Configuration()
         if c.simulation:
             return Job.get_current_job_directory(self)
+        if c.cgc:
+            return os.path.join(self.get_output_directory(), self._name)
         else:
             bed_file_name = c.bed.split('/')[-1]
             return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._name))
@@ -318,6 +321,8 @@ class BaseGenotypingJob(Job):
             return c.previous
         if c.simulation:
             return Job.get_previous_job_directory(self)
+        if c.cgc:
+            return os.path.join(self.get_output_directory(), self._previous_job._name)
         else:
             bed_file_name = c.bed.split('/')[-1]
             return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._previous_job._name))
