@@ -367,4 +367,3 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
                 problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
         return problem, variables
-

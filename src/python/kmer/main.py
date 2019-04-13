@@ -70,7 +70,7 @@ def genotype():
     if c.cgc:
         job = CgcCounterJob(resume_from_reduce = c.reduce)
         tracks, stats = job.execute()
-        stats['threads'] = 48
+        stats['threads'] = 4
         config.Configuration.update(stats)
         job = CgcIntegerProgrammingJob()
         job.tracks = tracks
