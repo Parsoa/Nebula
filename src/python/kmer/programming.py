@@ -354,7 +354,8 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             with open(os.path.join(self.get_current_job_directory(), 'solution_cplex.json'), 'w') as json_file:
                 json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
         self.export_solution()
-        self.verify_genotypes()
+        if not c.cgc:
+            self.verify_genotypes()
         return self.tracks
 
     def export_solution(self):

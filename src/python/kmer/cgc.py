@@ -368,5 +368,8 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
         return problem, variables
 
+    def create_output_directories(self):
+        pass
+
     def get_current_job_directory(self):
         return os.getcwd()

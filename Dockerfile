@@ -1,4 +1,4 @@
-FROM ubuntu 
+FROM ubuntu
 
 MAINTAINER Parsoa Khorsand
 
@@ -21,5 +21,7 @@ RUN ./counter.sh
 ENV PATH="/share/hormozdiarilab/Codes/NebulousSerendipity/scripts:${PATH}"
 
 ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+
+ENV PYTHONPATH="$PYTHONPATH:/share/hormozdiarilab/Codes/NebulousSerendipity/src/python"
 
 WORKDIR /output/cgc/CgcIntegerProgrammingJob

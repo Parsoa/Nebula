@@ -1,4 +1,4 @@
 #!/bin/bash
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 cd src/python
-python -m kmer.main "$@"
+pwd > /share/hormozdiarilab/Codes/NebulousSerendipity/src/python/pwd.json
