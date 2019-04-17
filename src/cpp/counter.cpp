@@ -565,10 +565,9 @@ int transform(int index, string path) {
         *total = 0 ;
         totals->emplace(std::make_pair(k, total)) ;
         totals->emplace(std::make_pair(rc_k, total)) ;
-        if (JOB == COUNT_INNER_KMERS) {
+        if (JOB == COUNT_INNER_KMERS || JOB == COUNT_MIX_KMERS) {
             std::vector<uint64_t> *m = new std::vector<uint64_t> ;
             if (kmer["loci"].size()) {
-                cout << kmer["loci"].size() << endl ;
                 for (nlohmann::json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
                     for (nlohmann::json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
                         m->push_back(encode_kmer(mask.key().c_str())) ;

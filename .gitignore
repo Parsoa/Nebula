@@ -27,3 +27,5 @@ misc/
 coin/
 cgc/
 .vscode/
+src/cpp/*.o
+src/cpp/*.out

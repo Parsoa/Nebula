@@ -3,7 +3,7 @@ CFLAGS = -O3 -funroll-loops -std=c++11 -I htslib
 LDFLAGS = /software/htslib/1.8/lssc0-linux/lib/libhts.a -lz -lm -lpthread -llzma -lbz2 -lcurl -lcrypto
 # Docker config
 DCFLAGS = -O3 -funroll-loops -std=c++11
-DLDFLAGS = -lz -lm -lpthread
+DLDFLAGS = -lz -lm -lpthread -lhts
 SOURCES = counter.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 

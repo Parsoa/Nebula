@@ -20,6 +20,6 @@ RUN ./counter.sh
 
 ENV PATH="/share/hormozdiarilab/Codes/NebulousSerendipity/scripts:${PATH}"
 
-WORKDIR /output/cgc/CgcIntegerProgrammingJob
+ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
 
-CMD nebula preprocess
+WORKDIR /output/cgc/CgcIntegerProgrammingJob
