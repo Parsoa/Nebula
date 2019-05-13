@@ -28,3 +28,5 @@ coin/
 cgc/
 test/
 .vscode/
+src/cpp/*.o
+src/cpp/*.out
