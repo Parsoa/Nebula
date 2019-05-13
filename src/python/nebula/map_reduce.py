@@ -41,10 +41,11 @@ def on_exit(job):
 class Job(object):
 
     def __init__(self, **kwargs):
+        c = config.Configuration()
         self.index = -1
         self.batch = {}
         self.children = {}
-        self.resume_from_reduce = False
+        self.resume_from_reduce = c.reduce
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -291,7 +292,7 @@ class BaseGenotypingJob(Job):
         if c.simulation:
             return Job.get_output_directory(self)
         elif c.cgc:
-            return os.path.abspath(os.path.join(c.workdir, 'cgc'))
+            return os.path.abspath(os.path.join(c.workdir))
         else:
             return os.path.abspath(os.path.join(c.workdir,\
                 self._category + '/genotyping/' + c.genome))

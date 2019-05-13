@@ -22,10 +22,10 @@ from nebula import (
     simulator,
     counttable,
     map_reduce,
-    production,
     statistics,
     visualizer,
     programming,
+    preprocessor,
 )
 
 from nebula.kmers import *
@@ -50,8 +50,8 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
     # ============================================================================================================================ #
 
     _name = 'CgcCounterJob'
-    _category = 'programming'
-    _previous_job = production.MixKmersJob
+    _category = 'preprocessing'
+    _previous_job = preprocessor.MixKmersJob
     _counter_mode = 4
 
     @staticmethod
@@ -65,15 +65,43 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
 
     def load_inputs(self):
         c = config.Configuration()
-        with open(c.kmers, 'r') as json_file:
+        self.load_kmers()
+        self.export_counter_input()
+        self.round_robin()
+
+    def load_kmers(self):
+        c = config.Configuration()
+        path = c.kmers[0]
+        with open(path, 'r') as json_file:
             self.kmers = json.load(json_file)
         self.half_mers = self.kmers['half_mers']
         self.depth_kmers = self.kmers['depth_kmers']
         self.inner_kmers = self.kmers['inner_kmers']
         self.gapped_kmers = self.kmers['gapped_kmers']
         self.junction_kmers = self.kmers['junction_kmers']
-        self.export_counter_input()
-        self.round_robin()
+        for path in c.kmers[1:]:
+            with open(path, 'r') as json_file:
+                kmers = json.load(json_file)
+                for kmer in kmers['junction_kmers']:
+                    if not kmer in self.junction_kmers:
+                        self.junction_kmers[kmer] = kmers['junction_kmers'][kmer]
+                    else:
+                        self.junction_kmers[kmer]['loci'].update(kmers['junction_kmers'][kmer]['loci'])
+                        self.junction_kmers[kmer]['tracks'].update(kmers['junction_kmers'][kmer]['tracks'])
+                for kmer in kmers['inner_kmers']:
+                    if not kmer in self.inner_kmers:
+                        self.inner_kmers[kmer] = kmers['inner_kmers'][kmer]
+                    else:
+                        self.inner_kmers[kmer]['loci'].update(kmers['inner_kmers'][kmer]['loci'])
+                        self.inner_kmers[kmer]['tracks'].update(kmers['inner_kmers'][kmer]['tracks'])
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            kmers = {}
+            kmers['junction_kmers'] = self.junction_kmers
+            kmers['gapped_kmers'] = self.gapped_kmers
+            kmers['inner_kmers'] = self.inner_kmers
+            kmers['depth_kmers'] = self.depth_kmers
+            kmers['half_mers'] = self.half_mers
+            json.dump(kmers, json_file, indent = 4)
 
     def export_counter_input(self):
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
@@ -86,9 +114,9 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
                     for locus in kmers[kmer]['loci']:
                         _kmers[kmer]['loci'][locus] = {}
                         _kmers[kmer]['loci'][locus]['masks'] = kmers[kmer]['loci'][locus]['masks']
-            #for kmer in self.depth_kmers:
-            #    _kmers[kmer] = {}
-            #    _kmers[kmer]['loci'] = {}
+            for kmer in self.depth_kmers:
+                _kmers[kmer] = {}
+                _kmers[kmer]['loci'] = {}
             json.dump(_kmers, json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'half_mers.json'), 'w') as json_file:
             json.dump(self.half_mers, json_file, indent = 4)
@@ -113,7 +141,8 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
                 self.junction_kmers[canon]['total'] += total / 2
 
     def estimate_depth_of_coverage(self):
-        return {'coverage': 50, 'std': 17}
+        stats = {'coverage': 50, 'std': 17}
+        return stats
         c = config.Configuration()
         self.counts = list(map(lambda kmer: self.depth_kmers[kmer]['count'], self.depth_kmers))
         self.mean = np.mean(self.counts)
@@ -185,7 +214,7 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
 class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'CgcIntegerProgrammingJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = CgcCounterJob
 
     # ============================================================================================================================ #
@@ -283,9 +312,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         problem.objective.set_sense(problem.objective.sense.minimize)
         # the coverage of each event
         names = [''] * len(self.tracks)
+        regex = re.compile('[^a-zA-Z0-9]')
         for track in self.tracks:
-            tokens = track.split('_')
-            names[self.tracks[track]['index']] = 'c' + tokens[1]
+            name = regex.sub('', track)
+            tokens = name.split('_')
+            names[self.tracks[track]['index']] = 'c' + name
         problem.variables.add(names = names,
             ub = [1.0] * len(self.tracks),
         )
@@ -297,13 +328,17 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
             obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
         )
+        print('adding constraints')
         for index, kmer in enumerate(self.lp_kmers):
+            if kmer['count'] == 0:
+                continue
             self.add_error_absolute_value_constraints(problem, index)
-            if kmer['type'] == 'inner':
+            if kmer['type'] == 'junction':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
                 ind.append(len(self.tracks) + index) # Objective
                 val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
                 val.append(1.0) #Objective
+                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
                 problem.linear_constraints.add(
                     lin_expr = [cplex.SparsePair(
                         ind = ind,
@@ -312,19 +347,20 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
                     senses = ['E']
                 )
-            if kmer['type'] == 'gapped' and kmer['side'] == 'outer' or kmer['type'] == 'junction':
-                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                ind.append(len(self.tracks) + index)
-                val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-                val.append(1.0)
-                problem.linear_constraints.add(
-                    lin_expr = [cplex.SparsePair(
-                        ind = ind,
-                        val = val,
-                    )],
-                    rhs = [kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
-                    senses = ['E']
-                )
+            #if kmer['type'] == 'gapped' and kmer['side'] == 'outer' or kmer['type'] == 'junction':
+            #    ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+            #    ind.append(len(self.tracks) + index)
+            #    val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
+            #    val.append(1.0)
+            #    problem.linear_constraints.add(
+            #        lin_expr = [cplex.SparsePair(
+            #            ind = ind,
+            #            val = val,
+            #        )],
+            #        rhs = [kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
+            #        senses = ['E']
+            #    )
+        print('completed program generation')
         return problem
 
     def generate_mps_linear_program(self):
@@ -333,11 +369,12 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         i = 0
         names = [''] * len(self.tracks)
         variables = [None] * (len(self.tracks) + 2 * len(self.lp_kmers))
+        regex = re.compile('[^a-zA-Z0-9]')
         for track in self.tracks:
-            tokens = track.split('_')
-            variables[self.tracks[track]['index']] = LpVariable('c' + tokens[1], 0, 1)
-            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintLE, 'c' + tokens[1] + '_ub', 1.0)
-            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintGE, 'c' + tokens[1] + '_lb', 0.0)
+            name = regex.sub('_', track)
+            variables[self.tracks[track]['index']] = LpVariable('c' + name, 0, 1)
+            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintLE, 'c' + name + '_ub', 1.0)
+            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintGE, 'c' + name + '_lb', 0.0)
             i += 1
         # error variables
         for index, kmer in enumerate(self.lp_kmers):
@@ -350,8 +387,10 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], kmer['weight']) for index, kmer in enumerate(self.lp_kmers)])
         problem += expr
         for i, kmer in enumerate(self.lp_kmers):
+            if kmer['count'] == 0:
+                continue
             self.add_mps_error_absolute_value_constraints(problem, variables, i)
-            if kmer['type'] == 'inner':
+            if kmer['type'] == 'junction':
                 indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
                 indices.append(len(self.tracks) + i)
                 coeffs = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
@@ -359,19 +398,26 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 rhs = kmer['count'] - kmer['coverage'] * kmer['residue']
                 expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
                 problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
-            else:
-                indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                indices.append(len(self.tracks) + i)
-                coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-                coeffs.append(1.0)
-                rhs = kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))
-                expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
-                problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+            #else:
+            #    indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+            #    indices.append(len(self.tracks) + i)
+            #    coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
+            #    coeffs.append(1.0)
+            #    rhs = kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))
+            #    expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+            #    problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
         return problem, variables
 
-    def create_output_directories():
+    def create_output_directories(self):
         pass
 
     def get_current_job_directory(self):
         return os.getcwd()
 
+    def round_genotype(self, c, svtype):
+        if c > self.b2:
+            return (1.0, '11')
+        elif c > self.b1:
+            return (0.5, '10')
+        else:
+            return (0.0, '00')

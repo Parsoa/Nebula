@@ -45,7 +45,7 @@ class UniqueKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
     # ============================================================================================================================ #
 
     _name = 'UniqueKmersDepthOfCoverageEstimationJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = None
     _counter_mode = 3
 
@@ -144,7 +144,7 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
     # ============================================================================================================================ #
 
     _name = 'GappedKmersDepthOfCoverageEstimationJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = None
     _counter_mode = 1
 
@@ -168,7 +168,7 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
     class ExtractExonGappedKmersHelper(map_reduce.GenomeDependentJob):
 
         _name = 'GappedKmersDepthOfCoverageEstimationJob'
-        _category = 'programming'
+        _category = 'preprocessing'
         _previous_job = None
 
         def load_inputs(self):
@@ -201,7 +201,7 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
     class ScoreExonGappedKmersHelper(map_reduce.GenomeDependentJob):
 
         _name = 'GappedKmersDepthOfCoverageEstimationJob'
-        _category = 'programming'
+        _category = 'preprocessing'
         _previous_job = None
 
         def load_inputs(self):
@@ -368,7 +368,7 @@ class GappedKmersDepthOfCoverageEstimationJob(map_reduce.GenomeDependentJob, cou
 class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
 
     _name = 'ChromosomeGcContentEstimationJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = None
 
     @staticmethod
@@ -480,7 +480,7 @@ class ChromosomeGcContentEstimationJob(map_reduce.GenomeDependentJob):
     class CounterHelper(map_reduce.GenomeDependentJob, counter.BaseExactCountingJob):
 
         _name = 'ChromosomeGcContentEstimationJob'
-        _category = 'programming'
+        _category = 'preprocessing'
         _previous_job = None
         _counter_mode = 3
 

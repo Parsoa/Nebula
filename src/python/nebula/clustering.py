@@ -15,17 +15,16 @@ import subprocess
 
 from nebula import (
     bed,
+    cgc,
     config,
-    gapped,
     counter,
-    reduction,
     simulator,
     counttable,
     map_reduce,
-    production,
     statistics,
     visualizer,
     programming,
+    preprocessor
 )
 
 from nebula.kmers import *
@@ -43,15 +42,15 @@ np.set_printoptions(threshold = np.inf)
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class RemnantCounterJob(production.MixCounterJob, map_reduce.BaseGenotypingJob):
+class RemnantCounterJob(cgc.CgcCounterJob, map_reduce.BaseGenotypingJob):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
     _name = 'RemnantCounterJob'
-    _category = 'programming'
-    _previous_job = production.MixCounterJob
+    _category = 'preprocessing'
+    _previous_job = cgc.CgcCounterJob
     _counter_mode = 4
 
     @staticmethod
@@ -118,7 +117,7 @@ class RemnantCounterJob(production.MixCounterJob, map_reduce.BaseGenotypingJob):
 class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'ClusterIntegerProgrammingJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = RemnantCounterJob
 
     # ============================================================================================================================ #
@@ -310,7 +309,7 @@ class ClusterIntegerProgrammingJob(programming.IntegerProgrammingJob):
 class ClusterIntegerProgrammingAnalysisJob(programming.IntegerProgrammingJob):
 
     _name = 'ClusterIntegerProgrammingAnalysisJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = RemnantCounterJob 
 
     # ============================================================================================================================ #
@@ -397,7 +396,7 @@ class ClusterIntegerProgrammingAnalysisJob(programming.IntegerProgrammingJob):
 class KMeansClusteringJob(map_reduce.Job):
 
     _name = 'KMeansClusteringJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = RemnantCounterJob 
 
     # ============================================================================================================================ #

@@ -35,6 +35,10 @@ class BaseExactCountingJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def find_thread_count(self):
+        c = config.Configuration()
+        self.num_threads = 1 if c.bam else min(4, c.threads)
+
     def round_robin(self):
         for i in range(0, self.num_threads):
             self.batch[i] = {}

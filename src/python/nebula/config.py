@@ -52,7 +52,7 @@ def parse_args():
     parser = argparse.ArgumentParser(add_help = False)
     ################## General arguments
     # path to a BED files, for jobs that need one as input
-    parser.add_argument("--bed", default = None)
+    parser.add_argument("--bed", nargs = '+', default = None)
     # path to a BAM files, for jobs that need one as input
     parser.add_argument("--bam", default = None)
     # whether we are running on CGC or not 
@@ -74,9 +74,11 @@ def parse_args():
     # generic flag for passing input arguments
     parser.add_argument("--input")
     # a JSON file containing the list of kmers to count
-    parser.add_argument("--kmers")
+    parser.add_argument("--kmers", nargs = '+')
     # length of the kmers 
     parser.add_argument("--ksize", default = 32, type = int)
+    # assembled contigs for each structural variation
+    parser.add_argument("--contigs")
     # the name of the genome being genotyped or whatver 
     parser.add_argument("--genome")
     # a JSON file containing the list of tracks and their kmers
@@ -90,7 +92,7 @@ def parse_args():
     # alternate directory for previous job
     parser.add_argument("--previous", default = None)
     # expected depth of coverage for the FASTQ file
-    parser.add_argument("--coverage", type = float, default = 40)
+    parser.add_argument("--coverage", type = float, default = 50)
     # the path to a jellyfish generated kmer count index
     parser.add_argument("--jellyfish")
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc

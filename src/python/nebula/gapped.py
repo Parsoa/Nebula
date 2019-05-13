@@ -39,7 +39,7 @@ print = pretty_print
 class ExtractGappedKmersJob(map_reduce.Job):
 
     _name = 'ExtractGappedKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = None
 
     # ============================================================================================================================ #
@@ -103,7 +103,7 @@ class ExtractGappedKmersJob(map_reduce.Job):
 class UniqueGappedKmersJob(map_reduce.Job):
 
     _name = 'UniqueGappedKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = ExtractGappedKmersJob
 
     # ============================================================================================================================ #
@@ -162,7 +162,7 @@ class UniqueGappedKmersJob(map_reduce.Job):
 class UniqueGappedKmersScoringJob(map_reduce.Job):
 
     _name = 'UniqueGappedKmersScoringJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = UniqueGappedKmersJob
 
     # ============================================================================================================================ #
@@ -241,14 +241,23 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
     def reduce(self):
         self.merge_counts()
         self.tracks = {}
+        print('merged', len(self.kmers), 'kmers')
+        n = 0
         for kmer in self.kmers:
             for track in self.kmers[kmer]['tracks']:
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
+            n += 1
+            if n % 10000 == 0:
+                print('processed', n, 'out of', len(self.kmers), 'kmers')
+        n = 0
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+            n += 1
+            if n % 10000 == 0:
+                print('exported', n, 'out of', len(self.tracks), 'tracks')
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
 
@@ -261,7 +270,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
 class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
 
     _name = 'SelectUniqueGappedKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = UniqueGappedKmersScoringJob
     _counter_mode = 2
 
@@ -359,7 +368,7 @@ class SelectUniqueGappedKmersJob(counter.BaseExactCountingJob):
 class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappedKmersJob):
 
     _name = 'CountUniqueGappedKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = SelectUniqueGappedKmersJob
     _counter_mode = 1
 
@@ -438,7 +447,7 @@ class CountUniqueGappedKmersJob(map_reduce.FirstGenotypingJob, SelectUniqueGappe
 class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'GappedKmersIntegerProgrammingJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = CountUniqueGappedKmersJob
     _kmer_type = 'gapped'
 
@@ -477,13 +486,6 @@ class GappedKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     'outer': {kmer: self.lp_kmers[kmer] for kmer in list(filter(lambda kmer: kmer in self.lp_kmers, kmers['outer']))},
                 }, json_file, indent = 4, sort_keys = True)
         return 'gapped_kmers_' + track_name + '.json'
-
-    def calculate_residual_coverage(self):
-        c = config.Configuration()
-        for kmer in self.lp_kmers:
-            kmer['coverage'] = c.coverage
-            kmer['residue'] = 0
-            kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
 
     def generate_linear_program(self):
         print('generating linear program')

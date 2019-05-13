@@ -416,7 +416,6 @@ int process_bam(string bam, string path, int index, int threads) {
             time_t s ;
             time(&s) ;
             cout.precision(10) ;
-            cout << s - t << endl ;
             if (s - t != 0 && DEBUG == 0) {
                 cout << std::left << setw(2) << index << "processed " << setw(12) << u << " reads, " ;
                 cout << " took: " << setw(7) << std::fixed << s - t ;

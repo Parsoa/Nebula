@@ -40,7 +40,7 @@ from pulp import *
 class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     _name = 'IntegerProgrammingJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = None
     _kmer_type = 'unique_inner'
 
@@ -112,7 +112,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         print(len(self.tracks), 'tracks')
         return self.tracks
 
-    # the portion of a kmer's coverage in reference genome that is outside deletions
     def calculate_residual_coverage(self):
         c = config.Configuration()
         for kmer in self.lp_kmers:
@@ -122,129 +121,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             # put an upperbound on a kmer's impact on LP score
             kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
             kmer['residue'] = kmer['reference'] - r
-            # This is always 1 for compatibility reasons
-            kmer['coefficient'] = 1
-
-    def generate_linear_program(self):
-        c = config.Configuration()
-        globals()['cplex'] = __import__('cplex')
-        problem = cplex.Cplex()
-        problem.objective.set_sense(problem.objective.sense.minimize)
-        # the coverage of each event
-        names = [''] * len(self.tracks)
-        for track in self.tracks:
-            tokens = track.split('_')
-            names[self.tracks[track]['index']] = 'c' + tokens[1]
-        problem.variables.add(names = names, ub = [1.0] * len(self.tracks))
-        # error variables
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            ub = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue']) for kmer in self.lp_kmers],
-            lb = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks'])) for kmer in self.lp_kmers],
-        )
-        # absolute value of the error variables 
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            obj = [1.0] * len(self.lp_kmers),
-        )
-        # snp indicators
-        # self.add_snp_integer_constraints(problem)
-        n = 0
-        start = time.time()
-        offset = len(self.tracks) + 2 * len(self.lp_kmers)
-        for index, kmer in enumerate(self.lp_kmers):
-            # TxR + E = C - 
-            ref = kmer['reference']
-            ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            ind.append(len(self.tracks) + index)
-            val = list(map(lambda track: kmer['coefficient'] * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
-            val.append(1.0)
-            offset += ref
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = ind,
-                    val = val,
-                )],
-                rhs = [kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'])],
-                senses = ['E']
-            )
-            self.add_error_absolute_value_constraints(problem, index)
-            n = n + 1
-            if n % 1000 == 0:
-                t = time.time()
-                p = float(n) / len(self.lp_kmers)
-                eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
-                #print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
-        return problem
-
-    def generate_mps_linear_program(self):
-        c = config.Configuration()
-        problem = LpProblem("Nebula", LpMinimize)
-        # the coverage of each event
-        i = 0
-        names = [''] * len(self.tracks)
-        variables = [None] * len(self.tracks + 2 * len(self.lp_kmers))
-        for track in self.tracks:
-            tokens = track.split('_')
-            variables[i] = LpVariable('c' + tokens[1], 0, 1)
-            i += 1
-        # error variables
-        for index, kmer in enumerate(self.lp_kmers):
-            ub = kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'])
-            lb = kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'] - kmer['coverage'] * sum(kmer['tracks'][track] for track in kmer['tracks']))
-            variables[i] = LpVariable('e' + str(index), lb, ub)
-            i += 1
-        # absolute value of the error variables
-        for index, kmer in self.lp_kmers:
-            variables[i] = LpVariable('l' + str(index))
-            i += 1
-        # TODO: objective
-        offset = len(self.tracks) + 2 * len(self.lp_kmers)
-        for i, kmer in enumerate(self.lp_kmers):
-            # TxR + E = C - 
-            indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            indices.append(len(self.tracks) + i)
-            coeffs = list(map(lambda track: kmer['coefficient'] * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
-            coeffs.append(1.0)
-            rhs = kmer['coefficient'] * (kmer['count'] - kmer['coverage'] * kmer['residue'])
-            expr = LpAffineExpression([(variables[index], coeff) for index, coeff in enumerate(coeffs)])
-            problem += LpConstraint(expr, LpConstraintQE, 'k' + str(i), rhs) 
-            self.add_mps_error_absolute_value_constraints(problem, i)
-        return problem
-
-    def add_mps_error_absolute_value_constraints(self, problem, variables, index):
-        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], 1.0)])
-        problem += LpConstraint(expr, LpConstraintGE, 'abs_1_' + str(index), 0) 
-        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], -1.0)])
-        problem += LpConstraint(expr, LpConstraintGE, 'abs_2_' + str(index), 0) 
-
-    # We allow up to 3% of the kmers to be affected by SNPs
-    def add_snp_integer_constraints(self, problem):
-        problem.variables.add(names = ['i' + str(index) for index, kmer in enumerate(self.lp_kmers)], ub = [1.0] * len(self.lp_kmers), types = [problem.variables.type.integer] * len(self.lp_kmers))
-        offset = len(self.tracks) + 2 * len(self.lp_kmers)
-        for track in self.tracks:
-            ind = [len(self.tracks) + 2 * len(self.lp_kmers) + index for index in self.tracks[track]['kmers']]
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = ind,
-                    val = [1.0] * len(ind),
-                )],
-                rhs = [math.floor(0.1 * len(ind))],
-                senses = ['L']
-            )
-
-    # We allow up to 3% of the kmers to be affected by SNPs
-    def add_snp_linear_constraints(self, problem):
-        problem.variables.add(names = ['i' + str(index) for index, kmer in enumerate(self.lp_kmers)], ub = [1.0] * len(self.lp_kmers))
-        offset = len(self.tracks) + 2 * len(self.lp_kmers)
-        for track in self.tracks:
-            ind = [len(self.tracks) + 2 * len(self.lp_kmers) + index for index in self.tracks[track]['kmers']]
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = ind,
-                    val = [1.0] * len(ind),
-                )],
-                rhs = [math.floor(0.1 * len(ind))],
-                senses = ['L']
-            )
 
     def add_error_absolute_value_constraints(self, problem, index):
         globals()['cplex'] = __import__('cplex')
@@ -265,25 +141,11 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             senses = ['G']
         )
 
-    def import_lp_values(self):
-        c = config.Configuration()
-        self.solution = [None] * (len(self.tracks) + 2 * len(self.lp_kmers))
-        with open(os.path.join(self.get_current_job_directory(), 'solution'), 'r') as f:
-            status = f.readline()
-            if status.find('optimal'):
-                line = f.readline()
-                line = f.readline()
-                while(line):
-                    tokens = line.split()
-                    name = toknes[1]
-                    index = int(name[1:])
-                    value = float(tokens[2])
-                    if name[0] == 'c':
-                        self.solution[index] = value
-                    if name[0] == 'e':
-                        self.solution[len(self.tracks) + index] = value
-                    if name[0] == 'l':
-                        self.solution[len(self.tracks) + len(self.lp_kmers) + index] = value
+    def add_mps_error_absolute_value_constraints(self, problem, variables, index):
+        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], 1.0)])
+        problem += LpConstraint(expr, LpConstraintGE, 'abs_1_' + str(index), 0) 
+        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], -1.0)])
+        problem += LpConstraint(expr, LpConstraintGE, 'abs_2_' + str(index), 0) 
 
     def solve(self):
         c = config.Configuration()
@@ -307,6 +169,30 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.verify_genotypes()
         return self.tracks
 
+    # COIN doesn't supply values for certain variables
+    def import_lp_values(self):
+        c = config.Configuration()
+        self.solution = [0.0] * (len(self.tracks) + 2 * len(self.lp_kmers))
+        var_index = {}
+        regex = re.compile('[^a-zA-Z0-9]')
+        for track in self.tracks:
+            name = regex.sub('_', track)
+            var_index[name] = self.tracks[track]['index']
+        with open(os.path.join(self.get_current_job_directory(), 'solution.mps'), 'r') as f:
+            status = f.readline()
+            objective = f.readline()
+            line = f.readline()
+            while(line):
+                tokens = line.split()
+                name = tokens[1]
+                index = int(tokens[0])
+                value = float(tokens[2])
+                if name[0] == 'c':
+                    self.solution[var_index[name[1:]]] = value
+                else:
+                    self.solution[index] = value
+                line = f.readline()
+
     def export_solution(self):
         c = config.Configuration()
         self.errors = self.solution[len(self.tracks):]
@@ -320,38 +206,24 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.find_rounding_break_points()
         print('Rounding', len(self.tracks), 'tracks')
         with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
-            bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\n')
+            bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
             for track in self.tracks:
-                index = self.tracks[track]['index']
                 t = c.tracks[track]
-                g = self.round_genotype(self.solution[index])
+                index = self.tracks[track]['index']
+                g = self.round_genotype(self.solution[index], t.svtype)
                 bed_file.write(t.chrom + '\t' +
                     str(t.begin) + '\t' +
                     str(t.end) + '\t' +
                     str(g[1]) + '\t' +
-                    str(self.solution[index]) + '\n')
-
-    def import_lp_values(self):
-        c = config.Configuration()
-        self.solution = [0.0] * (len(self.tracks) + 2 * len(self.lp_kmers))
-        with open(os.path.join(self.get_current_job_directory(), 'solution.mps'), 'r') as f:
-            status = f.readline()
-            objective = f.readline()
-            line = f.readline()
-            while(line):
-                tokens = line.split()
-                name = tokens[1]
-                index = int(tokens[0])
-                value = float(tokens[2])
-                self.solution[index] = value
-                line = f.readline()
+                    str(self.solution[index]) + '\t' + 
+                    str(t.id) + '\n')
 
     def find_rounding_break_points(self):
         c = config.Configuration()
         d_0 = statistics.NormalDistribution(0, min(c.std / 4.0, 3))
         d_1 = statistics.NormalDistribution(c.coverage / 2, c.std / 2)
         d_2 = statistics.NormalDistribution(c.coverage, c.std)
-        distributions = [{'inner': d_0, 'gapped': d_2}, {'inner': d_1, 'gapped': d_1}, {'inner': d_2, 'gapped': d_0}]
+        distributions = [{'inner': d_0, 'gapped': d_2, 'junction': d_2}, {'inner': d_1, 'gapped': d_1, 'junction': d_1}, {'inner': d_2, 'gapped': d_0, 'junction': d_0}]
         m = None
         step = 0.05
         self.b2 = 0.75
@@ -390,13 +262,17 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             likelihood += l
         return likelihood / (index + 1)
 
-    def round_genotype(self, c):
+    def round_genotype(self, c, svtype):
         if c > self.b2:
-            return (1.0, '00')
+            if svtype == 'DEL':
+                return (1.0, '00')
+            return (1.0, '11')
         elif c > self.b1:
             return (0.5, '10')
         else:
-            return (0.0, '11')
+            if svtype == 'DEL':
+                return (0.0, '11')
+            return (0.0, '00')
 
     def verify_genotypes(self):
         c = config.Configuration()

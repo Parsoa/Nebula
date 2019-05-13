@@ -2,4 +2,5 @@
 cd /share/hormozdiarilab/Codes/NebulousSerendipity
 source venv2/bin/activate
 cd src/python
-python -m kmer.main "$@"
+export PYTHONPATH=$PYTHONPATH:/home/pkhorsand/local/cplex/lib/python
+python -m nebula "$@"

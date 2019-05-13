@@ -18,15 +18,15 @@ awk 'BEGIN {FS = "\t"} { if ($4 ~ /10/)    { print $0 } }' $F > 10.bed
 if [[ "$SIM" =~ ^--simulation ]]; then
     echo "Simulation"
     SIM="../Simulation/"
-    bedtools intersect -a 11.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
-    bedtools intersect -a 00.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
-    bedtools intersect -a 11.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
-    bedtools intersect -a 00.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_00.bed
-    bedtools intersect -a 11.bed -b $SIM"present.bed" -wa -f 1.0 -F 1.0 -v | sort -u > 00_as_11.bed
-    bedtools intersect -a 10.bed -b $SIM"present.bed" -wa -f 1.0 -F 1.0 -v | sort -u > 00_as_10.bed
-    bedtools intersect -a 00.bed -b $SIM"present.bed" -wa -f 1.0 -F 1.0 -v | sort -u > 00_as_00.bed
+    bedtools intersect -header -a 11.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
+    bedtools intersect -header -a 10.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
+    bedtools intersect -header -a 00.bed -b $SIM"homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
+    bedtools intersect -header -a 11.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
+    bedtools intersect -header -a 10.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
+    bedtools intersect -header -a 00.bed -b $SIM"heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_00.bed
+    bedtools intersect -header -a 11.bed -b $SIM"present.bed" -wa -f 1.0 -F 1.0 -v | sort -u > 00_as_11.bed
+    bedtools intersect -header -a 10.bed -b $SIM"present.bed" -wa -f 1.0 -F 1.0 -v | sort -u > 00_as_10.bed
+    bedtools intersect -header -a 00.bed -b $SIM"present.bed" -wa -f 1.0 -F 1.0 -v | sort -u > 00_as_00.bed
     ################################################################################
     cat 11_as_11.bed > true_positive.bed
     cat 11_as_10.bed >> true_positive.bed
@@ -45,28 +45,28 @@ else
     grep "0|1" $DATA$TARGET_BED >> heterozygous.bed
     grep "1|1" $DATA$TARGET_BED > homozygous.bed
     grep "0|0" $DATA$TARGET_BED > absent.bed
-    bedtools intersect -a $DATA$BED -b $DATA$TARGET_BED -wa -f 1.0 -F 1.0 -v | sort -u >> absent.bed
+    bedtools intersect -header -a $DATA$BED -b $DATA$TARGET_BED -wa -f 1.0 -F 1.0 -v | sort -u >> absent.bed
     #
-    bedtools intersect -a 11.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
-    bedtools intersect -a 10.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
-    bedtools intersect -a 00.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
-    bedtools intersect -a 11.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
-    bedtools intersect -a 10.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
-    bedtools intersect -a 00.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_00.bed
-    bedtools intersect -a 11.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_11.bed
-    bedtools intersect -a 10.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_10.bed
-    bedtools intersect -a 00.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_00.bed
+    bedtools intersect -header -a 11.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_11.bed
+    bedtools intersect -header -a 10.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_10.bed
+    bedtools intersect -header -a 00.bed -b "homozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 11_as_00.bed
+    bedtools intersect -header -a 11.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_11.bed
+    bedtools intersect -header -a 10.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_10.bed
+    bedtools intersect -header -a 00.bed -b "heterozygous.bed" -wa -f 1.0 -F 1.0 | sort -u > 10_as_00.bed
+    bedtools intersect -header -a 11.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_11.bed
+    bedtools intersect -header -a 10.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_10.bed
+    bedtools intersect -header -a 00.bed -b "absent.bed" -wa -f 1.0 -F 1.0 | sort -u > 00_as_00.bed
     #
-    bedtools intersect -a 00.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 > false_negative.bed
+    bedtools intersect -header -a 00.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 > false_negative.bed
     sort -n -k2 -o false_negative.bed false_negative.bed
 
-    bedtools intersect -a 00.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 -v > true_negative.bed
+    bedtools intersect -header -a 00.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 -v > true_negative.bed
     sort -n -k2 -o true_negative.bed true_negative.bed
 
-    bedtools intersect -a present.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 > true_positive.bed
+    bedtools intersect -header -a present.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 > true_positive.bed
     sort -n -k2 -o true_positive.bed true_positive.bed
 
-    bedtools intersect -a present.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 -v > false_positive.bed
+    bedtools intersect -header -a present.bed -b $DATA$TARGET_BED -f 1.0 -F 1.0 -v > false_positive.bed
     sort -n -k2 -o false_positive.bed false_positive.bed
 fi
 wc -l *.bed

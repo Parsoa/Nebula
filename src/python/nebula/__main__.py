@@ -6,7 +6,6 @@ from nebula import (
 )
 
 # import jobs
-from alu import *
 from cgc import *
 from misc import *
 from depth import *
@@ -15,13 +14,12 @@ from junction import *
 from reduction import *
 from simulator import *
 from clustering import *
-from production import *
 from programming import *
 from preprocessor import *
 
 # import helpers
 from debug import *
-from nebulas import *
+from kmers import *
 from commons import *
 from chromosomes import *
 
@@ -34,6 +32,7 @@ def preprocess():
     def supply_inner_kmers():
         job = ExtractInnerKmersJob()
         job.execute()
+        return
         job = ExtractLociIndicatorKmersJob()
         job.execute()
         job = FilterLociIndicatorKmersJob()
@@ -48,9 +47,9 @@ def preprocess():
         job.execute()
 
     def supply_junction_kmers():
-        #job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
-        #job.execute()
-        job = UniqueJunctionKmersJob()
+        job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
+        job.execute()
+        job = UniqueJunctionKmersJob(resume_from_reduce = False)
         job.execute()
         job = JunctionKmersScoringJob()
         job.execute()
@@ -60,25 +59,28 @@ def preprocess():
     job = TrackPreprocessorJob()
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
-    #extract_whole_genome()
     #supply_inner_kmers()
     #supply_gapped_kmers()
     supply_junction_kmers()
-    job = production.MixKmersJob()
+    job = MixKmersJob()
     job.execute()
 
 # ============================================================================================================================ #
 
 def genotype():
     c = config.Configuration()
+    job = TrackPreprocessorJob()
+    tracks = job.execute()
+    config.Configuration.update({'tracks': tracks})
+    job = CgcCounterJob(resume_from_reduce = c.reduce)
+    tracks, stats = job.execute()
+    stats = {}
     if c.cgc:
-        job = CgcCounterJob(resume_from_reduce = c.reduce)
-        tracks, stats = job.execute()
-        stats['threads'] = 4
-        config.Configuration.update(stats)
-        job = CgcIntegerProgrammingJob()
-        job.tracks = tracks
-        job.execute()
+        stats['threads'] = 48
+    config.Configuration.update(stats)
+    job = CgcIntegerProgrammingJob()
+    job.tracks = tracks
+    job.execute()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

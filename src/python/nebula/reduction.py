@@ -43,7 +43,7 @@ print = pretty_print
 class ExtractInnerKmersJob(map_reduce.Job):
 
     _name = 'ExtractInnerKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = None
 
     # ============================================================================================================================ #
@@ -69,24 +69,27 @@ class ExtractInnerKmersJob(map_reduce.Job):
     def transform(self, track, track_name):
         print(cyan(track_name))
         c = config.Configuration()
-        inner_kmers = self.extract_inner_kmers()
+        inner_kmers = self.extract_inner_kmers(track)
         if len(inner_kmers) == 0:
             print(red('skipping', track_name, 'no inner kmers found'))
             return None
         name = track_name  + '.json'
         with open(os.path.join(self.get_current_job_directory(), name), 'w') as json_file:
-            json.dump(kmers, json_file, sort_keys = True, indent = 4)
+            json.dump(inner_kmers, json_file, sort_keys = True, indent = 4)
         return name
 
     def extract_inner_kmers(self, track):
         c = config.Configuration()
         chrom = extract_chromosome(track.chrom.lower())
+        if not chrom:
+            print(red(track.chrom.lower()))
+            return None
         inner_kmers = {}
         if track.svtype == 'INS':
             inner_seq = track.seq
             prefix = chrom[track.begin - c.ksize: track.begin]
             suffix = chrom[track.end: track.end + c.ksize]
-            inner_seq = prefx + inner_seq + suffix
+            inner_seq = prefix + inner_seq + suffix
             for i in range(c.ksize, c.ksize + len(track.seq) - c.ksize + 1):
                 kmer = canonicalize(inner_seq[i: i + c.ksize])
                 if not kmer in inner_kmers:
@@ -94,7 +97,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
                         'reference': self.reference_counts_provider.get_kmer_count(kmer),
                         'loci': {},
                     }
-                inner_kmers[kmer]['loci']['inside_'] = {
+                inner_kmers[kmer]['loci']['inside_' + track.id] = {
                     'seq': {
                         'all': inner_seq[i - c.ksize: i + c.ksize + c.ksize],
                         'left': inner_seq[i - c.ksize: i],
@@ -130,7 +133,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     _name = 'ExtractLociIndicatorKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = ExtractInnerKmersJob
 
     @staticmethod
@@ -233,7 +236,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     _name = 'FilterLociIndicatorKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = ExtractLociIndicatorKmersJob
 
     @staticmethod
@@ -333,7 +336,7 @@ class CountLociIndicatorKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExac
     # ============================================================================================================================ #
 
     _name = 'CountLociIndicatorKmersJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = FilterLociIndicatorKmersJob
     _counter_mode = 0
 
@@ -448,7 +451,7 @@ class AdjustCoverageGcContentJob(map_reduce.BaseGenotypingJob):
     # ============================================================================================================================ #
 
     _name = 'AdjustCoverageGcContentJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = CountLociIndicatorKmersJob
 
     @staticmethod
@@ -506,7 +509,7 @@ class AdjustCoverageGcContentJob(map_reduce.BaseGenotypingJob):
 class LociIndicatorKmersIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'LociIndicatorKmersIntegerProgrammingJob'
-    _category = 'programming'
+    _category = 'preprocessing'
     _previous_job = AdjustCoverageGcContentJob
     _kmer_type = 'inner'
 
