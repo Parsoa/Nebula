@@ -136,7 +136,8 @@ class Job(object):
             p = float(n) / len(batch)
             eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
             print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
-            gc.collect()
+            if n % 1000 == 0:
+                gc.collect()
         for track in remove:
             batch.pop(track, None)
         # if there is no output, don't write anything

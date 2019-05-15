@@ -204,7 +204,7 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
                 json.dump(self.tracks[track], json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
-        return self.tracks, self.estimate_depth_of_coverage()
+        return self.estimate_depth_of_coverage()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -234,8 +234,8 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     def load_inputs(self):
         c = config.Configuration()
-        #self.round_robin(self.tracks)
         self.round_robin(self.load_previous_job_results())
+        self.resume_from_reduce = False
         self.lp_kmers = {}
 
     def transform(self, path, track_name):
@@ -243,11 +243,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         kmers = json.load(open(os.path.join(self.get_previous_job_directory(), path), 'r'))
         c = config.Configuration()
         lp_kmers = {}
-        #for kmer in kmers['inner_kmers']:
-        #    lp_kmers[kmer] = True
-        #    self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
-        #    self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
-        #    self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
+        for kmer in kmers['inner_kmers']:
+            lp_kmers[kmer] = True
+            self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
+            self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
+            self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
         for kmer in kmers['junction_kmers']:
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]

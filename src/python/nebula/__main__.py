@@ -70,10 +70,11 @@ def preprocess():
 def genotype():
     c = config.Configuration()
     job = TrackPreprocessorJob()
+    stats = {}
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
     job = CgcCounterJob(resume_from_reduce = c.reduce)
-    _, stats = job.execute()
+    stats = job.execute()
     config.Configuration.update(stats)
     if c.cgc:
         stats['threads'] = c.threads
