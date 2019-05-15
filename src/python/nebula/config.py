@@ -57,10 +57,12 @@ def parse_args():
     parser.add_argument("--bam", default = None)
     # whether we are running on CGC or not 
     parser.add_argument("--cgc", action = 'store_true')
-    #gap size, should be odd
+    # gap size, should be odd
     parser.add_argument("--gap", default = None, type = int) #TODO: depracate
     # the job to execute from this file
     parser.add_argument("--job")
+    # whether we are running on rum or not
+    parser.add_argument("--rum", action = 'store_true')
     # std of the kmer normal distribution
     parser.add_argument("--std", default = 15, type = int)
     # the seed to use for random number generation

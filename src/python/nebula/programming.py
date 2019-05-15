@@ -61,6 +61,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def output_batch(self, batch):
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        print(cyan(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json')))
         json.dump(self.lp_kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
         exit()
@@ -85,6 +86,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         index = {}
         for i in range(0, self.num_threads):
             path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
+            print(path)
             if not os.path.isfile(path):
                 debug_log('batch not found:', path)
             with open(path, 'r') as json_file:
@@ -166,7 +168,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             with open(os.path.join(self.get_current_job_directory(), 'solution_cplex.json'), 'w') as json_file:
                 json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
         self.export_solution()
-        if not c.cgc:
+        if c.rum:
             self.verify_genotypes()
         return self.tracks
 
@@ -206,7 +208,8 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 self.tracks[track]['lp_kmers'].append(kmer)
         self.find_rounding_break_points()
         print('Rounding', len(self.tracks), 'tracks')
-        with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
+        name = 'merge.bed' if not c.cgc else ('genotypes_' + c.fastq.split('/')[-1] if c.fastq else 'genotypes_' + c.bam.split('/')[-1]) + '.bed'
+        with open(os.path.join(self.get_current_job_directory(), name), 'w') as bed_file:
             bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
             for track in self.tracks:
                 t = c.tracks[track]

@@ -191,6 +191,7 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
                 if not track in self.tracks:
                     self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['gapped_kmers'][kmer] = self.gapped_kmers[kmer]
+                self.tracks[track]['gapped_kmers'][kmer]['reference'] = 1
                 self.tracks[track]['gapped_kmers'][kmer]['type'] = 'gapped'
         for kmer in self.junction_kmers:
             for track in self.junction_kmers[kmer]['tracks']:
@@ -233,11 +234,13 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.round_robin(self.tracks)
+        #self.round_robin(self.tracks)
+        self.round_robin(self.load_previous_job_results())
         self.lp_kmers = {}
 
-    def transform(self, kmers, track_name):
+    def transform(self, path, track_name):
         print(green(track_name))
+        kmers = json.load(open(os.path.join(self.get_previous_job_directory(), path), 'r'))
         c = config.Configuration()
         lp_kmers = {}
         #for kmer in kmers['inner_kmers']:
@@ -259,21 +262,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         with open(path, 'w') as json_file:
             json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)
         return path
-
-    # Should make sure that non-unique ones are considered the same in all events they appear in
-    def select_inner_kmers(self, kmers):
-        inner_kmers = list(filter(lambda kmer: kmers[kmer]['type'] == 'inner', kmers))
-        unique_kmers = list(filter(lambda kmer: len(kmers[kmer]['loci']) == 1, inner_kmers))
-        non_unique_kmers = sorted(list(filter(lambda kmer: len(kmers[kmer]['loci']) != 1, inner_kmers)), key = lambda x: len(kmers[x]['loci']))
-        if len(unique_kmers) >= 5:
-            inner_kmers = {kmer: kmers[kmer] for kmer in unique_kmers[:min(50, len(unique_kmers))]}
-        else:
-            inner_kmers = {kmer: kmers[kmer] for kmer in unique_kmers}
-            for kmer in non_unique_kmers:
-                inner_kmers[kmer] = kmers[kmer]
-                if len(inner_kmers) > 50:
-                    break
-        return inner_kmers
 
     def calculate_residual_coverage(self):
         c = config.Configuration()
