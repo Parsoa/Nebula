@@ -76,11 +76,18 @@ def genotype():
     job = CgcCounterJob(resume_from_reduce = c.reduce)
     stats = job.execute()
     config.Configuration.update(stats)
-    if c.cgc:
-        stats['threads'] = c.threads
     job = CgcIntegerProgrammingJob()
     job.tracks = tracks
     job.execute()
+
+def cluster():
+    c = config.Configuration()
+    if c.cgc:
+        job = cgc.CgcClusteringJob()
+        job.execute()
+    else:
+        job = clustering.KmeansCulsteringJob()
+        job.execute()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -101,3 +108,5 @@ if __name__ == '__main__':
             preprocess()
         if c.command == 'genotype':
             genotype()
+        if c.command == 'cluster':
+            cluster()

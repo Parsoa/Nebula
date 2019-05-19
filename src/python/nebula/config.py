@@ -131,5 +131,7 @@ def parse_args():
     ################## Simulation arguments
     simulation_parser = subparsers.add_parser('simulate', parents = [parser])
     ################## End of arguments
+    clustering_parser = subparsers.add_parser('cluster', parents = [parser])
+    ################## End of arguments
     args = main.parse_args()
     return args

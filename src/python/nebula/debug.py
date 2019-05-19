@@ -28,7 +28,7 @@ print = pretty_print
 def debug_breakpoint():
     c = config.Configuration()
     if c.debug:
-        print(magenta('BEGIN DEBUG ***********************************************************************************************'))
+        print(magenta('BEGIN DEBUG *********************************************************************************************'))
         print(magenta('Debug Breakpoint. Press Enter to continue...'))
         print(magenta('END DEBUG ***********************************************************************************************'))
         s = raw_input()
@@ -36,7 +36,7 @@ def debug_breakpoint():
 def debug_log(*args):
     c = config.Configuration()
     if c.debug:
-        print(magenta('BEGIN DEBUG ***********************************************************************************************'))
+        print(magenta('BEGIN DEBUG *********************************************************************************************'))
         print(*args)
         print(magenta('END DEBUG ***********************************************************************************************'))
 

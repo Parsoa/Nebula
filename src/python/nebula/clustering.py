@@ -430,7 +430,6 @@ class KMeansClusteringJob(map_reduce.Job):
     def transform(self, track, track_name):
         c = config.Configuration()
         features = []
-        _kmers = {}
         for index, path in enumerate(self.paths):
             features.append([track[path]['lp_value']])
         features = np.array(features)
@@ -450,31 +449,6 @@ class KMeansClusteringJob(map_reduce.Job):
         with open(path, 'w') as json_file:
             json.dump(track, json_file, indent = 4, sort_keys = True)
         return path
-
-    #def transform(self, track, track_name):
-    #    if track_name != 'chr17_10886864_10895981':
-    #        return None
-    #    print(green(track_name))
-    #    c = config.Configuration()
-    #    features = []
-    #    _kmers = {}
-    #    for index, path in enumerate(self.paths):
-    #        with open(os.path.join(path, track), 'r') as json_file:
-    #            if index == 0:
-    #                _kmers = json.load(json_file)
-    #                kmers = _kmers
-    #            else:
-    #                kmers = json.load(json_file)
-    #            features.append([min(kmers[kmer]['count'] / float(c.coverage), 1.0) for kmer in _kmers if _kmers[kmer]['type'] == 'inner'])
-    #            #print(len(_kmers), len(features[0]))
-    #            if len(features[0]) == 0:
-    #                return None
-    #    features = np.array(features)
-    #    genotypes, centroids = self.kmeans(features)
-    #    path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-    #    with open(path, 'w') as json_file:
-    #        json.dump({'genotypes': genotypes, 'centroids': centroids.tolist(), 'features': features.tolist()}, json_file, indent = 4)
-    #    return path
 
     def get_num_inversions(self, track):
         n = 0

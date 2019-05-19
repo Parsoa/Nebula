@@ -17,10 +17,10 @@ from nebula import (
     statistics,
 )
 
-#import pandas as pd
-#import plotly.offline as plotly
-#import plotly.graph_objs as graph_objs
-#import plotly.figure_factory as ff
+import pandas as pd
+import plotly.offline as plotly
+import plotly.graph_objs as graph_objs
+import plotly.figure_factory as ff
 
 # ============================================================================================================================ #
 # Plotly helpers
@@ -50,15 +50,14 @@ def bar(x, ys, name, path, x_label, y_label):
     pass
 
 def violin(x, y, name, path, x_label, y_label):
-    #xs = []
-    #ys = []
-    #m = statistics.mean(y)
-    #for index, d in enumerate(y):
-    #    if d <= 3 * m or d < 200:
-    #        xs.append(x[index])
-    #        ys.append(d)
-    #data = pd.DataFrame(dict(LP = ys, Zygosity = xs))
-    #fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity', width = 200 * len(set(x)))
-    #plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
+    xs = []
+    ys = []
+    m = statistics.mean(y)
+    for index, d in enumerate(y):
+        xs.append(x[index])
+        ys.append(d)
+    data = pd.DataFrame(dict(LP = ys, Zygosity = xs))
+    fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity', width = 200 * len(set(x)))
+    plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
     pass
 
