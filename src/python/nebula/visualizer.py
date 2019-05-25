@@ -50,14 +50,31 @@ def bar(x, ys, name, path, x_label, y_label):
     pass
 
 def violin(x, y, name, path, x_label, y_label):
-    xs = []
-    ys = []
-    m = statistics.mean(y)
-    for index, d in enumerate(y):
-        xs.append(x[index])
-        ys.append(d)
-    data = pd.DataFrame(dict(LP = ys, Zygosity = xs))
-    fig = ff.create_violin(data, data_header = 'LP', group_header = 'Zygosity', width = 200 * len(set(x)))
+    df = pd.DataFrame(dict(lp = y, cluster = x))
+
+    data = []
+    for i in range(0, len(pd.unique(df['cluster']))):
+        trace = {
+                "type": 'violin',
+                "x": df['cluster'][df['cluster'] == pd.unique(df['cluster'])[i]],
+                "y": df['lp'][df['cluster'] == pd.unique(df['cluster'])[i]],
+                "name": pd.unique(df['cluster'])[i],
+                "box": {
+                    "visible": True
+                },
+                "meanline": {
+                    "visible": True
+                }
+            }
+        data.append(trace)
+    fig = {
+        "data": data,
+        "layout" : {
+            "title": "",
+            "yaxis": {
+                "zeroline": False,
+            }
+        }
+    }
     plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
-    pass
 

@@ -256,7 +256,7 @@ class UniqueGappedKmersScoringJob(map_reduce.Job):
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
             n += 1
-            if n % 10000 == 0:
+            if n % 1000 == 0:
                 print('exported', n, 'out of', len(self.tracks), 'tracks')
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)

@@ -79,6 +79,8 @@ def genotype():
     job = CgcIntegerProgrammingJob()
     job.tracks = tracks
     job.execute()
+    job = ExportGenotypingKmersJob()
+    job.execute()
 
 def cluster():
     c = config.Configuration()
@@ -88,6 +90,11 @@ def cluster():
     else:
         job = clustering.KmeansCulsteringJob()
         job.execute()
+
+def export():
+    c = config.Configuration()
+    job = cgc.ExportGenotypingKmersJob()
+    job.execute()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -110,3 +117,5 @@ if __name__ == '__main__':
             genotype()
         if c.command == 'cluster':
             cluster()
+        if c.command == 'export':
+            export()

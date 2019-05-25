@@ -240,7 +240,7 @@ class Job(object):
 
     def get_output_directory(self):
         c = config.Configuration()
-        bed_file_name = c.bed.split('/')[-1]
+        bed_file_name = c.bed[0].split('/')[-1]
         if c.simulation:
             return os.path.abspath(os.path.join(c.workdir,\
                 'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/'))
@@ -292,21 +292,15 @@ class BaseGenotypingJob(Job):
         c = config.Configuration()
         if c.simulation:
             return Job.get_output_directory(self)
-        elif c.cgc:
-            return os.path.abspath(os.path.join(c.workdir))
         else:
-            return os.path.abspath(os.path.join(c.workdir,\
-                self._category + '/genotyping/' + c.genome))
+            return os.path.abspath(os.path.join(c.workdir))
 
     def get_current_job_directory(self):
         c = config.Configuration()
         if c.simulation:
             return Job.get_current_job_directory(self)
-        if c.cgc:
-            return os.path.join(self.get_output_directory(), self._name)
         else:
-            bed_file_name = c.bed.split('/')[-1]
-            return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._name))
+            return os.path.join(self.get_output_directory(), self._name)
 
     def get_previous_job_directory(self):
         c = config.Configuration()
@@ -314,11 +308,8 @@ class BaseGenotypingJob(Job):
             return c.previous
         if c.simulation:
             return Job.get_previous_job_directory(self)
-        if c.cgc:
-            return os.path.join(self.get_output_directory(), self._previous_job._name)
         else:
-            bed_file_name = c.bed.split('/')[-1]
-            return os.path.abspath(os.path.join(self.get_output_directory(), bed_file_name, self._previous_job._name))
+            return os.path.join(self.get_output_directory(), self._previous_job._name)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

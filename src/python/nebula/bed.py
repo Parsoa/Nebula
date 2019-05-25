@@ -86,7 +86,7 @@ def track_from_name(name):
     return BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
 
 # keywords is an array of tuples: (name, default, transformation)
-def load_tracks_from_file(path, parse_header = False, keywords = []):
+def load_tracks_from_file(path, parse_header = True, keywords = []):
     tracks = []
     with open(path, 'r') as f:
         if parse_header:
@@ -117,7 +117,7 @@ def load_tracks_from_file(path, parse_header = False, keywords = []):
             line = f.readline()
     return tracks
 
-def load_tracks_from_file_as_dict(path, parse_header = False, keywords = []):
+def load_tracks_from_file_as_dict(path, parse_header = True, keywords = []):
     return {str(track): track for track in load_tracks_from_file(path, parse_header, keywords)}
 
 

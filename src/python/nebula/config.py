@@ -133,5 +133,7 @@ def parse_args():
     ################## End of arguments
     clustering_parser = subparsers.add_parser('cluster', parents = [parser])
     ################## End of arguments
+    export_parser = subparsers.add_parser('export', parents = [parser])
+    ################## End of arguments
     args = main.parse_args()
     return args

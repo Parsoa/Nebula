@@ -103,14 +103,14 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         print('Inner kmers:', blue(len(self.inner_kmers)))
         print('Gapped kmers:', blue(len(self.gapped_kmers)))
         print('Depth kmers:', blue(len(self.depth_kmers)))
-        #with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-        #    kmers = {}
-        #    kmers['junction_kmers'] = self.junction_kmers
-        #    kmers['gapped_kmers'] = self.gapped_kmers
-        #    kmers['inner_kmers'] = self.inner_kmers
-        #    kmers['depth_kmers'] = self.depth_kmers
-        #    kmers['half_mers'] = self.half_mers
-        #    json.dump(kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            kmers = {}
+            kmers['junction_kmers'] = self.junction_kmers
+            kmers['gapped_kmers'] = self.gapped_kmers
+            kmers['inner_kmers'] = self.inner_kmers
+            kmers['depth_kmers'] = self.depth_kmers
+            kmers['half_mers'] = self.half_mers
+            json.dump(kmers, json_file, indent = 4)
 
     def export_counter_input(self):
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
@@ -256,13 +256,17 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         for kmer in kmers['inner_kmers']:
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
-            self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
             self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
+            self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
         for kmer in kmers['junction_kmers']:
+            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
+                continue
+            if len(kmers['junction_kmers'][kmer]['loci']) != 1:
+                continue
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
-            self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
+            self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
         for kmer in kmers['gapped_kmers']:
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['gapped_kmers'][kmer]
@@ -328,8 +332,8 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         )
         print('adding constraints')
         for index, kmer in enumerate(self.lp_kmers):
-            if kmer['count'] == 0:
-                continue
+            #if kmer['count'] == 0:
+            #    continue
             self.add_error_absolute_value_constraints(problem, index)
             if kmer['type'] == 'junction':
                 ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
@@ -407,10 +411,15 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         return problem, variables
 
     def create_output_directories(self):
-        pass
+        c = config.Configuration()
+        if not c.cgc:
+            map_reduce.Job.create_output_directories(self)
 
     def get_current_job_directory(self):
-        return os.getcwd()
+        c = config.Configuration()
+        if c.cgc:
+            return os.getcwd()
+        return map_reduce.BaseGenotypingJob.get_current_job_directory(self)
 
     def round_genotype(self, c, svtype):
         if c > self.b2:
@@ -419,6 +428,60 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             return (0.5, '10')
         else:
             return (0.0, '00')
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
+
+    _name = 'ExportGenotypingKmersJob'
+    _category = 'genotyping'
+    _previous_job = CgcIntegerProgrammingJob
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        c = config.Configuration()
+        job = ExportGenotypingKmersJob(**kwargs)
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.tracks = {}
+        tracks = bed.load_tracks_from_file_as_dict(os.path.join(self.get_previous_job_directory(), 'merge.bed'))
+        for track in tracks:
+            if tracks[track].lp_value < 0.05:
+                self.tracks[track] = True
+        self._previous_job = CgcCounterJob
+        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+            self.kmers = json.load(json_file)
+        self.half_mers = {kmer: self.kmers['half_mers'][kmer] for kmer in self.kmers['half_mers'] if not self.has_track_overlap(self.kmers['half_mers'][kmer])}
+        self.depth_kmers = self.kmers['depth_kmers']
+        self.inner_kmers = {kmer: self.kmers['inner_kmers'][kmer] for kmer in self.kmers['inner_kmers'] if not self.has_track_overlap(self.kmers['inner_kmers'][kmer])}
+        self.gapped_kmers = {kmer: self.kmers['gapped_kmers'][kmer] for kmer in self.kmers['gapped_kmers'] if not self.has_track_overlap(self.kmers['gapped_kmers'][kmer])}
+        print(len(self.kmers['junction_kmers']))
+        self.junction_kmers = {kmer: self.kmers['junction_kmers'][kmer] for kmer in self.kmers['junction_kmers'] if not self.has_track_overlap(self.kmers['junction_kmers'][kmer])}
+        print(len(self.junction_kmers))
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            kmers = {}
+            kmers['junction_kmers'] = self.junction_kmers
+            kmers['gapped_kmers'] = self.gapped_kmers
+            kmers['inner_kmers'] = self.inner_kmers
+            kmers['depth_kmers'] = self.depth_kmers
+            kmers['half_mers'] = self.half_mers
+            json.dump(kmers, json_file, indent = 4)
+        exit()
+
+    def has_track_overlap(self, a):
+        for t in a['tracks']:
+            if t in self.tracks:
+                return True
+        return False
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -576,21 +639,20 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         x = []
         y = []
         a = np.random.randint(0, n, size = 12) / float(n)
-        #for i in range(12):
-        #    x.append(i % K)
-        #    y.append(a[i])
-        for k in range(K):
-            x.append(k)
-            y.append([f[0] for i, f in enumerate(features) if clusters[i] == k])
-        #try:
-        #    visualizer.violin(x, y, 'kmeans_' + track, self.get_current_job_directory(), 'cluster', 'value')
-        #except Exception as e:
-        #    print(yellow(e))
-        #    print(features)
-        #    print(centroids)
-        #    debug_breakpoint()
-        self.violin(features, clusters, track)
-        debug_breakpoint()
+        #for k in range(K):
+        #    x.append(k)
+        #    y.append([f[0] for i, f in enumerate(features) if clusters[i] == k])
+        for i in range(len(features)):
+            x.append(clusters[i])
+            y.append(features[i][0])
+        try:
+            #print(yellow(x))
+            #print(yellow(y))
+            visualizer.violin(x, y, 'kmeans_' + track, self.get_current_job_directory(), 'cluster', 'value')
+        except Exception as e:
+            print(yellow(e))
+            #print(centroids)
+            debug_breakpoint()
         return genotypes, centroids
 
     def violin(self, features, clusters, track):

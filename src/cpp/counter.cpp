@@ -518,7 +518,9 @@ int process_fastq(string fastq, string path, int index, int threads) {
                         process_read(line, u, u) ;
                     } else if (JOB == COUNT_MIX_KMERS) {
                         process_read(line, u, u) ;
-                        process_gapped_read(line, u, u) ;
+                        if (half_mers->size() > 0) {
+                            process_gapped_read(line, u, u) ;
+                        }
                     } else {
                         process_gapped_read(line, u, u) ;
                     }
