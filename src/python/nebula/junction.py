@@ -336,7 +336,9 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
             for loci in kmer['loci']:
                 if not 'junction' in loci:
                     start = int(loci.split('_')[1])
-                    if abs(start - t.begin) < c.ksize:
+                    if abs(start - t.begin) < 2 * c.ksize:
+                        return True
+                    if abs(start - t.end) < 2 * c.ksize:
                         return True
         return False
 

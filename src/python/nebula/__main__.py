@@ -79,8 +79,9 @@ def genotype():
     job = CgcIntegerProgrammingJob()
     job.tracks = tracks
     job.execute()
-    job = ExportGenotypingKmersJob()
-    job.execute()
+    if not c.cgc:
+        job = ExportGenotypingKmersJob()
+        job.execute()
 
 def cluster():
     c = config.Configuration()

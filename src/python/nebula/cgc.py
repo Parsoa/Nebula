@@ -261,7 +261,7 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         for kmer in kmers['junction_kmers']:
             if kmers['junction_kmers'][kmer]['source'] == 'assembly':
                 continue
-            if len(kmers['junction_kmers'][kmer]['loci']) != 1:
+            if len(kmers['junction_kmers'][kmer]['loci']) > 1:
                 continue
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
@@ -455,7 +455,8 @@ class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
         self.tracks = {}
         tracks = bed.load_tracks_from_file_as_dict(os.path.join(self.get_previous_job_directory(), 'merge.bed'))
         for track in tracks:
-            if tracks[track].lp_value < 0.05:
+            if float(tracks[track].lp_value) < 0.05:
+                print(track)
                 self.tracks[track] = True
         self._previous_job = CgcCounterJob
         with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
