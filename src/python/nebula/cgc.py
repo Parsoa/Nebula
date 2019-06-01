@@ -23,7 +23,7 @@ from nebula import (
     counttable,
     map_reduce,
     statistics,
-    visualizer,
+    #visualizer,
     programming,
     preprocessor,
 )
@@ -294,7 +294,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         self.calculate_error_weights()
 
     def calculate_error_weights(self):
-        # assuming no kmers are shared
         for track in self.tracks:
             self.add_weights_to_track(track)
 
@@ -308,62 +307,79 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 kmer['weight'] = float(len(inner) + len(gapped) + len(junction)) / (3.0 * len(kmers))
 
     def generate_linear_program(self):
-        c = config.Configuration()
-        globals()['cplex'] = __import__('cplex')
-        problem = cplex.Cplex()
-        problem.objective.set_sense(problem.objective.sense.minimize)
-        # the coverage of each event
-        names = [''] * len(self.tracks)
-        regex = re.compile('[^a-zA-Z0-9]')
-        for track in self.tracks:
-            name = regex.sub('', track)
-            tokens = name.split('_')
-            names[self.tracks[track]['index']] = 'c' + name
-        problem.variables.add(names = names,
-            ub = [1.0] * len(self.tracks),
-        )
-        # the real-valued error parameter for kmer
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            lb = [-100000000 for kmer in self.lp_kmers]
-        )
-        # absolute value of the kmer error parameter
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
-        )
-        print('adding constraints')
-        for index, kmer in enumerate(self.lp_kmers):
-            #if kmer['count'] == 0:
-            #    continue
-            self.add_error_absolute_value_constraints(problem, index)
-            if kmer['type'] == 'junction':
-                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
-                ind.append(len(self.tracks) + index) # Objective
-                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
-                val.append(1.0) #Objective
-                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
-                problem.linear_constraints.add(
-                    lin_expr = [cplex.SparsePair(
-                        ind = ind,
-                        val = val,
-                    )],
-                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
-                    senses = ['E']
-                )
-            #if kmer['type'] == 'gapped' and kmer['side'] == 'outer' or kmer['type'] == 'junction':
-            #    ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            #    ind.append(len(self.tracks) + index)
-            #    val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-            #    val.append(1.0)
-            #    problem.linear_constraints.add(
-            #        lin_expr = [cplex.SparsePair(
-            #            ind = ind,
-            #            val = val,
-            #        )],
-            #        rhs = [kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))],
-            #        senses = ['E']
-            #    )
-        print('completed program generation')
-        return problem
+        pass
+        #c = config.Configuration()
+        #globals()['cplex'] = __import__('cplex')
+        #problem = cplex.Cplex()
+        #problem.objective.set_sense(problem.objective.sense.minimize)
+        ## the coverage of each event
+        #names = [''] * len(self.tracks)
+        #regex = re.compile('[^a-zA-Z0-9]')
+        #for track in self.tracks:
+        #    name = regex.sub('', track)
+        #    tokens = name.split('_')
+        #    names[self.tracks[track]['index']] = 'c' + name
+        #problem.variables.add(names = names,
+        #    ub = [1.0] * len(self.tracks),
+        #)
+        ## the real-valued error parameter for kmer
+        #problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+        #    lb = [-100000000 for kmer in self.lp_kmers]
+        #)
+        ## absolute value of the kmer error parameter
+        #problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+        #    obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
+        #)
+        #print('adding constraints')
+        #for index, kmer in enumerate(self.lp_kmers):
+        #    self.add_error_absolute_value_constraints(problem, index)
+        #    if kmer['type'] == 'junction':
+        #        ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+        #        ind.append(len(self.tracks) + index) # Objective
+        #        val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+        #        val.append(1.0) #Objective
+        #        rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
+        #        problem.linear_constraints.add(
+        #            lin_expr = [cplex.SparsePair(
+        #                ind = ind,
+        #                val = val,
+        #            )],
+        #            rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
+        #            senses = ['E']
+        #        )
+        #    if kmer['type'] == 'inner':
+        #        for track in kmer['tracks']:
+        #            if c.tracks[track].svtype == 'INS':
+        #                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+        #                ind.append(len(self.tracks) + index) # Objective
+        #                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+        #                val.append(1.0) #Objective
+        #                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
+        #                problem.linear_constraints.add(
+        #                    lin_expr = [cplex.SparsePair(
+        #                        ind = ind,
+        #                        val = val,
+        #                    )],
+        #                    rhs = rhs,
+        #                    senses = ['E']
+        #                )
+        #            else:
+        #                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+        #                ind.append(len(self.tracks) + index) # Objective
+        #                val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+        #                val.append(1.0) #Objective
+        #                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))]
+        #                problem.linear_constraints.add(
+        #                    lin_expr = [cplex.SparsePair(
+        #                        ind = ind,
+        #                        val = val,
+        #                    )],
+        #                    rhs = rhs,
+        #                    senses = ['E']
+        #                )
+        #            break
+        #print('completed program generation')
+        #return problem
 
     def generate_mps_linear_program(self):
         c = config.Configuration()
@@ -389,8 +405,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], kmer['weight']) for index, kmer in enumerate(self.lp_kmers)])
         problem += expr
         for i, kmer in enumerate(self.lp_kmers):
-            if kmer['count'] == 0:
-                continue
             self.add_mps_error_absolute_value_constraints(problem, variables, i)
             if kmer['type'] == 'junction':
                 indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
@@ -400,14 +414,25 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 rhs = kmer['count'] - kmer['coverage'] * kmer['residue']
                 expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
                 problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
-            #else:
-            #    indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            #    indices.append(len(self.tracks) + i)
-            #    coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-            #    coeffs.append(1.0)
-            #    rhs = kmer['count'] - sum(list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks'])))
-            #    expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
-            #    problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+            if kmer['type'] == 'inner':
+                for track in kmer['tracks']:
+                    if c.tracks[track].svtype == 'INS':
+                        indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                        indices.append(len(self.tracks) + i)
+                        coeffs = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                        coeffs.append(1.0)
+                        rhs = kmer['count'] - kmer['coverage'] * kmer['residue']
+                        expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                        problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+                    else:
+                        indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                        indices.append(len(self.tracks) + i)
+                        coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                        coeffs.append(1.0)
+                        rhs = kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                        expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                        problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+                    break
         return problem, variables
 
     def create_output_directories(self):
@@ -435,6 +460,86 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+class CgcInnerKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
+
+    _name = 'CgcInnerKmersIntegerProgrammingJob'
+    _category = 'preprocessing'
+    _previous_job = CgcCounterJob
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        c = config.Configuration()
+        job = CgcInnerKmersIntegerProgrammingJob(**kwargs)
+        job.execute()
+
+    def transform(self, path, track_name):
+        print(green(track_name))
+        kmers = json.load(open(os.path.join(self.get_previous_job_directory(), path), 'r'))
+        c = config.Configuration()
+        lp_kmers = {}
+        for kmer in kmers['inner_kmers']:
+            lp_kmers[kmer] = True
+            self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
+            self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
+            self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
+        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+        print(path)
+        with open(path, 'w') as json_file:
+            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)
+        return path
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
+
+    _name = 'CgcJunctionKmersIntegerProgrammingJob'
+    _category = 'preprocessing'
+    _previous_job = CgcCounterJob
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        c = config.Configuration()
+        job = CgcJunctionKmersIntegerProgrammingJob(**kwargs)
+        job.execute()
+
+    def transform(self, path, track_name):
+        print(green(track_name))
+        kmers = json.load(open(os.path.join(self.get_previous_job_directory(), path), 'r'))
+        c = config.Configuration()
+        lp_kmers = {}
+        for kmer in kmers['junction_kmers']:
+            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
+                continue
+            if len(kmers['junction_kmers'][kmer]['loci']) > 1:
+                continue
+            lp_kmers[kmer] = True
+            self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
+            self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
+            self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
+        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+        print(path)
+        with open(path, 'w') as json_file:
+            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)
+        return path
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
 
     _name = 'ExportGenotypingKmersJob'
@@ -449,34 +554,78 @@ class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
     def launch(**kwargs):
         c = config.Configuration()
         job = ExportGenotypingKmersJob(**kwargs)
+        job.execute()
+
+    def load_junction_kmer_tracks(self):
+        print('selecting junction kmers...')
+        self.kmers['junction_kmers'] = {}
+        job = CgcJunctionKmersIntegerProgrammingJob()
+        tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
+        for track in tracks:
+            if track.lp_value > 0.10:
+                kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
+                self.tracks[track.id] = kmers
+                for kmer in kmers:
+                    self.kmers['junction_kmers'][kmer] = kmers[kmer]
+
+    def load_inner_kmer_tracks(self):
+        print('selecting inner kmers...')
+        self.kmers['inner_kmers'] = {}
+        job = CgcInnerKmersIntegerProgrammingJob()
+        tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
+        for track in tracks:
+            if track.lp_value > 0.25:
+                kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
+                if not track.id in self.tracks: # no junction kmers
+                    self.tracks[track.id] = kmers 
+                else: # both
+                    self.tracks[track.id].update(kmers)
+                for kmer in kmers:
+                    self.kmers['inner_kmers'][kmer] = kmers[kmer]
 
     def load_inputs(self):
         c = config.Configuration()
+        self.kmers = {}
         self.tracks = {}
-        tracks = bed.load_tracks_from_file_as_dict(os.path.join(self.get_previous_job_directory(), 'merge.bed'))
-        for track in tracks:
-            if float(tracks[track].lp_value) < 0.05:
-                print(track)
-                self.tracks[track] = True
+        self.load_junction_kmer_tracks()
+        self.load_inner_kmer_tracks()
         self._previous_job = CgcCounterJob
         with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
-            self.kmers = json.load(json_file)
-        self.half_mers = {kmer: self.kmers['half_mers'][kmer] for kmer in self.kmers['half_mers'] if not self.has_track_overlap(self.kmers['half_mers'][kmer])}
-        self.depth_kmers = self.kmers['depth_kmers']
-        self.inner_kmers = {kmer: self.kmers['inner_kmers'][kmer] for kmer in self.kmers['inner_kmers'] if not self.has_track_overlap(self.kmers['inner_kmers'][kmer])}
-        self.gapped_kmers = {kmer: self.kmers['gapped_kmers'][kmer] for kmer in self.kmers['gapped_kmers'] if not self.has_track_overlap(self.kmers['gapped_kmers'][kmer])}
-        print(len(self.kmers['junction_kmers']))
-        self.junction_kmers = {kmer: self.kmers['junction_kmers'][kmer] for kmer in self.kmers['junction_kmers'] if not self.has_track_overlap(self.kmers['junction_kmers'][kmer])}
-        print(len(self.junction_kmers))
+            kmers = json.load(json_file)
+        self.kmers['half_mers'] = {}
+        self.kmers['depth_kmers'] = kmers['depth_kmers']
+        self.kmers['gapped_kmers'] = {}
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            kmers = {}
-            kmers['junction_kmers'] = self.junction_kmers
-            kmers['gapped_kmers'] = self.gapped_kmers
-            kmers['inner_kmers'] = self.inner_kmers
-            kmers['depth_kmers'] = self.depth_kmers
-            kmers['half_mers'] = self.half_mers
-            json.dump(kmers, json_file, indent = 4)
+            json.dump(self.kmers, json_file, indent = 4)
         exit()
+
+    #def load_inputs(self):
+    #    c = config.Configuration()
+    #    self.tracks = {}
+    #    tracks = bed.load_tracks_from_file_as_dict(os.path.join(self.get_previous_job_directory(), 'merge.bed'))
+    #    for track in tracks:
+    #        if float(tracks[track].lp_value) < 0.05:
+    #            print(track)
+    #            self.tracks[track] = True
+    #    self._previous_job = CgcCounterJob
+    #    with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+    #        self.kmers = json.load(json_file)
+    #    self.half_mers = {kmer: self.kmers['half_mers'][kmer] for kmer in self.kmers['half_mers'] if not self.has_track_overlap(self.kmers['half_mers'][kmer])}
+    #    self.depth_kmers = self.kmers['depth_kmers']
+    #    self.inner_kmers = {kmer: self.kmers['inner_kmers'][kmer] for kmer in self.kmers['inner_kmers'] if not self.has_track_overlap(self.kmers['inner_kmers'][kmer])}
+    #    self.gapped_kmers = {kmer: self.kmers['gapped_kmers'][kmer] for kmer in self.kmers['gapped_kmers'] if not self.has_track_overlap(self.kmers['gapped_kmers'][kmer])}
+    #    print(len(self.kmers['junction_kmers']))
+    #    self.junction_kmers = {kmer: self.kmers['junction_kmers'][kmer] for kmer in self.kmers['junction_kmers'] if not self.has_track_overlap(self.kmers['junction_kmers'][kmer])}
+    #    print(len(self.junction_kmers))
+    #    with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+    #        kmers = {}
+    #        kmers['junction_kmers'] = self.junction_kmers
+    #        kmers['gapped_kmers'] = self.gapped_kmers
+    #        kmers['inner_kmers'] = self.inner_kmers
+    #        kmers['depth_kmers'] = self.depth_kmers
+    #        kmers['half_mers'] = self.half_mers
+    #        json.dump(kmers, json_file, indent = 4)
+    #    exit()
 
     def has_track_overlap(self, a):
         for t in a['tracks']:
@@ -490,192 +639,186 @@ class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class CgcClusteringJob(map_reduce.BaseGenotypingJob):
-
-    _name = 'CgcClusteringJob'
-    _category = 'clustering'
-    _previous_job = None
-
-    class ClusteringException(Exception):
-        pass
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        c = config.Configuration()
-        job = CgcClusteringJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        self.paths = c.bed
-        self.tracks = {}
-        for path in c.bed:
-            tracks = bed.load_tracks_from_file_as_dict(path, parse_header = True)
-            for track in tracks:
-                if not track in self.tracks:
-                    self.tracks[track] = {}
-                self.tracks[track][path] = tracks[track]
-        self.round_robin(self.tracks)
-
-    def transform(self, track, track_name):
-        c = config.Configuration()
-        features = []
-        for index, path in enumerate(self.paths):
-            features.append([float(track[path].lp_value)])
-        features = np.array(features)
-        genotypes, centroids = self.kmeans(track_name, features)
-        for index, path in enumerate(self.paths):
-            track[path].kmeans_genotype = genotypes[index]
-        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        #with open(path, 'w') as json_file:
-        #    json.dump(vars(track), json_file, indent = 4, sort_keys = True)
-        #return path
-
-    def kmeans(self, track, features):
-        #if track != 'HG00514_chr7-104235927-INS-53':
-        #    return ['11'] * 11, []
-        #debug_breakpoint()
-        print(blue('clustering', track))
-        n = len(features[0])
-        f = [feature[0] for feature in features]
-        K = min(3, len(sorted(set(f))))
-        if K != 3:
-            raise ClusteringException
-        while True:
-            indices = np.random.randint(0, len(features), size = K)
-            print(indices)
-            if len(sorted(set(list(indices)))) == K: #duplicate indices
-                tmp = [features[j][0] for j in indices]
-                if len(sorted(set(tmp))) == K: #duplicate values
-                    break
-        centroids = np.array([features[j] for j in indices])
-        print(centroids)
-        old_centroids = np.zeros(centroids.shape)
-        candidates = []
-        errors = []
-        error = 0
-        m = 0
-        r = 0
-        print('round 0 centroids:', centroids)
-        # Kmeans main loop
-        while True:
-            m += 1
-            if m == 100 or m == -1 or (old_centroids == centroids).all():
-                if m == -1:
-                    print(red('empty cluster, skipping round'))
-                if m == 100:
-                    print(red('didn\'t converge, skipping round'))
-                    print(features)
-                    print(centroids)
-                    debug_breakpoint()
-                else:
-                    print(green('round', r), cyan('iteration', m))
-                    m = 0
-                    errors.append(error)
-                    candidates.append(centroids)
-                    while True:
-                        indices = np.random.randint(0, len(features), size = K)
-                        if len(sorted(set(list(indices)))) == K:
-                            tmp = [features[j][0] for j in indices]
-                            if len(sorted(set(tmp))) == K: #duplicate values
-                                break
-                    centroids = np.array([features[j] for j in indices])
-                    print('round', r, 'centroids:', centroids)
-                    old_centroids = np.zeros(centroids.shape)
-                r += 1
-                if r == 10:
-                    break
-            error = 0
-            clusters = []
-            for i in range(len(features)):
-                distances = self.distance(features[i], centroids)
-                cluster = np.argmin(distances)
-                error += distances[cluster]
-                clusters.append(cluster)
-            print('updated centroids:', centroids)
-            old_centroids = copy.deepcopy(centroids)
-            for k in range(K):
-                points = np.array([features[i] for i in range(len(features)) if clusters[i] == k])
-                print('cluster', k, 'points', points)
-                if len(points) == 0:
-                    m = -1
-                    print(red('invalid clustering'))
-                    print(features)
-                    print(centroids)
-                    debug_breakpoint()
-                    continue
-                centroids[k] = np.mean(points, axis = 0)
-        #print(centroids)
-        choice = np.argmin(errors)
-        centroids = candidates[choice]
-        clusters = []
-        for i in range(len(features)):
-            distances = self.distance(features[i], centroids)
-            cluster = np.argmin(distances)
-            clusters.append(cluster)
-        genotypes = []
-        norms = np.array([np.linalg.norm(centroid) for centroid in centroids])
-        print(norms)
-        centroids = []
-        for i in range(K):
-            centroid = np.argmin(norms)
-            norms[centroid] += 1
-            centroids.append(centroid)
-        print(centroids)
-        for i in range(len(features)):
-            if clusters[i] == centroids[0]:
-                genotypes.append('11')
-            elif clusters[i] == centroids[1]:
-                genotypes.append('10')
-            else:
-                genotypes.append('00')
-        x = []
-        y = []
-        a = np.random.randint(0, n, size = 12) / float(n)
-        #for k in range(K):
-        #    x.append(k)
-        #    y.append([f[0] for i, f in enumerate(features) if clusters[i] == k])
-        for i in range(len(features)):
-            x.append(clusters[i])
-            y.append(features[i][0])
-        try:
-            #print(yellow(x))
-            #print(yellow(y))
-            visualizer.violin(x, y, 'kmeans_' + track, self.get_current_job_directory(), 'cluster', 'value')
-        except Exception as e:
-            print(yellow(e))
-            #print(centroids)
-            debug_breakpoint()
-        return genotypes, centroids
-
-    def violin(self, features, clusters, track):
-        data = []
-        for k in range(3):
-            y = [f[0] for i, f in enumerate(features) if clusters[i] == k]
-            print(y)
-            data.append(graph_objs.Scatter(
-                x = [k] * len(y),
-                y = y,
-                mode = 'markers',
-                marker = dict(
-                    size = 10,
-                    color = 'rgba({0}, {0}, {0}, .8)'.format(k * 50),
-                )
-            ))
-        layout = graph_objs.Layout(title = 'clustering')
-        figure = graph_objs.Figure(data = data, layout = layout)
-        plotly.plot(figure, filename = os.path.join(self.get_current_job_directory(), 'clustering_' + track + '.html'), auto_open = False)
-
-    def distance(self, a, b):
-        return np.linalg.norm(a - b, axis = 1)
-
-    def reduce(self):
-        pass
+#class CgcClusteringJob(map_reduce.BaseGenotypingJob):
+#
+#    _name = 'CgcClusteringJob'
+#    _category = 'clustering'
+#    _previous_job = None
+#
+#    class ClusteringException(Exception):
+#        pass
+#
+#    # ============================================================================================================================ #
+#    # Launcher
+#    # ============================================================================================================================ #
+#
+#    @staticmethod
+#    def launch(**kwargs):
+#        c = config.Configuration()
+#        job = CgcClusteringJob(**kwargs)
+#        job.execute()
+#
+#    # ============================================================================================================================ #
+#    # MapReduce overrides
+#    # ============================================================================================================================ #
+#
+#    def load_inputs(self):
+#        c = config.Configuration()
+#        self.paths = c.bed
+#        self.tracks = {}
+#        for index, path in enumerate(c.bed):
+#            tracks = bed.load_tracks_from_file_as_dict(path, parse_header = True)
+#            for track in tracks:
+#                if index == 0 and not track in self.tracks:
+#                    self.tracks[track] = {}
+#                if track in self.tracks:
+#                    self.tracks[track][path] = tracks[track]
+#        self.round_robin(self.tracks)
+#
+#    def transform(self, track, track_name):
+#        c = config.Configuration()
+#        features = []
+#        for index, path in enumerate(self.paths):
+#            features.append([float(track[path].lp_value)])
+#        features = np.array(features)
+#        genotypes, centroids = self.kmeans(track_name, features)
+#        for index, path in enumerate(self.paths):
+#            track[path].add_field('genotype', genotypes[index])
+#        t = {}
+#        for index, path in enumerate(self.paths):
+#            t[path] = track[path].as_dict()
+#        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+#        with open(path, 'w') as json_file:
+#            json.dump(t, json_file, indent = 4, sort_keys = True)
+#        return path
+#
+#    def find_num_clusters(self, features):
+#        n = len(features[0])
+#        f = [feature[0] for feature in features]
+#        K = min(3, len(sorted(set(f))))
+#        if K != 3:
+#            raise CgcClusteringJob.ClusteringException
+#        return K
+#
+#    def select_initial_centroids(self, features, K):
+#        while True:
+#            indices = np.random.randint(0, len(features), size = K)
+#            print(indices)
+#            if len(sorted(set(list(indices)))) == K: #duplicate indices
+#                tmp = [features[j][0] for j in indices]
+#                if len(sorted(set(tmp))) == K: #duplicate values
+#                    break
+#        centroids = np.array([features[j] for j in indices])
+#        return centroids
+#
+#    def kmeans(self, track, features):
+#        print(blue('clustering', track))
+#        #if track != 'CHM1_chr1-100528655-INS-331':
+#        #    raise CgcCounterJob.ClusteringException
+#        min_lp = np.amin(features, 0)
+#        max_lp = np.amax(features, 0)
+#        print(features)
+#        print(min_lp, max_lp)
+#        debug_terminate()
+#        exit()
+#        K = self.find_num_clusters()
+#        centroids = self.select_initial_centroids()
+#        old_centroids = np.zeros(centroids.shape)
+#        candidates = []
+#        errors = []
+#        error = 0
+#        m = 0
+#        r = 0
+#        print('round 0 centroids:', centroids)
+#        # Kmeans main loop
+#        while True:
+#            m += 1
+#            if m == 100 or m == -1 or (old_centroids == centroids).all():
+#                if m == -1:
+#                    print(red('empty cluster, skipping round'))
+#                if m == 100:
+#                    print(red('didn\'t converge, skipping round'))
+#                    debug_breakpoint()
+#                else:
+#                    print(green('round', r), cyan('iteration', m))
+#                    m = 0
+#                    errors.append(error)
+#                    candidates.append(centroids)
+#                    centroids = self.select_initial_centroids(features, K)
+#                    print('round', r, 'centroids:', centroids)
+#                    old_centroids = np.zeros(centroids.shape)
+#                r += 1
+#                if r == 10:
+#                    break
+#            cluaters, error = self.cluster_data(features, centroids)
+#            print('updated centroids:', centroids)
+#            old_centroids = copy.deepcopy(centroids)
+#            for k in range(K):
+#                points = np.array([features[i] for i in range(len(features)) if clusters[i] == k])
+#                print('cluster', k, 'points', points)
+#                if len(points) == 0:
+#                    m = -1
+#                    print(red('invalid clustering'))
+#                    continue
+#                centroids[k] = np.mean(points, axis = 0)
+#        choice = np.argmin(errors)
+#        centroids = candidates[choice]
+#        clusters, _ = self.cluster_data(features, centroids)
+#        self.assign_genotypes(features, clusters, centroids)
+#        self.plot_clusters(features, clusters)
+#        return genotypes, centroids
+#
+#    def cluster_data(self, features, centroids):
+#        error = 0
+#        clusters = []
+#        for i in range(len(features)):
+#            distances = self.distance(features[i], centroids)
+#            cluster = np.argmin(distances)
+#            error += distances[cluster]
+#            clusters.append(cluster)
+#        return clusters, error
+#
+#    def assign_genotypes(self, features, clusters, centroids):
+#        genotypes = []
+#        norms = np.array([np.linalg.norm(centroid) for centroid in centroids])
+#        print(norms)
+#        centroids = []
+#        for i in range(K):
+#            centroid = np.argmin(norms)
+#            norms[centroid] += 1
+#            centroids.append(centroid)
+#        print(centroids)
+#        for i in range(len(features)):
+#            if clusters[i] == centroids[0]:
+#                genotypes.append('00')
+#            elif clusters[i] == centroids[1]:
+#                genotypes.append('10')
+#            else:
+#                genotypes.append('11')
+#
+#    def plot_clusters(self, features, clusters):
+#        x = []
+#        y = []
+#        for i in range(len(features)):
+#            x.append(clusters[i])
+#            y.append(features[i][0])
+#        try:
+#            visualizer.violin(x, y, 'kmeans_' + track, self.get_current_job_directory(), 'cluster', 'value')
+#        except Exception as e:
+#            print(yellow(e))
+#
+#    def distance(self, a, b):
+#        return np.linalg.norm(a - b, axis = 1)
+#
+#    def reduce(self):
+#        files = {}
+#        for path in self.paths:
+#            name = path.split('/')[-1]
+#            files[path] = open(os.path.join(self.get_current_job_directory(), name), 'w')
+#        for batch in self.load_output():
+#            for track in batch:
+#                track = json.load(open(batch[track]))
+#                for path in track:
+#                    t = track[path]
+#                    files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['id'] + '\t' + t['lp_value'] + '\n')
+#

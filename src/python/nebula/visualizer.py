@@ -17,10 +17,9 @@ from nebula import (
     statistics,
 )
 
-import pandas as pd
-import plotly.offline as plotly
-import plotly.graph_objs as graph_objs
-import plotly.figure_factory as ff
+#import plotly.offline as plotly
+#import plotly.graph_objs as graph_objs
+#import plotly.figure_factory as ff
 
 # ============================================================================================================================ #
 # Plotly helpers
@@ -50,31 +49,30 @@ def bar(x, ys, name, path, x_label, y_label):
     pass
 
 def violin(x, y, name, path, x_label, y_label):
-    df = pd.DataFrame(dict(lp = y, cluster = x))
-
-    data = []
-    for i in range(0, len(pd.unique(df['cluster']))):
-        trace = {
-                "type": 'violin',
-                "x": df['cluster'][df['cluster'] == pd.unique(df['cluster'])[i]],
-                "y": df['lp'][df['cluster'] == pd.unique(df['cluster'])[i]],
-                "name": pd.unique(df['cluster'])[i],
-                "box": {
-                    "visible": True
-                },
-                "meanline": {
-                    "visible": True
-                }
-            }
-        data.append(trace)
-    fig = {
-        "data": data,
-        "layout" : {
-            "title": "",
-            "yaxis": {
-                "zeroline": False,
-            }
-        }
-    }
-    plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
+    #data = sorted(set(x))
+    #for i in x:
+    #    trace = {
+    #            "x": [x[j] for j, _ in enumerate(y) if x[j] == i],
+    #            "y": [y[j] for j, _ in enumerate(y) if x[j] == i],
+    #            "name": pd.unique(df['cluster'])[i],
+    #            "type": 'violin',
+    #            "box": {
+    #                "visible": True
+    #            },
+    #            "meanline": {
+    #                "visible": True
+    #            }
+    #        }
+    #    data.append(trace)
+    #fig = {
+    #    "data": data,
+    #    "layout" : {
+    #        "title": "",
+    #        "yaxis": {
+    #            "zeroline": False,
+    #        }
+    #    }
+    #}
+    #plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
+    pass
 

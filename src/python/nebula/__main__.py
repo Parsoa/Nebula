@@ -8,7 +8,7 @@ from nebula import (
 # import jobs
 from cgc import *
 from misc import *
-from depth import *
+#from depth import *
 from gapped import *
 from junction import *
 from reduction import *
@@ -30,9 +30,8 @@ print = pretty_print
 def preprocess():
 
     def supply_inner_kmers():
-        job = ExtractInnerKmersJob()
-        job.execute()
-        return
+        #job = ExtractInnerKmersJob()
+        #job.execute()
         job = ExtractLociIndicatorKmersJob()
         job.execute()
         job = FilterLociIndicatorKmersJob()
@@ -59,9 +58,9 @@ def preprocess():
     job = TrackPreprocessorJob()
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
-    #supply_inner_kmers()
+    supply_inner_kmers()
     #supply_gapped_kmers()
-    supply_junction_kmers()
+    #supply_junction_kmers()
     job = MixKmersJob()
     job.execute()
 
@@ -74,11 +73,18 @@ def genotype():
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
     job = CgcCounterJob(resume_from_reduce = c.reduce)
-    stats = job.execute()
+    if c.reduce:
+        stats = {'coverage': 50, 'std': 17}
+    else:
+        stats = job.execute()
     config.Configuration.update(stats)
     job = CgcIntegerProgrammingJob()
-    job.tracks = tracks
     job.execute()
+    if not c.cgc:
+        job = CgcInnerKmersIntegerProgrammingJob()
+        job.execute()
+        job = CgcJunctionKmersIntegerProgrammingJob()
+        job.execute()
     if not c.cgc:
         job = ExportGenotypingKmersJob()
         job.execute()

@@ -40,6 +40,12 @@ def debug_log(*args):
         print(*args)
         print(magenta('END DEBUG ***********************************************************************************************'))
 
+def debug_terminate():
+    c = config.Configuration()
+    if c.debug:
+        print(magenta('DEBUG TERMINATE *********************************************************************************************'))
+        exit()
+
 def debug_print(*args):
     c = config.Configuration()
     if c.debug:

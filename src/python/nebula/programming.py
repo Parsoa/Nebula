@@ -301,12 +301,3 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         for track in self.tracks:
             x.append(self.tracks[track]['lp_value'])
         visualizer.histogram(x, 'lp_value_distribution', self.get_current_job_directory(), 'Value', 'Frequency', 0.05)
-
-# ============================================================================================================================ #
-# Main
-# ============================================================================================================================ #
-
-if __name__ == '__main__':
-    config.init()
-    c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

@@ -34,8 +34,6 @@ class BedTrack:
         self.svtype = 'DEL'
         self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
         for (k, v) in fields:
-            #v = int(v) if k in INTEGER_FIELDS else v
-            #v = float(v) if k in FP_FIELDS else v
             setattr(self, k, v)
         self.fields = fields
         self.name = self.id #alias
@@ -54,28 +52,18 @@ class BedTrack:
         os.remove('liftover_un.bed')
         return track
 
-    def export(self):
-        s = self.chrom + '\t' + str(self.begin) + '\t' + str(self.end)
-        for k, v in self.fields.items():
-            s += '\t' + getattr(self, k)
-        s += '\n'
-        return s
-
-    def bedify(self):
-        s = str(self.chrom) + '\t' + str(self.begin) + '\t' + str(self.end)
-        for (k, v) in self.fields:
-            s += '\t' + str(v)
-        s += '\n'
-        return s
-
     def as_dict(self):
         d = {}
+        d['chrom'] = self.chrom
         d['begin'] = self.begin
         d['end'] = self.end
-        d['chrom'] = self.chrom
         for (k, v) in self.fields:
             d[k] = v
         return d
+
+    def add_field(self, key, value):
+        setattr(self, key, value)
+        self.fields.append((key, value))
 
 # ============================================================================================================================ #
 # BED Tracks

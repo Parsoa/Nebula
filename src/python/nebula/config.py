@@ -19,6 +19,8 @@ class Configuration:
             if hasattr(self, 'simulation'):
                 if self.simulation:
                     self.simulation = int(self.simulation[:-1])
+            if self.debug:
+                self.threads = 1
 
     __instance = None
     __cmd_options = None
@@ -80,7 +82,7 @@ def parse_args():
     # length of the kmers 
     parser.add_argument("--ksize", default = 32, type = int)
     # assembled contigs for each structural variation
-    parser.add_argument("--contigs")
+    parser.add_argument("--contigs", default = None)
     # the name of the genome being genotyped or whatver 
     parser.add_argument("--genome")
     # a JSON file containing the list of tracks and their kmers

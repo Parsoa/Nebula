@@ -20,6 +20,7 @@ from nebula import (
     gapped,
     counter,
     junction,
+    reduction,
     map_reduce,
     statistics,
     visualizer,
@@ -103,10 +104,7 @@ class MixKmersJob(map_reduce.Job):
 
     def load_kmers(self):
         c = config.Configuration()
-        #job = reduction.FilterLociIndicatorKmersJob()
-        self.inner_kmers = {}
-        #with open(os.path.join(job.get_current_job_directory(), 'kmers.json'), 'r') as json_file:
-        #    self.inner_kmers.update(json.load(json_file))
+        self.load_inner_kmers()
         self.load_junction_kmers()
         self.load_depth_of_coverage_kmers()
         #self.load_gapped_kmers()
@@ -120,6 +118,12 @@ class MixKmersJob(map_reduce.Job):
         kmers['junction_kmers'] = self.junction_kmers
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(kmers, json_file, indent = 4, sort_keys = True)
+
+    def load_inner_kmers(self):
+        self.inner_kmers = {}
+        job = reduction.FilterLociIndicatorKmersJob()
+        with open(os.path.join(job.get_current_job_directory(), 'kmers.json'), 'r') as json_file:
+            self.inner_kmers.update(json.load(json_file))
 
     def load_junction_kmers(self):
         c = config.Configuration()
@@ -136,6 +140,8 @@ class MixKmersJob(map_reduce.Job):
         #    json.dump(self.junction_kmers, json_file, indent = 4)
         #with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
         #    json.dump(self.inner_kmers, json_file, indent = 4)
+        print('Counting', green(len(self.inner_kmers)), 'inner kmers')
+        print('Counting', green(len(self.junction_kmers)), 'junction kmers')
 
     def load_depth_of_coverage_kmers(self):
         n = 100000
