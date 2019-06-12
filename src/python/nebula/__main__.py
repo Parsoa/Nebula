@@ -27,11 +27,16 @@ print = pretty_print
 
 # ============================================================================================================================ #
 
+def load_tracks():
+    job = TrackPreprocessorJob()
+    tracks = job.execute()
+    config.Configuration.update({'tracks': tracks})
+
 def preprocess():
 
     def supply_inner_kmers():
-        #job = ExtractInnerKmersJob()
-        #job.execute()
+        job = ExtractInnerKmersJob()
+        job.execute()
         job = ExtractLociIndicatorKmersJob()
         job.execute()
         job = FilterLociIndicatorKmersJob()
@@ -55,52 +60,59 @@ def preprocess():
         job = FilterJunctionKmersJob()
         job.execute()
 
-    job = TrackPreprocessorJob()
-    tracks = job.execute()
-    config.Configuration.update({'tracks': tracks})
+    load_tracks()
     supply_inner_kmers()
-    #supply_gapped_kmers()
-    #supply_junction_kmers()
+    supply_junction_kmers()
     job = MixKmersJob()
     job.execute()
 
 # ============================================================================================================================ #
 
-def genotype():
+def cgc_genotype():
     c = config.Configuration()
-    job = TrackPreprocessorJob()
-    stats = {}
-    tracks = job.execute()
-    config.Configuration.update({'tracks': tracks})
+    load_tracks()
     job = CgcCounterJob(resume_from_reduce = c.reduce)
-    if c.reduce:
-        stats = {'coverage': 50, 'std': 17}
-    else:
-        stats = job.execute()
+    stats = job.execute()
     config.Configuration.update(stats)
     job = CgcIntegerProgrammingJob()
     job.execute()
-    if not c.cgc:
+
+def genotype():
+    c = config.Configuration()
+    if c.cgc:
+        cgc_genotype()
+    else:
+        load_tracks()
+        job = CgcCounterJob(resume_from_reduce = c.reduce)
+        if c.reduce:
+            stats = {'coverage': 50, 'std': 17}
+            stats = job.execute()
+        else:
+            stats = job.execute()
+        config.Configuration.update(stats)
+        job = CgcCoverageCorrectingIntegerProgrammingJob()
+        job.execute()
+        exit()
+        job = CgcIntegerProgrammingJob()
+        job.execute()
         job = CgcInnerKmersIntegerProgrammingJob()
         job.execute()
         job = CgcJunctionKmersIntegerProgrammingJob()
         job.execute()
-    if not c.cgc:
-        job = ExportGenotypingKmersJob()
-        job.execute()
 
 def cluster():
     c = config.Configuration()
-    if c.cgc:
-        job = cgc.CgcClusteringJob()
-        job.execute()
-    else:
-        job = clustering.KmeansCulsteringJob()
-        job.execute()
+    job = cgc.CgcClusteringJob()
+    job.execute()
 
 def export():
     c = config.Configuration()
     job = cgc.ExportGenotypingKmersJob()
+    job.execute()
+
+def simulate():
+    load_tracks()
+    job = Simulation()
     job.execute()
 
 # ============================================================================================================================ #
@@ -122,6 +134,8 @@ if __name__ == '__main__':
             preprocess()
         if c.command == 'genotype':
             genotype()
+        if c.command == 'simulate':
+            simulate()
         if c.command == 'cluster':
             cluster()
         if c.command == 'export':

@@ -80,11 +80,11 @@ class Job(object):
         tracks = self.load_previous_job_results()
         self.round_robin(tracks)
 
-    def load_previous_job_results(self, name = None):
-        if not name:
+    def load_previous_job_results(self, job = None):
+        if not job:
             path = os.path.join(self.get_previous_job_directory(), 'batch_merge.json')
         else:
-            path = os.path.join(os.path.join(self.get_current_job_directory(), '..', name), 'batch_merge.json')
+            path = os.path.join(os.path.join(self.get_current_job_directory(), '..', job._name), 'batch_merge.json')
         with open(path, 'r') as json_file:
             return json.load(json_file)
 
@@ -142,6 +142,11 @@ class Job(object):
             batch.pop(track, None)
         # if there is no output, don't write anything
         self.output_batch(batch)
+        self.on_exit_worker()
+        exit()
+
+    def on_exit_worker(self):
+        pass
 
     def transform(self, track, track_name):
         return track
@@ -151,7 +156,6 @@ class Job(object):
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)
         json_file.close()
-        exit()
 
     def wait_for_children(self):
         while True:
@@ -240,45 +244,25 @@ class Job(object):
 
     def get_output_directory(self):
         c = config.Configuration()
-        bed_file_name = c.bed[0].split('/')[-1]
-        if c.simulation:
-            return os.path.abspath(os.path.join(c.workdir,\
-                'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/'))
-        else:
-            if self._category == 'misc':
-                return os.path.abspath(os.path.join(c.workdir,
-                    self._category + '/'))
-            else:
-                return os.path.abspath(os.path.join(c.workdir, 
-                    self._category + '/' + bed_file_name + '/'))
+        return os.path.abspath(c.workdir)
 
     def get_current_job_directory(self):
         return os.path.abspath(os.path.join(self.get_output_directory(), self._name))
 
     def get_previous_job_directory(self):
         c = config.Configuration()
-        if c.previous:
-            return c.previous
         if self._previous_job:
             return os.path.abspath(os.path.join(self.get_output_directory(), self._previous_job._name))
         else:
             return None
 
-    def get_simulation_directory(self):
-        c = config.Configuration()
-        bed_file_name = c.bed.split('/')[-1]
-        return os.path.abspath(os.path.join(c.workdir,\
-            'simulation/' + bed_file_name + '/' + str(c.description) + '/' + str(c.simulation) + 'x/Simulation/'))
-
     def create_output_directories(self):
-        dir = self.get_output_directory()
-        print(yellow(dir))
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-        dir = self.get_current_job_directory()
-        print('creating directory:', green(dir))
-        if not os.path.exists(dir):
-            os.makedirs(dir)
+        path = self.get_output_directory()
+        if not os.path.exists(path):
+            os.makedirs(path)
+        path = self.get_current_job_directory()
+        if not os.path.exists(path):
+            os.makedirs(path)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -287,29 +271,8 @@ class Job(object):
 # ============================================================================================================================ #
 
 class BaseGenotypingJob(Job):
-    
-    def get_output_directory(self):
-        c = config.Configuration()
-        if c.simulation:
-            return Job.get_output_directory(self)
-        else:
-            return os.path.abspath(os.path.join(c.workdir))
 
-    def get_current_job_directory(self):
-        c = config.Configuration()
-        if c.simulation:
-            return Job.get_current_job_directory(self)
-        else:
-            return os.path.join(self.get_output_directory(), self._name)
-
-    def get_previous_job_directory(self):
-        c = config.Configuration()
-        if c.previous:
-            return c.previous
-        if c.simulation:
-            return Job.get_previous_job_directory(self)
-        else:
-            return os.path.join(self.get_output_directory(), self._previous_job._name)
+    pass
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -320,12 +283,7 @@ class BaseGenotypingJob(Job):
 
 class FirstGenotypingJob(BaseGenotypingJob):
 
-    def get_previous_job_directory(self):
-        c = config.Configuration()
-        d = Job.get_output_directory(self)
-        if c.previous:
-            return c.previous
-        return os.path.abspath(os.path.join(d, self._previous_job._name))
+    pass
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

@@ -52,7 +52,8 @@ class BedTrack:
         os.remove('liftover_un.bed')
         return track
 
-    def as_dict(self):
+    @staticmethod
+    def json_serialize(self):
         d = {}
         d['chrom'] = self.chrom
         d['begin'] = self.begin
@@ -64,6 +65,14 @@ class BedTrack:
     def add_field(self, key, value):
         setattr(self, key, value)
         self.fields.append((key, value))
+
+    def serialize(self):
+        s = ''
+        s += str(self.chrom) + '\t' + str(self.begin) + '\t' + str(self.end)
+        for (k, v) in self.fields:
+            s += '\t' + v
+        s += '\n'
+        return s
 
 # ============================================================================================================================ #
 # BED Tracks

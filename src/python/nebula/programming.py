@@ -208,8 +208,9 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 self.tracks[track]['lp_kmers'].append(kmer)
         self.find_rounding_break_points()
         print('Rounding', len(self.tracks), 'tracks')
-        name = 'merge.bed' if not c.cgc else ('genotypes_' + c.fastq.split('/')[-1] if c.fastq else 'genotypes_' + c.bam.split('/')[-1]) + '.bed'
-        with open(os.path.join(self.get_current_job_directory(), name), 'w') as bed_file:
+        name = 'merge.bed' if not c.cgc else 'genotypes_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.bed'
+        path = os.path.join(os.getcwd() if c.cgc else self.get_current_job_directory(), name)
+        with open(path, 'w') as bed_file:
             bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
             for track in self.tracks:
                 t = c.tracks[track]
@@ -230,8 +231,8 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         distributions = [{'inner': d_0, 'gapped': d_2, 'junction': d_2}, {'inner': d_1, 'gapped': d_1, 'junction': d_1}, {'inner': d_2, 'gapped': d_0, 'junction': d_0}]
         m = None
         step = 0.05
-        self.b2 = 0.75
         self.b1 = 0.25
+        self.b2 = 0.75
         if not c.rounding:
             return
         for b1 in range(int(0.1 / step), int(0.5 / step)):
@@ -292,8 +293,6 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                     self.tracks[str(track)]['actual_genotype'] = r
         with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
             json.dump(self.tracks, json_file, indent = 4)
-        #self.plot_lp_values()
-        #self.calculate_length_accuracy_correlation()
 
     def plot_lp_values(self):
         print(len(self.tracks))

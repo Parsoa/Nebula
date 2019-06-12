@@ -30,7 +30,10 @@ print = pretty_print
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# ============================================================================================================================ #
+# Required options:
+# --bed: set of events to genotype
+# --diploid: haploidity of the simulation
+# --simulation n: where n is the coverage of the simulation
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -55,21 +58,13 @@ class Simulation(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        if c.seed:
-            random.seed(c.seed)
-        if c.random:
-            self.tracks = self.generate_random_intervals(ref, 1000)
-        else:
-            self.tracks = self.load_structural_variations()
+        self.tracks = self.load_structural_variations()
         self.assign_event_zygosities()
         self.export_bed(self.tracks, 'all')
         self.export_bed(self.absent, 'absent')
         self.export_bed(self.present, 'present')
         self.export_bed(self.homozygous, 'homozygous')
         self.export_bed(self.heterozygous, 'heterozygous')
-        if c.diploid:
-            print('Starting diploid simulation...')
-        #
         self.extract_chromosomes()
         self.round_robin(self.chroms)
 
@@ -82,34 +77,9 @@ class Simulation(map_reduce.Job):
                 chrom_file.write(seq.strip())
                 chrom_file.write('\n')
 
-    def generate_random_intervals(self, n):
-        c = config.Configuration()
-        random.seed(c.seed)
-        print('generating', n, 'random events')
-        l = len(self.ref)
-        tracks = []
-        offset = 100000
-        for i in range(0, n):
-            begin = random.randint(offset, l - offset)
-            end = begin + random.randint(100, 2000)
-            track = bed.BedTrack(chrom = c.chrom, begin = begin, end = end)
-            tracks.append(track)
-        return self.filter_overlapping_intervals(\
-                    sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
-                )
-
     def load_structural_variations(self):
         c = config.Configuration()
-        print('loading SVs from file', c.bed)
-        self.sv_type = self.get_sv_type()
-        print('Type of events:', cyan(self.sv_type))
-        tracks = []
-        for track in bed.load_tracks_from_file(c.bed, [('zygosity', None)]):
-            if track.end - track.begin > 1000000:
-                print(red('too large, skipping', track))
-                continue
-            tracks.append(track)
-        print('Total number of tracks:', len(tracks))
+        tracks = [c.tracks[track] for track in c.tracks]
         return self.filter_overlapping_intervals(\
                     sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
                 )
@@ -123,7 +93,7 @@ class Simulation(map_reduce.Job):
             return 'INV'
         if bed_file_name.find('ALU') != -1:
             return 'ALU'
-        return 'DEL'
+        return 'ALL'
 
     def filter_overlapping_intervals(self, intervals):
         remove = []
@@ -164,11 +134,11 @@ class Simulation(map_reduce.Job):
             self.homozygous = []
             self.heterozygous = []
             for track in self.tracks:
-                if track.zygosity:
-                    if track.zygosity == '1|0' or track.zygosity == '0|1':
+                if hasattr(track, 'genotype'):
+                    if track.genotype == '10' or track.genotype == '01':
                         self.heterozygous.append(track)
                         self.present.append(track)
-                    elif track.zygosity == '1|1':
+                    elif track.genotype == '11':
                         self.homozygous.append(track)
                         self.present.append(track)
                     else:
@@ -177,26 +147,26 @@ class Simulation(map_reduce.Job):
                     r = random.randint(0, 1)
                     if r == 2:
                         self.absent.append(track)
-                        track.zygosity = '0|0'
+                        track.add_field('genotype', '00')
                     else:
                         self.present.append(track)
                         if r == 1:
                             self.heterozygous.append(track)
-                            track.zygosity = '0|1'
+                            track.add_field('genotype', '10')
                         else:
                             self.homozygous.append(track)
-                            track.zygosity = '1|1'
+                            track.add_field('genotype', '11')
         print(len(self.tracks), 'non-overlapping tracks')
-        print(len(self.absent), '0/0')
-        print(len(self.present), '1/1 or 1/0')
-        print(len(self.homozygous), '1/1')
-        print(len(self.heterozygous), '1/0')
+        print(len(self.absent), '0|0')
+        print(len(self.present), '1|1 or 1|0')
+        print(len(self.homozygous), '1|1')
+        print(len(self.heterozygous), '1|0')
 
-    def export_bed(self, intervals, name):
+    def export_bed(self, tracks, name):
         print('Exporting BED file:', green(name + '.bed'))
         with open(os.path.join(self.get_current_job_directory(), name + '.bed'), 'w') as bed_file:
-            for interval in intervals:
-                bed_file.write(interval.export()) 
+            for track in tracks:
+                bed_file.write(track.serialize()) 
 
     def transform(self, seq, chrom):
         print('simulating', chrom)
@@ -255,9 +225,13 @@ class Simulation(map_reduce.Job):
             print('applying', track, 'to', chrom)
             s = self.chroms[chrom][previous:track.begin]
             seq += s
-            if self.sv_type == 'ALU':
+            if track.svtype == 'ALU':
+                seq += self.chroms[chrom][track.begin]
                 print('Adding sequence')
                 seq += 'GCCGGGCGTGGTGGCTTACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGACGGGTGGATCACGAGGTCAGCAGATGGAGACCATCCTGGCTAACACGGTGAAACCCCGTCTCTACTAAAAATGCAAAAAAATTAGCCGGGTGTGGTGGTGGGCGCCTGTAGTCCCAGCTACTCAGGAGGCTGAGGCAGGAGAATGGCATGAACCTGGGAGGCGGAGCTTGCAGTGAGCCGAGATCATGTCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCGTCTCAAAAAAAAAAAGAAAAAAA'
+            if track.svtype == 'INS':
+                seq += self.chroms[chrom][track.begin]
+                seq += track.seq
             previous = track.end
         seq += self.chroms[chrom][previous:]
         return seq
@@ -361,12 +335,3 @@ class Simulation(map_reduce.Job):
         #command = "samtools index {} {}".format(bam + '.bam', bam_index)
         #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
         print('Done!')
-
-# ============================================================================================================================ #
-# Main
-# ============================================================================================================================ #
-
-if __name__ == '__main__':
-    config.init()
-    c = config.Configuration()
-    getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)

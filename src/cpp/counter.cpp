@@ -407,7 +407,7 @@ int process_bam(string bam, string path, int index, int threads) {
             process_read(line, u, u) ;
         } else if (JOB == COUNT_MIX_KMERS) {
             process_read(line, u, u) ;
-            process_gapped_read(line, u, u) ;
+            //process_gapped_read(line, u, u) ;
         } else {
             process_gapped_read(line, u, u) ;
         }
@@ -647,7 +647,7 @@ int main(int argc, char** argv) {
     } else if (JOB == COUNT_GAPPED_KMERS || JOB == SELECT_GAPPED_KMERS) {
         transform_gapped(index, path) ;
     } else if (JOB == COUNT_MIX_KMERS) {
-        transform_gapped(index, path) ;
+        //transform_gapped(index, path) ;
         transform(index, path) ;
     }
     int n = 0;

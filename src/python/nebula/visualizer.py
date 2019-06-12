@@ -17,9 +17,9 @@ from nebula import (
     statistics,
 )
 
-#import plotly.offline as plotly
-#import plotly.graph_objs as graph_objs
-#import plotly.figure_factory as ff
+import plotly.offline as plotly
+import plotly.graph_objs as graph_objs
+import plotly.figure_factory as ff
 
 # ============================================================================================================================ #
 # Plotly helpers
@@ -49,30 +49,31 @@ def bar(x, ys, name, path, x_label, y_label):
     pass
 
 def violin(x, y, name, path, x_label, y_label):
-    #data = sorted(set(x))
-    #for i in x:
-    #    trace = {
-    #            "x": [x[j] for j, _ in enumerate(y) if x[j] == i],
-    #            "y": [y[j] for j, _ in enumerate(y) if x[j] == i],
-    #            "name": pd.unique(df['cluster'])[i],
-    #            "type": 'violin',
-    #            "box": {
-    #                "visible": True
-    #            },
-    #            "meanline": {
-    #                "visible": True
-    #            }
-    #        }
-    #    data.append(trace)
-    #fig = {
-    #    "data": data,
-    #    "layout" : {
-    #        "title": "",
-    #        "yaxis": {
-    #            "zeroline": False,
-    #        }
-    #    }
-    #}
-    #plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
+    data = []
+    s = sorted(set(x))
+    for i in s:
+        trace = {
+                "x": [x[j] for j, _ in enumerate(y) if x[j] == i],
+                "y": [y[j] for j, _ in enumerate(y) if x[j] == i],
+                "name": i,
+                "type": 'violin',
+                "box": {
+                    "visible": True
+                },
+                "meanline": {
+                    "visible": True
+                }
+            }
+        data.append(trace)
+    fig = {
+        "data": data,
+        "layout" : {
+            "title": "",
+            "yaxis": {
+                "zeroline": False,
+            }
+        }
+    }
+    plotly.plot(fig, filename = os.path.join(path, 'violin_' + name + '.html'), auto_open = False)
     pass
 

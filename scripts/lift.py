@@ -36,10 +36,12 @@ if __name__ == '__main__':
                 with open('./res.bed', 'r') as r:
                     l = r.readline()
                 print(l)
-                tokens = l.split() + tokens
-                tokens = [''] + tokens
-                s = reduce(lambda x, y: x + '\t' + y, tokens)
-                c.write(s.strip() + '\n')
+                l = l.split()
+                if len(l) >= 3:
+                    tokens = l + tokens
+                    tokens = [''] + tokens
+                    s = reduce(lambda x, y: x + '\t' + y, tokens)
+                    c.write(s.strip() + '\n')
                 os.remove('./' + name)
         os.remove('./un.bed')
         os.remove('./res.bed')

@@ -152,6 +152,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                             clips.append((offset, offset + c[1]))
                         offset += c[1]
                     index = 0
+                    # Should try and correct for sequencing errors in masks by doing a consensus
                     for kmer in stream_kmers(stride, False, True, seq):
                         if self.is_clipped((index, index + stride), clips):
                             if not kmer in junction_kmers:
@@ -219,11 +220,10 @@ class UniqueJunctionKmersJob(gapped.UniqueGappedKmersJob):
                 gapped_kmers = json.load(json_file)
                 for kmer in gapped_kmers:
                     k = canonicalize(kmer)
-                    k = k[:c.hsize] + k[-c.hsize:]
                     if not k in self.gapped_kmers:
                         self.gapped_kmers[k] = gapped_kmers[kmer]
                         self.gapped_kmers[k]['tracks'] = {}
-                    if not track in self.gapped_kmers[k]:
+                    if not track in self.gapped_kmers[k]['tracks']:
                         self.gapped_kmers[k]['tracks'][track] = 0
                         self.gapped_kmers[k]['loci'].update(gapped_kmers[kmer]['loci'])
                     self.gapped_kmers[k]['tracks'][track] += 1
@@ -387,161 +387,3 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-
-class CountJunctionKmersJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob):
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    _name = 'CountJunctionKmersJob'
-    _category = 'preprocessing'
-    _previous_job = FilterJunctionKmersJob 
-    _counter_mode = 0
-
-    @staticmethod
-    def launch(**kwargs):
-        job = CountJunctionKmersJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        tracks = {}
-        self.kmers = {}
-        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
-            kmers = json.load(json_file)
-            for kmer in kmers:
-                self.kmers[kmer] = {}
-                self.kmers[kmer]['loci'] = kmers[kmer]['loci']
-                self.kmers[kmer]['count'] = 0 
-                self.kmers[kmer]['doubt'] = 0 
-                self.kmers[kmer]['total'] = 0 
-                self.kmers[kmer]['tracks'] = kmers[kmer]['tracks']
-                for track in self.kmers[kmer]['tracks']:
-                    tracks[track] = True
-        with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4)
-        print(len(self.kmers), 'kmers')
-        print(len(tracks), 'events with kmers')
-        self.round_robin()
-
-    def merge_count(self, kmer, tokens):
-        count = tokens[0] 
-        total = tokens[1] 
-        canon = canonicalize(kmer)
-        self.kmers[canon]['count'] += count / 2
-        self.kmers[canon]['total'] += total / 2
-
-    def reduce(self):
-        c = config.Configuration()
-        self.merge_counts()
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
-        self.tracks = {}
-        for kmer in self.kmers:
-            for track in self.kmers[kmer]['tracks']:
-                if not track in self.tracks:
-                    self.tracks[track] = {}
-                self.tracks[track][kmer] = self.kmers[kmer]
-        for track in self.tracks:
-            print('exporting track', track)
-            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
-                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# Models the problem as an integer program and uses CPLEX to solve it
-# This won't need any parallelization
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class JunctionKmersIntegerProgrammingJob(gapped.GappedKmersIntegerProgrammingJob):
-
-    _name = 'JunctionKmersIntegerProgrammingJob'
-    _category = 'preprocessing'
-    _previous_job = CountJunctionKmersJob
-    _kmer_type = 'junction'
-
-    @staticmethod
-    def launch(**kwargs):
-        job = JunctionKmersIntegerProgrammingJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def transform(self, track, track_name):
-        c = config.Configuration()
-        print(cyan(track_name))
-        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
-            kmers = json.load(json_file)
-            for kmer in kmers:
-                self.lp_kmers[kmer] = {
-                    'loci': kmers[kmer]['loci'],
-                    'type': self._kmer_type,
-                    'count': kmers[kmer]['count'],
-                    'doubt': kmers[kmer]['doubt'],
-                    'total': kmers[kmer]['total'],
-                    'tracks': kmers[kmer]['tracks'],
-                    'weight': 1.0,
-                    'coverage': c.coverage,
-                    'reference': len(kmers[kmer]['loci']),
-                }
-        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        with open(path, 'w') as json_file:
-            json.dump({ kmer: self.lp_kmers[kmer] for kmer in kmers }, json_file, indent = 4, sort_keys = True)
-        return path
-
-    def generate_linear_program(self):
-        print('generating linear program')
-        c = config.Configuration()
-        globals()['cplex'] = __import__('cplex')
-        problem = cplex.Cplex()
-        problem.objective.set_sense(problem.objective.sense.minimize)
-        # the coverage of each event
-        names = [''] * len(self.tracks)
-        for track in self.tracks:
-            tokens = track.split('_')
-            names[self.tracks[track]['index']] = 'c' + tokens[1]
-        problem.variables.add(names = names,
-            ub = [1.0] * len(self.tracks),
-        )
-        # the real-valued error parameter for inner_kmer
-        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            lb = [(kmer['count'] - kmer['coverage']) for kmer in self.lp_kmers],
-        )
-        # absolute value of the inner_kmer error parameter
-        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-            obj = [1.0] * len(self.lp_kmers),
-        )
-        # constraints
-        n = 0
-        start = time.time()
-        for index, kmer in enumerate(self.lp_kmers):
-            ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-            ind.append(len(self.tracks) + index)
-            val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track], kmer['tracks']))
-            val.append(1.0)
-            problem.linear_constraints.add(
-                lin_expr = [cplex.SparsePair(
-                    ind = ind,
-                    val = val,
-                )],
-                rhs = [kmer['count']],
-                senses = ['E']
-            )
-            self.add_error_absolute_value_constraints(problem, index)
-            n = n + 1
-            if n % 1000 == 0:
-                t = time.time()
-                p = float(n) / len(self.lp_kmers)
-                eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
-        return problem
-

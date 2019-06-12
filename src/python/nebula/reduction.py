@@ -304,6 +304,19 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                         self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
         return None
 
+    def is_kmer_returning(self, kmer):
+        c = config.Configuration()
+        for track in kmer['tracks']:
+            t = c.tracks[track]
+            for loci in kmer['loci']:
+                if not 'inside' in loci:
+                    start = int(loci.split('_')[1])
+                    if abs(start - t.begin) < 2 * c.ksize:
+                        return True
+                    if abs(start - t.end) < 2 * c.ksize:
+                        return True
+        return False
+
     def output_batch(self, batch):
         for kmer in self.kmers:
             for locus in self.kmers[kmer]['loci'].keys():
@@ -332,6 +345,13 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         for batch in self.load_output():
             for kmer in batch:
                 self.kmers[kmer] = batch[kmer]
+        #
+        print(len(self.kmers), 'kmers')
+        returning_kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if self.is_kmer_returning(self.kmers[kmer])}
+        with open(os.path.join(self.get_current_job_directory(), 'returning.json'), 'w') as json_file:
+            json.dump(returning_kmers, json_file, indent = 4)
+        self.kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if not self.is_kmer_returning(self.kmers[kmer])}
+        print(len(self.kmers), 'kmers after filtering returning kmers')
         #
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
