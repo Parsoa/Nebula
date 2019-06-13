@@ -203,7 +203,7 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
             kmers['junction_kmers'] = self.junction_kmers
             name = 'kmers_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
             with open(os.path.join(os.getcwd(), name), 'w') as json_file:
-                json.dump(kmer, json_file, indent = 4)
+                json.dump(kmers, json_file, indent = 4)
         self.tracks = {}
         for kmer in self.inner_kmers:
             for track in self.inner_kmers[kmer]['tracks']:
@@ -931,7 +931,6 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
             json.dump(track, json_file, indent = 4, sort_keys = True, default = bed.BedTrack.json_serialize)
         return output_path
 
-
     def select_initial_centroids(self, features, K):
         while True:
             indices = np.random.randint(0, len(features), size = K)
@@ -962,7 +961,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         return min(3, k)
 
     def kmeans(self, track, track_name, features):
-        print(blue('clustering', track_name))
+        #print(blue('clustering', track_name))
         K = self.find_num_clusters(features)
         if K == 1:
             m = np.argmax(features)
@@ -974,7 +973,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         error = 0
         m = 0
         r = 0
-        print('round 0 centroids:', centroids)
+        #print('round 0 centroids:', centroids)
         while True:
             m += 1
             if m == 100 or m == -1 or (old_centroids == centroids).all():
@@ -984,7 +983,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                     print(red('didn\'t converge, skipping round'))
                     debug_breakpoint()
                 else:
-                    print(green('round', r), cyan('iteration', m))
+                    #print(green('round', r), cyan('iteration', m))
                     m = 0
                     errors.append(error)
                     candidates.append(centroids)
@@ -1035,21 +1034,22 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                 g = ['10', '11']
             else:
                 g = ['00', '10']
+        #print(centroids)
         genotypes = []
         norms = np.array([np.linalg.norm(centroid) for centroid in centroids])
         centroids = []
         for i in range(len(norms)):
             centroid = np.argmin(norms)
-            norms[centroid] += 1
+            norms[centroid] += 2 # To make it bigger than whatever other centroid remaining
             centroids.append(centroid)
-        #if len(g) != len(centroids):
-        #    print(centroids)
-        #    print(g)
-        #    print(clusters)
+        #print(centroids)
+        #print(g)
+        #print(zip(clusters, features))
         for i in range(len(features)):
             for j in range(len(centroids)):
                 if clusters[i] == centroids[j]:
                     genotypes.append(g[j])
+        #print(zip(clusters, genotypes))
         return genotypes
 
     #def find_minimum_nudge(self, features, centroids, clusters):
@@ -1083,7 +1083,6 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
             files[path] = open(os.path.join(self.get_current_job_directory(), name), 'w')
         for batch in self.load_output():
             for track in batch:
-                print(batch[track])
                 track = json.load(open(batch[track]))
                 for path in track:
                     if path == 'error':

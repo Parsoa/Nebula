@@ -86,7 +86,6 @@ def genotype():
         job = CgcCounterJob(resume_from_reduce = c.reduce)
         if c.reduce:
             stats = {'coverage': 50, 'std': 17}
-            stats = job.execute()
         else:
             stats = job.execute()
         config.Configuration.update(stats)
