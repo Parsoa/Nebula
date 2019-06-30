@@ -51,27 +51,17 @@ class BaseExactCountingJob(map_reduce.Job):
         pass
 
     def transform(self):
-        #print('here')
         c = config.Configuration()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
-        if c.simulation:
-            for i in range(1, 2 + 1):
-                #fastq_file = os.path.join(self.get_simulation_directory(), 'test.' + str(i) + '.fq')
-                fastq_file = os.path.join(self.get_simulation_directory(), 'chr17_diploid.' + str(i) + '.fq')
-                #fastq_file = "/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/HG00513.hg19.chr17.DEL.bed/Seed1300SnpError0.001/20x/Simulation/reads.sorted.bam"
-                print(yellow(fastq_file))
+        if c.bam:
+            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.bam + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
+            output = subprocess.call(command, shell = True)
+        else:
+            for i, fastq_file in enumerate(c.fastq):
                 command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
-                print(command)
                 output = subprocess.call(command, shell = True)
                 command = "mv " + os.path.join(self.get_current_job_directory(), 'c_batch_' + str(self.index) + '.json') + " " + os.path.join(self.get_current_job_directory(), 'c_batch_' + str(self.index) + '.' + str(i) + '.json')
-                print(command)
                 output = subprocess.call(command, shell = True)
-        else:
-            reads_file = c.fastq if c.fastq else c.bam
-            print(yellow(reads_file))
-            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + reads_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
-            print(command)
-            output = subprocess.call(command, shell = True)
         exit()
 
     def merge_count(self, kmer, tokens):
@@ -80,16 +70,16 @@ class BaseExactCountingJob(map_reduce.Job):
     def merge_counts(self):
         c = config.Configuration()
         for i in range(0, self.num_threads):
-            if c.simulation:
-                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.1.json'), os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.2.json')]
-            else:
+            if c.bam:
                 paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json')]
-            print('adding batch', i)
+            else:
+                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.' + str(j) + '.json') for j, fastq_file in enumerate(c.fastq)]
             for path in paths:
-                print(path)
                 with open (path, 'r') as json_file:
+                    print('adding counts from', path) 
                     line = json_file.readline()
                     while line:
                         tokens = line.split(':')
                         self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
                         line = json_file.readline()
+        print('done aggregating kmer counts')

@@ -1,0 +1,42 @@
+#!/usr/bin/python
+
+import sys
+
+dest = 'a'
+if len(sys.argv) >= 4:
+    dest = sys.argv[3]
+
+header = ''
+
+def index_file(path, get_header = False):
+    index = {} 
+    with open(path) as f:
+        line = f.readline()
+        if get_header:
+            global header
+            header = line.strip()
+        line = f.readline()
+        while line:
+            tokens = line.split()
+            s = tokens[0] + '_' + tokens[1] + '_' + tokens[2]
+            index[s] = line
+            line = f.readline()
+    return index
+
+def intersect(a, b):
+    i = []
+    for track in a:
+        if track in b:
+            i.append(a[track] if dest == 'a' else b[track])
+    return i
+
+def print_intersection(i):
+    print(header)
+    for line in i:
+        print(line.strip())
+
+a_index = index_file(sys.argv[1], True)
+b_index = index_file(sys.argv[2])
+i = intersect(a_index, b_index)
+print_intersection(i)
+

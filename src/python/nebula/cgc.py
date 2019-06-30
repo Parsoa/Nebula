@@ -15,7 +15,6 @@ import traceback
 from nebula import (
     bed,
     config,
-    gapped,
     counter,
     junction,
     reduction,
@@ -81,7 +80,6 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         self.gc_kmers = {}#self.kmers['gc_kmers']
         self.depth_kmers = self.kmers['depth_kmers']
         self.inner_kmers = self.kmers['inner_kmers']
-        self.gapped_kmers = {}
         self.junction_kmers = self.kmers['junction_kmers']
         for path in c.kmers[1:]:
             with open(path, 'r') as json_file:
@@ -103,13 +101,13 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
         print('Inner kmers:', blue(len(self.inner_kmers)))
         print('Depth kmers:', blue(len(self.depth_kmers)))
         print('GC kmers:', blue(len(self.gc_kmers)))
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            kmers = {}
-            kmers['junction_kmers'] = self.junction_kmers
-            kmers['inner_kmers'] = self.inner_kmers
-            kmers['depth_kmers'] = self.depth_kmers
-            kmers['gc_kmers'] = self.gc_kmers
-            json.dump(kmers, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+        #    kmers = {}
+        #    kmers['junction_kmers'] = self.junction_kmers
+        #    kmers['inner_kmers'] = self.inner_kmers
+        #    kmers['depth_kmers'] = self.depth_kmers
+        #    kmers['gc_kmers'] = self.gc_kmers
+        #    json.dump(kmers, json_file, indent = 4)
 
     def export_counter_input(self):
         _kmers = {}
@@ -132,23 +130,19 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
             json.dump(_kmers, json_file, indent = 4)
 
     def merge_count(self, kmer, tokens):
-        if kmer in self.gapped_kmers:
-            count = tokens[0] 
-            self.gapped_kmers[kmer]['count'] += count
-        else:
-            count = tokens[0] 
-            total = tokens[1] 
-            canon = canonicalize(kmer)
-            if canon in self.junction_kmers:
-                self.junction_kmers[canon]['count'] += count / 2
-                self.junction_kmers[canon]['total'] += total / 2
-            if canon in self.inner_kmers:
-                self.inner_kmers[canon]['count'] += count / 2
-                self.inner_kmers[canon]['total'] += total / 2
-            if canon in self.depth_kmers:
-                self.depth_kmers[canon]['count'] += count / 2
-            if canon in self.gc_kmers:
-                self.depth_kmers[canon]['count'] += count / 2
+        count = tokens[0] 
+        total = tokens[1] 
+        canon = canonicalize(kmer)
+        if canon in self.junction_kmers:
+            self.junction_kmers[canon]['count'] += count / 2
+            self.junction_kmers[canon]['total'] += total / 2
+        if canon in self.inner_kmers:
+            self.inner_kmers[canon]['count'] += count / 2
+            self.inner_kmers[canon]['total'] += total / 2
+        if canon in self.depth_kmers:
+            self.depth_kmers[canon]['count'] += count / 2
+        if canon in self.gc_kmers:
+            self.depth_kmers[canon]['count'] += count / 2
 
     def estimate_depth_of_coverage(self):
         c = config.Configuration()
@@ -188,48 +182,53 @@ class CgcCounterJob(map_reduce.FirstGenotypingJob, counter.BaseExactCountingJob)
     def reduce(self):
         c = config.Configuration()
         self.merge_counts()
-        with open(os.path.join(self.get_current_job_directory(), 'depth_kmers'), 'w') as json_file:
-            json.dump(self.depth_kmers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
-            json.dump(self.inner_kmers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'gapped_kmers.json'), 'w') as json_file:
-            json.dump(self.gapped_kmers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'junction_kmers.json'), 'w') as json_file:
-            json.dump(self.junction_kmers, json_file, indent = 4)
-        if c.cgc:
-            kmers = {}
-            kmers['depth_kmers'] = self.depth_kmers
-            kmers['inner_kmers'] = self.inner_kmers
-            kmers['junction_kmers'] = self.junction_kmers
-            name = 'kmers_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
-            with open(os.path.join(os.getcwd(), name), 'w') as json_file:
-                json.dump(kmers, json_file, indent = 4)
+        self.export_counted_kmers()
         self.tracks = {}
+        print('Exporting genotyping tracks...')
         for kmer in self.inner_kmers:
             for track in self.inner_kmers[kmer]['tracks']:
                 if not track in self.tracks:
-                    self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
+                    self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['inner_kmers'][kmer] = self.inner_kmers[kmer]
                 self.tracks[track]['inner_kmers'][kmer]['type'] = 'inner'
-        for kmer in self.gapped_kmers:
-            for track in self.gapped_kmers[kmer]['tracks']:
-                if not track in self.tracks:
-                    self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
-                self.tracks[track]['gapped_kmers'][kmer] = self.gapped_kmers[kmer]
-                self.tracks[track]['gapped_kmers'][kmer]['reference'] = 1
-                self.tracks[track]['gapped_kmers'][kmer]['type'] = 'gapped'
         for kmer in self.junction_kmers:
             for track in self.junction_kmers[kmer]['tracks']:
                 if not track in self.tracks:
-                    self.tracks[track] = {'inner_kmers': {}, 'gapped_kmers': {}, 'junction_kmers': {}}
+                    self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['junction_kmers'][kmer] = self.junction_kmers[kmer]
                 self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
+        print(len(self.tracks), 'tracks')
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         return self.estimate_depth_of_coverage()
+
+    def export_counted_kmers(self):
+        c = config.Configuration()
+        print('Exporting counted kmers...')
+        with open(os.path.join(self.get_current_job_directory(), 'gc_kmers'), 'w') as json_file:
+            json.dump(self.gc_kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'depth_kmers'), 'w') as json_file:
+            json.dump(self.depth_kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
+            json.dump(self.inner_kmers, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'junction_kmers.json'), 'w') as json_file:
+            json.dump(self.junction_kmers, json_file, indent = 4)
+        kmers = {}
+        kmers['gc_kmers'] = self.gc_kmers
+        kmers['depth_kmers'] = self.depth_kmers
+        kmers['inner_kmers'] = self.inner_kmers
+        kmers['junction_kmers'] = self.junction_kmers
+        if c.cgc:
+            name = 'kmers_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
+            path = os.path.join(os.getcwd(), name)
+        else:
+            name = 'kmers.json'
+            path = os.path.join(self.get_current_job_directory(), name)
+        with open(path, 'w') as json_file:
+            json.dump(kmers, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -268,6 +267,9 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         kmers = json.load(open(os.path.join(self.get_previous_job_directory(), path), 'r'))
         c = config.Configuration()
         lp_kmers = {}
+        t = c.tracks[track_name]
+        if t.chrom.lower() != 'chr17':
+            return None
         for kmer in kmers['inner_kmers']:
             if len(kmers['inner_kmers'][kmer]['loci']) > 3:
                 continue
@@ -284,14 +286,7 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
-        for kmer in kmers['gapped_kmers']:
-            lp_kmers[kmer] = True
-            self.lp_kmers[kmer] = kmers['gapped_kmers'][kmer]
-            self.lp_kmers[kmer]['reference'] = 1 
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        print(path)
-        with open(path, 'w') as json_file:
-            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)
         return path
 
     def calculate_residual_coverage(self):
@@ -313,84 +308,82 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
     def add_weights_to_track(self, track):
         l = self.tracks[track]['kmers']
         inner = [self.lp_kmers[i] for i in l if self.lp_kmers[i]['type'] == 'inner']
-        gapped = [self.lp_kmers[i] for i in l if self.lp_kmers[i]['type'] == 'gapped']
         junction = [self.lp_kmers[i] for i in l if self.lp_kmers[i]['type'] == 'junction']
-        for kmers in [inner, gapped, junction]:
+        for kmers in [inner, junction]:
             for kmer in kmers:
-                kmer['weight'] = float(len(inner) + len(gapped) + len(junction)) / (3.0 * len(kmers))
+                kmer['weight'] = float(len(inner) + len(junction)) / (2.0 * len(kmers))
 
     def generate_linear_program(self):
         c = config.Configuration()
-        #globals()['cplex'] = __import__('cplex')
-        #problem = cplex.Cplex()
-        #problem.objective.set_sense(problem.objective.sense.minimize)
-        ## the coverage of each event
-        #names = [''] * len(self.tracks)
-        #regex = re.compile('[^a-zA-Z0-9]')
-        #for track in self.tracks:
-        #    name = regex.sub('', track)
-        #    tokens = name.split('_')
-        #    names[self.tracks[track]['index']] = 'c' + name
-        #problem.variables.add(names = names,
-        #    ub = [1.0] * len(self.tracks),
-        #)
-        ## the real-valued error parameter for kmer
-        #problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-        #    lb = [-100000000 for kmer in self.lp_kmers]
-        #)
-        ## absolute value of the kmer error parameter
-        #problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
-        #    obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
-        #)
-        #print('adding constraints')
-        #for index, kmer in enumerate(self.lp_kmers):
-        #    self.add_error_absolute_value_constraints(problem, index)
-        #    if kmer['type'] == 'junction':
-        #        ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
-        #        ind.append(len(self.tracks) + index) # Objective
-        #        val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
-        #        val.append(1.0) #Objective
-        #        rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
-        #        problem.linear_constraints.add(
-        #            lin_expr = [cplex.SparsePair(
-        #                ind = ind,
-        #                val = val,
-        #            )],
-        #            rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
-        #            senses = ['E']
-        #        )
-        #    if kmer['type'] == 'inner':
-        #        for track in kmer['tracks']:
-        #            if c.tracks[track].svtype == 'INS':
-        #                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
-        #                ind.append(len(self.tracks) + index) # Objective
-        #                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
-        #                val.append(1.0) #Objective
-        #                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
-        #                problem.linear_constraints.add(
-        #                    lin_expr = [cplex.SparsePair(
-        #                        ind = ind,
-        #                        val = val,
-        #                    )],
-        #                    rhs = rhs,
-        #                    senses = ['E']
-        #                )
-        #            else:
-        #                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
-        #                ind.append(len(self.tracks) + index) # Objective
-        #                val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
-        #                val.append(1.0) #Objective
-        #                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))]
-        #                problem.linear_constraints.add(
-        #                    lin_expr = [cplex.SparsePair(
-        #                        ind = ind,
-        #                        val = val,
-        #                    )],
-        #                    rhs = rhs,
-        #                    senses = ['E']
-        #                )
-        #            break
-        #print('completed program generation')
+        globals()['cplex'] = __import__('cplex')
+        problem = cplex.Cplex()
+        problem.objective.set_sense(problem.objective.sense.minimize)
+        # the coverage of each event
+        names = [''] * len(self.tracks)
+        regex = re.compile('[^a-zA-Z0-9]')
+        for track in self.tracks:
+            name = regex.sub('', track)
+            names[self.tracks[track]['index']] = 'c' + name
+        problem.variables.add(names = names,
+            ub = [1.0] * len(self.tracks),
+        )
+        # the real-valued error parameter for kmer
+        problem.variables.add(names = ['e' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            lb = [-100000000 for kmer in self.lp_kmers]
+        )
+        # absolute value of the kmer error parameter
+        problem.variables.add(names = ['l' + str(index) for index, kmer in enumerate(self.lp_kmers)],
+            obj = [kmer['weight'] for index, kmer in enumerate(self.lp_kmers)]
+        )
+        print('adding constraints')
+        for index, kmer in enumerate(self.lp_kmers):
+            self.add_error_absolute_value_constraints(problem, index)
+            if kmer['type'] == 'junction':
+                ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+                ind.append(len(self.tracks) + index) # Objective
+                val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+                val.append(1.0) #Objective
+                rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
+                problem.linear_constraints.add(
+                    lin_expr = [cplex.SparsePair(
+                        ind = ind,
+                        val = val,
+                    )],
+                    rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']],
+                    senses = ['E']
+                )
+            if kmer['type'] == 'inner':
+                for track in kmer['tracks']:
+                    if c.tracks[track].svtype == 'INS':
+                        ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+                        ind.append(len(self.tracks) + index) # Objective
+                        val = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+                        val.append(1.0) #Objective
+                        rhs = [kmer['count'] - kmer['coverage'] * kmer['residue']]
+                        problem.linear_constraints.add(
+                            lin_expr = [cplex.SparsePair(
+                                ind = ind,
+                                val = val,
+                            )],
+                            rhs = rhs,
+                            senses = ['E']
+                        )
+                    else:
+                        ind = list(map(lambda track: self.tracks[track]['index'], kmer['tracks'])) # Coverage
+                        ind.append(len(self.tracks) + index) # Objective
+                        val = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks'])) #Coverage corrected for errors
+                        val.append(1.0) #Objective
+                        rhs = [kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))]
+                        problem.linear_constraints.add(
+                            lin_expr = [cplex.SparsePair(
+                                ind = ind,
+                                val = val,
+                            )],
+                            rhs = rhs,
+                            senses = ['E']
+                        )
+                    break
+        print('completed program generation')
         return problem
 
     def generate_mps_linear_program(self):
@@ -447,25 +440,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                     break
         return problem, variables
 
-    #def create_output_directories(self):
-    #    c = config.Configuration()
-    #    if not c.cgc:
-    #        map_reduce.Job.create_output_directories(self)
-
-    #def get_current_job_directory(self):
-    #    c = config.Configuration()
-    #    if c.cgc:
-    #        return os.getcwd()
-    #    return map_reduce.BaseGenotypingJob.get_current_job_directory(self)
-
-    def round_genotype(self, c, svtype):
-        if c > self.b2:
-            return (1.0, '11')
-        elif c > self.b1:
-            return (0.5, '10')
-        else:
-            return (0.0, '00')
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -494,6 +468,8 @@ class CgcInnerKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         for kmer in kmers['inner_kmers']:
+            #if len(kmers['junction_kmers']) != 0:
+            #    break
             if len(kmers['inner_kmers'][kmer]['loci']) > 3:
                 continue
             lp_kmers[kmer] = True
@@ -534,6 +510,8 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         for kmer in kmers['junction_kmers']:
+            #if len(kmers['inner_kmers']) != 0:
+            #    break
             if kmers['junction_kmers'][kmer]['source'] == 'assembly':
                 continue
             if len(kmers['junction_kmers'][kmer]['loci']) > 1:
@@ -554,7 +532,7 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class CgcCoverageCorrectingIntegerProgrammingJob(CgcInnerKmersIntegerProgrammingJob):
+class CgcCoverageCorrectingIntegerProgrammingJob(CgcIntegerProgrammingJob):
 
     _name = 'CgcCoverageCorrectingIntegerProgrammingJob'
     _category = 'genotyping'
@@ -581,40 +559,68 @@ class CgcCoverageCorrectingIntegerProgrammingJob(CgcInnerKmersIntegerProgramming
             self.tracks[track].update({'index': n, 'kmers': [], 'coverage': [], 'genotypes': []})
             n += 1
         for index, kmer in enumerate(self.lp_kmers):
+            kmer['original_count'] = kmer['count']
             for track in kmer['tracks']:
                 self.tracks[track]['kmers'].append(index)
         print(len(self.tracks), 'tracks')
         return self.tracks
 
-    def calculate_residual_coverage(self):
+    def reduce(self):
         c = config.Configuration()
-        for kmer in self.lp_kmers:
-            r = 0
-            for track in kmer['tracks']:
-                r += kmer['tracks'][track]
-            self.coverages = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
-            kmer['coverage'] = {track: np.random.normal(c.coverage, c.std) for track in kmer['tracks']}
-            #kmer['coverage'] = {track: self.coverages[random.randint(0, len(self.coverages) - 1)] for track in kmer['tracks']}
-            kmer['residue'] = sum([np.random.normal(c.coverage, c.std) for i in range(kmer['reference'] - r)])
-            #kmer['residue'] = sum([self.coverages[random.randint(0, len(self.coverages) - 1)] for i in range(kmer['reference'] - r)])
-            kmer['weight'] = 1.0
-            kmer['count'] = min(kmer['count'], sum(kmer['coverage'].values()) + kmer['residue'])
-        self.calculate_error_weights()
+        self.index_kmers()
+        self.index_tracks()
+        helper = CgcCoverageCorrectingIntegerProgrammingJob.LpHelper()
+        helper.tracks = self.tracks
+        helper.lp_kmers = self.lp_kmers
+        helper.num_iterations = 10
+        helper.execute()
 
-    def solve(self):
-        c = config.Configuration()
-        self.num_iterations = 10
-        for iteration in range(self.num_iterations):
+    # ============================================================================================================================ #
+    # Helper for running several LPs
+    # ============================================================================================================================ #
+
+    class LpHelper(CgcIntegerProgrammingJob):
+
+        _name = 'CgcCoverageCorrectingIntegerProgrammingJob'
+        _category = 'genotyping'
+        _previous_job = CgcCounterJob
+
+        def load_inputs(self):
+            iterations = {}
+            self.resume_from_reduce = False
+            for iteration in range(self.num_iterations):
+                iterations[iteration] = True
+            self.round_robin(iterations)
+
+        def transform(self, track, track_name):
+            print(green(track_name))
             self.calculate_residual_coverage()
+            self.solve()
+            exit()
+
+        def calculate_residual_coverage(self):
+            c = config.Configuration()
+            for kmer in self.lp_kmers:
+                r = 0
+                for track in kmer['tracks']:
+                    r += kmer['tracks'][track]
+                kmer['coverage'] = {track: c.coverage for track in kmer['tracks']} if self.index == 0 else {track: np.random.normal(c.coverage, c.std) for track in kmer['tracks']}
+                kmer['residue'] = c.coverage * (kmer['reference'] - r) if self.index == 0 else sum([np.random.normal(c.coverage, c.std) for i in range(kmer['reference'] - r)])
+                kmer['weight'] = 1.0
+                kmer['count'] = min(kmer['original_count'], sum([kmer['coverage'][track] * kmer['tracks'][track] for track in kmer['tracks']]) + kmer['residue'])
+            self.calculate_error_weights()
+
+        def solve(self):
+            c = config.Configuration()
             if c.solver == 'coin':
                 problem, variables = self.generate_mps_linear_program()
-                problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin_' + str(iteration) + '.lp'))
-                problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin_' + str(iteration) + '.mps'))
-                command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin_' + str(iteration) + '.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution.mps')
+                problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin_' + str(self.index) + '.lp'))
+                problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin_' + str(self.index) + '.mps'))
+                command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin_' + str(self.index) + '.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution_' + str(self.index) + '.mps')
                 output = subprocess.call(command, shell = True)
-                self.import_lp_values()
-                with open(os.path.join(self.get_current_job_directory(), 'solution_coin.json'), 'w') as json_file:
-                    json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
+                self.import_lp_values('solution_' + str(self.index) + '.mps')
+                #with open(os.path.join(self.get_current_job_directory(), 'solution_coin.json'), 'w') as json_file:
+                #    json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
             if c.solver == 'cplex':
                 problem = self.generate_linear_program()
                 problem.solve()
@@ -622,120 +628,128 @@ class CgcCoverageCorrectingIntegerProgrammingJob(CgcInnerKmersIntegerProgramming
                 self.solution = problem.solution.get_values()
                 with open(os.path.join(self.get_current_job_directory(), 'solution_cplex.json'), 'w') as json_file:
                     json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
-            self.export_solution(iteration)
-        return self.tracks
+            self.export_solution()
 
-    def export_solution(self, iteration):
-        c = config.Configuration()
-        self.errors = self.solution[len(self.tracks):]
-        for track in self.tracks:
-            index = self.tracks[track]['index']
-            self.tracks[track]['coverage'].append(self.solution[index])
-            self.tracks[track]['lp_kmers'] = []
-        for index, kmer in enumerate(self.lp_kmers):
-            for track in kmer['tracks']:
-                self.tracks[track]['lp_kmers'].append(kmer)
-        self.find_rounding_break_points()
-        print('Rounding', len(self.tracks), 'tracks')
-        name = 'merge_iteration_' + str(iteration) + '.bed'
-        with open(os.path.join(self.get_current_job_directory(), name), 'w') as bed_file:
-            bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tSCORE\tID\n')
+        def generate_mps_linear_program(self):
+            c = config.Configuration()
+            problem = LpProblem("Nebula", LpMinimize)
+            i = 0
+            names = [''] * len(self.tracks)
+            variables = [None] * (len(self.tracks) + 2 * len(self.lp_kmers))
+            regex = re.compile('[^a-zA-Z0-9]')
             for track in self.tracks:
-                t = c.tracks[track]
+                name = regex.sub('_', track)
+                variables[self.tracks[track]['index']] = LpVariable('c' + name, 0, 1)
+                problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintLE, 'c' + name + '_ub', 1.0)
+                problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintGE, 'c' + name + '_lb', 0.0)
+                i += 1
+            # error variables
+            for index, kmer in enumerate(self.lp_kmers):
+                variables[i] = LpVariable('e' + str(index))
+                i += 1
+            # absolute value of the error variables
+            for index, kmer in enumerate(self.lp_kmers):
+                variables[i] = LpVariable('l' + str(index))
+                i += 1
+            expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], kmer['weight']) for index, kmer in enumerate(self.lp_kmers)])
+            problem += expr
+            for i, kmer in enumerate(self.lp_kmers):
+                self.add_mps_error_absolute_value_constraints(problem, variables, i)
+                if kmer['type'] == 'junction':
+                    indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                    indices.append(len(self.tracks) + i)
+                    coeffs = list(map(lambda track: kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                    coeffs.append(1.0)
+                    rhs = kmer['count'] - kmer['residue']
+                    expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                    problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+                if kmer['type'] == 'inner':
+                    for track in kmer['tracks']:
+                        if c.tracks[track].svtype == 'INS':
+                            indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                            indices.append(len(self.tracks) + i)
+                            coeffs = list(map(lambda track: kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                            coeffs.append(1.0)
+                            rhs = kmer['count'] - kmer['residue']
+                            expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                            problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+                        if c.tracks[track].svtype == 'DEL':
+                            indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
+                            indices.append(len(self.tracks) + i)
+                            coeffs = list(map(lambda track: -1 * kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                            coeffs.append(1.0)
+                            rhs = kmer['count'] - kmer['residue'] - sum(map(lambda track: kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                            expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
+                            problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
+                        break
+            return problem, variables
+
+        def export_solution(self):
+            c = config.Configuration()
+            self.errors = self.solution[len(self.tracks):]
+            for track in self.tracks:
                 index = self.tracks[track]['index']
-                g = self.round_genotype(self.solution[index], t.svtype)
-                self.tracks[track]['genotypes'].append(g[1])
-                self.calculate_genotype_score(self.tracks[track])
-                bed_file.write(t.chrom + '\t' +
-                    str(t.begin) + '\t' +
-                    str(t.end) + '\t' +
-                    str(self.tracks[track]['lp_genotype']) + '\t' +
-                    str(self.solution[index]) + '\t' + 
-                    str(self.tracks[track]['score']) + '\t' +
-                    str(t.id) + '\n')
-        self.export_kmers_for_iteration(iteration)
-        if iteration == self.num_iterations - 1:
-            for track in self.tracks:
-                visualizer.violin([1] * self.num_iterations, self.tracks[track]['coverage'], track, self.get_current_job_directory(), track, 'LP')
+            self.find_rounding_break_points()
+            print('Rounding', len(self.tracks), 'tracks')
+            name = 'merge_iteration_' + str(self.index) + '.bed'
+            with open(os.path.join(self.get_current_job_directory(), name), 'w') as bed_file:
+                bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+                for track in self.tracks:
+                    t = c.tracks[track]
+                    index = self.tracks[track]['index']
+                    g = self.round_genotype(self.solution[index], t.svtype)
+                    bed_file.write(t.chrom + '\t' +
+                        str(t.begin) + '\t' +
+                        str(t.end) + '\t' +
+                        str(g[1]) + '\t' +
+                        str(self.solution[index]) + '\t' + 
+                        str(t.id) + '\n')
+            self.export_kmers()
 
-    def export_kmers_for_iteration(self, iteration):
-        tracks = {}
-        for index, kmer in enumerate(self.lp_kmers):
-            for track in kmer['tracks']:
-                if not track in tracks:
-                    tracks[track] = {}
-                tracks[track][kmer['kmer']] = kmer
-        for track in tracks:
-            path = os.path.join(self.get_current_job_directory(), track)
-            if iteration == 0:
+        def export_kmers(self):
+            tracks = {}
+            for index, kmer in enumerate(self.lp_kmers):
+                for track in kmer['tracks']:
+                    if not track in tracks:
+                        tracks[track] = {}
+                    tracks[track][kmer['kmer']] = kmer
+            for track in tracks:
+                path = os.path.join(self.get_current_job_directory(), track)
                 if not os.path.exists(path):
                     os.makedirs(path)
-            with open(os.path.join(path, 'iteration_' + str(iteration) + '.json'), 'w') as json_file:
-                json.dump(tracks[track], json_file, indent = 4)
+                with open(os.path.join(path, 'iteration_' + str(self.index) + '.json'), 'w') as json_file:
+                    json.dump(tracks[track], json_file, indent = 4)
 
-    def calculate_genotype_score(self, track):
-        s = {}
-        for g in track['genotypes']:
-            if not g in s:
-                s[g] = 0
-            s[g] += 1
-        m = max(s, key = s.get)
-        track['score'] = float(s[m]) / len(track['genotypes'])
-        track['lp_genotype'] = m
+        def reduce(self):
+            c = config.Configuration()
+            for track in self.tracks:
+                self.tracks[track]['genotypes'] = []
+            for iteration in range(self.num_iterations):
+                path = os.path.join(self.get_current_job_directory(), 'merge_iteration_' + str(iteration) + '.bed')
+                tracks = bed.load_tracks_from_file_as_dict(path)
+                for track in tracks:
+                    self.tracks[track]['genotypes'].append(tracks[track].lp_genotype)
+            with open(os.path.join(self.get_current_job_directory(), 'merge.bed'), 'w') as bed_file:
+                bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tSCORE\tID\n')
+                for track in self.tracks:
+                    t = c.tracks[track]
+                    self.calculate_genotype_score(self.tracks[track])
+                    bed_file.write(t.chrom + '\t' +
+                        str(t.begin) + '\t' +
+                        str(t.end) + '\t' +
+                        str(self.tracks[track]['lp_genotype']) + '\t' +
+                        str(self.tracks[track]['score']) + '\t' +
+                        str(t.id) + '\n')
 
-    def generate_mps_linear_program(self):
-        c = config.Configuration()
-        problem = LpProblem("Nebula", LpMinimize)
-        i = 0
-        names = [''] * len(self.tracks)
-        variables = [None] * (len(self.tracks) + 2 * len(self.lp_kmers))
-        regex = re.compile('[^a-zA-Z0-9]')
-        for track in self.tracks:
-            name = regex.sub('_', track)
-            variables[self.tracks[track]['index']] = LpVariable('c' + name, 0, 1)
-            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintLE, 'c' + name + '_ub', 1.0)
-            problem += LpConstraint(LpAffineExpression([(variables[self.tracks[track]['index']], 1.0)]), LpConstraintGE, 'c' + name + '_lb', 0.0)
-            i += 1
-        # error variables
-        for index, kmer in enumerate(self.lp_kmers):
-            variables[i] = LpVariable('e' + str(index))
-            i += 1
-        # absolute value of the error variables
-        for index, kmer in enumerate(self.lp_kmers):
-            variables[i] = LpVariable('l' + str(index))
-            i += 1
-        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], kmer['weight']) for index, kmer in enumerate(self.lp_kmers)])
-        problem += expr
-        for i, kmer in enumerate(self.lp_kmers):
-            self.add_mps_error_absolute_value_constraints(problem, variables, i)
-            if kmer['type'] == 'junction':
-                indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                indices.append(len(self.tracks) + i)
-                coeffs = list(map(lambda track: kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
-                coeffs.append(1.0)
-                rhs = kmer['count'] - kmer['residue']
-                expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
-                problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
-            if kmer['type'] == 'inner':
-                for track in kmer['tracks']:
-                    if c.tracks[track].svtype == 'INS':
-                        indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                        indices.append(len(self.tracks) + i)
-                        coeffs = list(map(lambda track: kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
-                        coeffs.append(1.0)
-                        rhs = kmer['count'] - kmer['residue']
-                        expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
-                        problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
-                    if c.tracks[track].svtype == 'DEL':
-                        indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
-                        indices.append(len(self.tracks) + i)
-                        coeffs = list(map(lambda track: -1 * kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
-                        coeffs.append(1.0)
-                        rhs = kmer['count'] - kmer['residue'] - sum(map(lambda track: kmer['coverage'][track] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
-                        expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
-                        problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
-                    break
-        return problem, variables
+        def calculate_genotype_score(self, track):
+            s = {}
+            for g in track['genotypes']:
+                if not g in s:
+                    s[g] = 0
+                s[g] += 1
+            m = max(s, key = s.get)
+            track['score'] = float(s[m]) / len(track['genotypes'])
+            track['lp_genotype'] = m
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -813,7 +827,6 @@ class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
             for track in self.tracks:
                 bed_file.write(self.tracks[track].serialize())
 
-
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
@@ -824,46 +837,10 @@ class ExportGenotypingKmersJob(map_reduce.BaseGenotypingJob):
         self._previous_job = CgcCounterJob
         with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
             kmers = json.load(json_file)
-        self.kmers['half_mers'] = {}
         self.kmers['depth_kmers'] = kmers['depth_kmers']
-        self.kmers['gapped_kmers'] = {}
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
         exit()
-
-    #def load_inputs(self):
-    #    c = config.Configuration()
-    #    self.tracks = {}
-    #    tracks = bed.load_tracks_from_file_as_dict(os.path.join(self.get_previous_job_directory(), 'merge.bed'))
-    #    for track in tracks:
-    #        if float(tracks[track].lp_value) < 0.05:
-    #            print(track)
-    #            self.tracks[track] = True
-    #    self._previous_job = CgcCounterJob
-    #    with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
-    #        self.kmers = json.load(json_file)
-    #    self.half_mers = {kmer: self.kmers['half_mers'][kmer] for kmer in self.kmers['half_mers'] if not self.has_track_overlap(self.kmers['half_mers'][kmer])}
-    #    self.depth_kmers = self.kmers['depth_kmers']
-    #    self.inner_kmers = {kmer: self.kmers['inner_kmers'][kmer] for kmer in self.kmers['inner_kmers'] if not self.has_track_overlap(self.kmers['inner_kmers'][kmer])}
-    #    self.gapped_kmers = {kmer: self.kmers['gapped_kmers'][kmer] for kmer in self.kmers['gapped_kmers'] if not self.has_track_overlap(self.kmers['gapped_kmers'][kmer])}
-    #    print(len(self.kmers['junction_kmers']))
-    #    self.junction_kmers = {kmer: self.kmers['junction_kmers'][kmer] for kmer in self.kmers['junction_kmers'] if not self.has_track_overlap(self.kmers['junction_kmers'][kmer])}
-    #    print(len(self.junction_kmers))
-    #    with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-    #        kmers = {}
-    #        kmers['junction_kmers'] = self.junction_kmers
-    #        kmers['gapped_kmers'] = self.gapped_kmers
-    #        kmers['inner_kmers'] = self.inner_kmers
-    #        kmers['depth_kmers'] = self.depth_kmers
-    #        kmers['half_mers'] = self.half_mers
-    #        json.dump(kmers, json_file, indent = 4)
-    #    exit()
-
-    def has_track_overlap(self, a):
-        for t in a['tracks']:
-            if t in self.tracks:
-                return True
-        return False
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -896,10 +873,11 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.paths = c.bed
+        #self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/genotyping/CutlessCandy/CgcIntegerProgrammingJobOld/chr17.bed']
+        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob/merge.bed' for i in range(1000, 1407)]
         self.tracks = {}
         self.clusters = []
-        for index, path in enumerate(c.bed):
+        for index, path in enumerate(self.paths):
             print(path)
             tracks = bed.load_tracks_from_file_as_dict(path, parse_header = True)
             for track in tracks:
@@ -958,10 +936,20 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                 k += 1
             p = c
         self.clusters.append(k)
-        return min(3, k)
+        return self.find_num_unique_lp_values(features)
+        if k >= 3:
+            return 3
+        min_lp = np.amin(features)
+        max_lp = np.amax(features)
+        median_lp = np.median(features)
+        k = 0
+        if min_lp <= 0.1:
+            k += 1
+        if max_lp >= 0.8:
+            k += 1
 
     def kmeans(self, track, track_name, features):
-        #print(blue('clustering', track_name))
+        print(blue('clustering', track_name))
         K = self.find_num_clusters(features)
         if K == 1:
             m = np.argmax(features)
@@ -973,9 +961,11 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         error = 0
         m = 0
         r = 0
+        n = 0
         #print('round 0 centroids:', centroids)
         while True:
             m += 1
+            n += 1
             if m == 100 or m == -1 or (old_centroids == centroids).all():
                 if m == -1:
                     print(red('empty cluster, skipping round'))
@@ -1028,12 +1018,22 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         g = []
         if K == 3:
             g = ['00', '10', '11']
-        # this part is highly heuristic
-        else:
-            if min_lp > 0.2:
-                g = ['10', '11']
+        if K == 2:
+            if max_lp > 0.75:
+                if min_lp > 0.1:
+                    g = ['10', '11']
+                else:
+                    g = ['00', '11']
             else:
                 g = ['00', '10']
+        if K == 1:
+            if max_lp > 0.75:
+                g = ['11']
+            elif max_lp > 0.25:
+                g = ['10']
+            else:
+                g = ['00']
+        # this part is highly heuristic
         #print(centroids)
         genotypes = []
         norms = np.array([np.linalg.norm(centroid) for centroid in centroids])
@@ -1052,15 +1052,6 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         #print(zip(clusters, genotypes))
         return genotypes
 
-    #def find_minimum_nudge(self, features, centroids, clusters):
-    #    m = 10000
-    #    for i in range(len(features)):
-    #        c = centroids[clusters[i]]
-    #        d = self.distance(features[i], c)
-    #        n = [self.distance(features[i], centroid) - d for centroid in centroids if centroid != c]
-    #        m = min(m, min(n))
-    #    return m
-
     def plot_clusters(self, track, features, clusters):
         x = []
         y = []
@@ -1068,6 +1059,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
             x.append(clusters[i])
             y.append(features[i][0])
         try:
+            visualizer.histogram(y, 'kmeans_' + track, self.get_current_job_directory(), 'cluster', 'value', step = 0.05)
             visualizer.violin(x, y, 'kmeans_' + track, self.get_current_job_directory(), 'cluster', 'value')
         except Exception as e:
             print(yellow(e))
@@ -1089,4 +1081,54 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                         continue
                     t = track[path]
                     files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['id'] + '\t' + t['lp_value'] + '\n')
+        self.simulation_analysis()
+        self.gather_genotype_statistics()
+
+    def simulation_analysis(self):
+        files = {}
+        for path in self.paths:
+            name = path.split('/')[-1]
+            files[path] = open(os.path.join(os.path.split(path)[0], 'cluster.bed'), 'w')
+            files[path].write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+        for batch in self.load_output():
+            for track in batch:
+                track = json.load(open(batch[track]))
+                for path in track:
+                    if path == 'error':
+                        continue
+                    t = track[path]
+                    files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['lp_value'] + '\t' + t['id'] + '\n')
+        self.tracks = {}
+
+    def tabulate(self, name, cwd, i):
+        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/tabulate.sh', name + '.bed'], cwd = cwd)
+        p.wait()
+        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', '/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/CutlessCandyChr17/{}/Simulation'.format(str(i))], cwd = cwd)
+        p.wait()
+        for p in ['00', '10', '11']:
+            for q in ['00', '10', '11']:
+                s = p + '_as_' + q
+                tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, s + '.bed'))
+                for track in tracks:
+                    self.tracks[track][name][s][0] += 1
+                    self.tracks[track][name][s][1].append(i)
+
+    def gather_genotype_statistics(self):
+        self.tracks = {}
+        for i in range(1000, 1100):
+            cwd = '/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob'
+            print(cwd)
+            if i == 1000:
+                tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, 'merge.bed'))
+                for track in tracks:
+                    self.tracks[track] = {'merge': {}, 'cluster': {}}
+                for p in ['00', '10', '11']:
+                    for q in ['00', '10', '11']:
+                        for track in self.tracks:
+                            self.tracks[track]['merge'][p + '_as_' + q] = [0, []]
+                            self.tracks[track]['cluster'][p + '_as_' + q] = [0, []]
+            self.tabulate('merge', cwd, i)
+            self.tabulate('cluster', cwd, i)
+        with open(os.path.join(self.get_current_job_directory(), 'statistics.json'), 'w') as json_file:
+            json.dump(self.tracks, json_file, indent = 4)
 

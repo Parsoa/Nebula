@@ -34,6 +34,8 @@ def extract_chromosome(chromosome):
         return chroms[chromosome]
     else:
         print(red('chromosome not found'), chromosome)
+        if whole_genome_extracted:
+            return None
     c = config.Configuration()
     sequence = ''
     print(yellow(c.reference))

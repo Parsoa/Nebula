@@ -71,12 +71,12 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.index_kmers()
         self.index_tracks()
         self.calculate_residual_coverage()
-        print('exporting kmers...')
-        with open(os.path.join(self.get_current_job_directory(), 'lp_kmers.json'), 'w') as json_file:
-            json.dump(self.lp_kmers, json_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, indent = 4)
-        print('generating linear program...')
+        #print('exporting kmers...')
+        #with open(os.path.join(self.get_current_job_directory(), 'lp_kmers.json'), 'w') as json_file:
+        #    json.dump(self.lp_kmers, json_file, indent = 4, sort_keys = True)
+        #with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
+        #    json.dump(self.tracks, json_file, indent = 4)
+        #print('generating linear program...')
         self.solve()
 
     def index_kmers(self):
@@ -173,7 +173,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         return self.tracks
 
     # COIN doesn't supply values for certain variables
-    def import_lp_values(self):
+    def import_lp_values(self, path = 'solution.mps'):
         c = config.Configuration()
         self.solution = [0.0] * (len(self.tracks) + 2 * len(self.lp_kmers))
         var_index = {}
@@ -181,7 +181,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         for track in self.tracks:
             name = regex.sub('_', track)
             var_index[name] = self.tracks[track]['index']
-        with open(os.path.join(self.get_current_job_directory(), 'solution.mps'), 'r') as f:
+        with open(os.path.join(self.get_current_job_directory(), path), 'r') as f:
             status = f.readline()
             objective = f.readline()
             line = f.readline()
@@ -222,6 +222,19 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                     str(g[1]) + '\t' +
                     str(self.solution[index]) + '\t' + 
                     str(t.id) + '\n')
+        self.export_kmers()
+
+    def export_kmers(self):
+        tracks = {}
+        for index, kmer in enumerate(self.lp_kmers):
+            for track in kmer['tracks']:
+                if not track in tracks:
+                    tracks[track] = {}
+                tracks[track][kmer['kmer']] = kmer
+        for track in tracks:
+            path = os.path.join(self.get_current_job_directory(), track + '.json')
+            with open(path, 'w') as json_file:
+                json.dump(tracks[track], json_file, indent = 4)
 
     def find_rounding_break_points(self):
         c = config.Configuration()
@@ -269,14 +282,10 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def round_genotype(self, c, svtype):
         if c > self.b2:
-            if svtype == 'DEL':
-                return (1.0, '00')
             return (1.0, '11')
         elif c > self.b1:
             return (0.5, '10')
         else:
-            if svtype == 'DEL':
-                return (0.0, '11')
             return (0.0, '00')
 
     def verify_genotypes(self):

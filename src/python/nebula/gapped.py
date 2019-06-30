@@ -62,7 +62,7 @@ class ExtractGappedKmersJob(map_reduce.Job):
         self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
 
     def transform(self, track, track_name):
-        print(cyan(track_name))
+        print(green(track_name))
         c = config.Configuration()
         gapped_kmers = self.extract_gapped_kmers(track)
         path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
@@ -124,7 +124,7 @@ class UniqueGappedKmersJob(map_reduce.Job):
         self.gapped_kmers = {} 
         tracks = self.load_previous_job_results()
         for track in tracks:
-            print(cyan(track))
+            print(green(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
                 gapped_kmers = json.load(json_file)
                 for kmer in gapped_kmers:
