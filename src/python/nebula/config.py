@@ -68,13 +68,13 @@ def parse_args():
     # std of the kmer normal distribution
     parser.add_argument("--std", default = 15, type = int)
     # the seed to use for random number generation
-    parser.add_argument("--seed", type = int)
+    parser.add_argument("--seed", type = int, default = 0)
     # triggers the debug mode
     parser.add_argument("--debug", action = 'store_true')
     # set of exons for the current reference
     parser.add_argument("--exons", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/Exons/hg38.exons.filtered.bed')
     # path to a FASTQ files, for jobs that need one as input
-    parser.add_argument("--fastq")
+    parser.add_argument("--fastq", nargs = '*', default = None)
     # generic flag for passing input arguments
     parser.add_argument("--input")
     # a JSON file containing the list of kmers to count
@@ -118,9 +118,9 @@ def parse_args():
     # description of this simulation 
     parser.add_argument("--description")
     # rate of SNPs in simulation 
-    parser.add_argument("--mutation_rate", type = float, default = 0.0)
+    parser.add_argument("--mutation_rate", type = float, default = 0.001)
     # rate of sequencing error in simulation
-    parser.add_argument("--sequencing_error_rate", type = float, default = 0.0)
+    parser.add_argument("--sequencing_error_rate", type = float, default = 0.001)
     # whether to do junction rounding or not 
     parser.add_argument("--rounding", action = 'store_true')
     #

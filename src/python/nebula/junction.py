@@ -131,36 +131,38 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         junction_kmers = {}
         slack = 100
         stride = c.ksize
-        #if not c.simulation:
-        #    track = track.lift()
-        if track.svtype == 'DEL':
-            reads = chain(self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack), self.alignments.fetch(track.chrom, track.end - slack, track.end + slack))
-        if track.svtype == 'INS':
-            reads = self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack)
+        # may file to fine associated contig in mapping
+        try:
+            if track.svtype == 'DEL':
+                reads = chain(self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack), self.alignments.fetch(track.chrom, track.end - slack, track.end + slack))
+            if track.svtype == 'INS':
+                reads = self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack)
+        except:
+            return {}
         n = 0
-        strid = c.ksize
         for read in reads:
             n += 1
             if read.query_alignment_length != len(read.query_sequence): # not everything was mapped
                 seq = read.query_sequence
                 if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
-                    cigar = read.cigartuples
+                    cigartuples = read.cigartuples
                     clips = []
                     offset = 0
-                    for c in cigar:
-                        if c[0] == 4: #soft clip
-                            clips.append((offset, offset + c[1]))
-                        offset += c[1]
+                    for cigar in cigartuples:
+                        if cigar[0] == 4: #soft clip
+                            clips.append((offset, offset + cigar[1]))
+                        offset += cigar[1]
                     index = 0
                     # Should try and correct for sequencing errors in masks by doing a consensus
-                    for kmer in stream_kmers(stride, False, True, seq):
-                        if self.is_clipped((index, index + stride), clips):
+                    for kmer in stream_kmers(c.ksize, True, True, seq):
+                        if self.is_clipped((index, index + c.ksize), clips):
+                            locus = 'junction_' + track.id
                             if not kmer in junction_kmers:
                                 junction_kmers[kmer] = {
                                     'count': 0,
                                     'source': 'mapping',
                                     'loci': {
-                                        'junction_' + track.id: {
+                                        locus: {
                                             'masks': {
                                                 'left': None,
                                                 'right': None
@@ -168,10 +170,10 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                                         }
                                     }
                                 }
-                            if len(seq[index - stride: index]) == stride:
-                                junction_kmers[kmer]['loci']['junction_' + track.id]['masks']['left'] = seq[index - stride: index]
-                            if len(seq[index + stride: index + stride + stride]) == stride:
-                                junction_kmers[kmer]['loci']['junction_' + track.id]['masks']['right'] = seq[index + stride: index + stride + stride]
+                            if len(seq[index - c.ksize: index]) == c.ksize:
+                                junction_kmers[kmer]['loci'][locus]['masks']['left'] = seq[index - c.ksize: index]
+                            if len(seq[index + c.ksize: index + c.ksize + c.ksize]) == c.ksize:
+                                junction_kmers[kmer]['loci'][locus]['masks']['right'] = seq[index + c.ksize: index + c.ksize + c.ksize]
                             junction_kmers[kmer]['count'] += 1
                         index += 1
         _junction_kmers = {} 
@@ -195,7 +197,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueJunctionKmersJob(gapped.UniqueGappedKmersJob):
+class UniqueJunctionKmersJob(map_reduce.Job):
 
     _name = 'UniqueJunctionKmersJob'
     _category = 'preprocessing'
@@ -212,22 +214,32 @@ class UniqueJunctionKmersJob(gapped.UniqueGappedKmersJob):
 
     def load_inputs(self):
         c = config.Configuration()
-        self.gapped_kmers = {} 
+        self.junction_kmers = {} 
         tracks = self.load_previous_job_results()
         for track in tracks:
-            print(cyan(track))
             with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
-                gapped_kmers = json.load(json_file)
-                for kmer in gapped_kmers:
+                junction_kmers = json.load(json_file)
+                for kmer in junction_kmers:
                     k = canonicalize(kmer)
-                    if not k in self.gapped_kmers:
-                        self.gapped_kmers[k] = gapped_kmers[kmer]
-                        self.gapped_kmers[k]['tracks'] = {}
-                    if not track in self.gapped_kmers[k]['tracks']:
-                        self.gapped_kmers[k]['tracks'][track] = 0
-                        self.gapped_kmers[k]['loci'].update(gapped_kmers[kmer]['loci'])
-                    self.gapped_kmers[k]['tracks'][track] += 1
+                    if not k in self.junction_kmers:
+                        self.junction_kmers[k] = copy.deepcopy(junction_kmers[kmer])
+                        self.junction_kmers[k]['loci'] = {}
+                        self.junction_kmers[k]['tracks'] = {}
+                    if not track in self.junction_kmers[k]['tracks']:
+                        self.junction_kmers[k]['loci'].update(junction_kmers[kmer]['loci'])
+                        self.junction_kmers[k]['tracks'][track] = 0
+                    self.junction_kmers[k]['tracks'][track] += 1
         self.round_robin(tracks)
+
+    def transform(self, track, track_name):
+        c = config.Configuration()
+        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
+            junction_kmers = json.load(json_file)
+        junction_kmers = {canonicalize(kmer): self.junction_kmers[canonicalize(kmer)] for kmer in junction_kmers if 'N' not in kmer}
+        path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
+        with open(path, 'w') as json_file:
+            json.dump(junction_kmers, json_file, sort_keys = True, indent = 4)
+        return track_name + '.json'
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

@@ -52,8 +52,8 @@ class Job(object):
     def execute(self):
         c = config.Configuration()
         self.pre_process()
-        self.create_output_directories()
         self.find_thread_count()
+        self.create_output_directories()
         self.prepare()
         self.load_inputs()
         if not self.resume_from_reduce: 
@@ -151,7 +151,6 @@ class Job(object):
     def transform(self, track, track_name):
         return track
 
-    # This MUST call exit()
     def output_batch(self, batch):
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(batch, json_file, sort_keys = True, indent = 4)

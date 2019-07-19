@@ -30,10 +30,8 @@ print = pretty_print
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# Required options:
-# --bed: set of events to genotype
-# --diploid: haploidity of the simulation
-# --simulation n: where n is the coverage of the simulation
+# Required arguments:
+# --seed: random seed to use
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -58,6 +56,7 @@ class Simulation(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
+        random.seed(c.seed)
         self.tracks = self.load_structural_variations()
         self.assign_event_zygosities()
         self.export_bed(self.tracks, 'all')
@@ -80,44 +79,33 @@ class Simulation(map_reduce.Job):
     def load_structural_variations(self):
         c = config.Configuration()
         tracks = [c.tracks[track] for track in c.tracks]
-        return self.filter_overlapping_intervals(\
+        return self.filter_overlapping_tracks(\
                     sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
                 )
 
-    def get_sv_type(self):
-        c = config.Configuration()
-        bed_file_name = c.bed.split('/')[-1]
-        if bed_file_name.find('DEL') != -1:
-            return 'DEL'
-        if bed_file_name.find('INV') != -1:
-            return 'INV'
-        if bed_file_name.find('ALU') != -1:
-            return 'ALU'
-        return 'ALL'
-
-    def filter_overlapping_intervals(self, intervals):
+    def filter_overlapping_tracks(self, tracks):
         remove = []
         i = 0
-        while i < len(intervals):
-            for j in range(i + 1, len(intervals)):
+        while i < len(tracks):
+            for j in range(i + 1, len(tracks)):
                 # j is contained inside i
-                if intervals[j].chrom != intervals[i].chrom:
+                if tracks[j].chrom != tracks[i].chrom:
                     i = j
                     break
-                if intervals[j].begin <= intervals[i].end:
+                if tracks[j].begin <= tracks[i].end:
                     remove.append(j)
-                    print(red(str(intervals[j])), 'overlaps', blue(str(intervals[i])))
+                    print(red(str(tracks[j])), 'overlaps', blue(str(tracks[i])))
                     continue
                 else:
                     i = j
                     break
-            if i == len(intervals) - 1:
+            if i == len(tracks) - 1:
                 break
         n = 0
         for index in sorted(remove):
-            intervals.pop(index - n)
+            tracks.pop(index - n)
             n = n + 1
-        return intervals
+        return tracks
 
     def assign_event_zygosities(self):
         c = config.Configuration()
@@ -144,7 +132,7 @@ class Simulation(map_reduce.Job):
                     else:
                         self.absent.append(track)
                 else:
-                    r = random.randint(0, 1)
+                    r = random.randint(0, 2)
                     if r == 2:
                         self.absent.append(track)
                         track.add_field('genotype', '00')
@@ -165,7 +153,9 @@ class Simulation(map_reduce.Job):
     def export_bed(self, tracks, name):
         print('Exporting BED file:', green(name + '.bed'))
         with open(os.path.join(self.get_current_job_directory(), name + '.bed'), 'w') as bed_file:
-            for track in tracks:
+            for index, track in enumerate(tracks):
+                if index == 0:
+                    bed_file.write(track.header())
                 bed_file.write(track.serialize()) 
 
     def transform(self, seq, chrom):
@@ -226,12 +216,11 @@ class Simulation(map_reduce.Job):
             s = self.chroms[chrom][previous:track.begin]
             seq += s
             if track.svtype == 'ALU':
-                seq += self.chroms[chrom][track.begin]
-                print('Adding sequence')
                 seq += 'GCCGGGCGTGGTGGCTTACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGACGGGTGGATCACGAGGTCAGCAGATGGAGACCATCCTGGCTAACACGGTGAAACCCCGTCTCTACTAAAAATGCAAAAAAATTAGCCGGGTGTGGTGGTGGGCGCCTGTAGTCCCAGCTACTCAGGAGGCTGAGGCAGGAGAATGGCATGAACCTGGGAGGCGGAGCTTGCAGTGAGCCGAGATCATGTCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCGTCTCAAAAAAAAAAAGAAAAAAA'
             if track.svtype == 'INS':
-                seq += self.chroms[chrom][track.begin]
-                seq += track.seq
+                seq += track.seq.upper()
+            if track.svtype == 'INV':
+                seq += reverse_complement(self.chroms[chrom][track.begin: track.end])
             previous = track.end
         seq += self.chroms[chrom][previous:]
         return seq
@@ -240,7 +229,7 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         FNULL = open(os.devnull, 'w')
         print('Generating FASTQ files:', green(name + '.1.fq'), green(name + '.2.fq'))
-        num_reads = len(seq) * c.simulation / 100
+        num_reads = len(seq) * c.coverage / 100
         fasta = os.path.join(self.get_current_job_directory(), name + '.fa')
         fastq_1 = os.path.join(self.get_current_job_directory(), name + '.1.fq')
         fastq_2 = os.path.join(self.get_current_job_directory(), name + '.2.fq')
@@ -252,7 +241,7 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         self.export_reference_genome()
         #self.export_reference_jellyfish_table()
-        self.merge_fastq_files()
+        #self.merge_fastq_files()
 
     def export_reference_genome(self):
         c = config.Configuration()
@@ -281,24 +270,16 @@ class Simulation(map_reduce.Job):
         FNULL = open(os.devnull, 'w')
         print('Mixing FASTQ files...')
         command = 'cat '
-        if c.diploid:
-            command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
-            command += ' > '
-            command += os.path.join(self.get_current_job_directory(), 'test.1.fq')
-            print(command)
-            #output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
-            command = 'cat '
-            command += os.path.join(self.get_current_job_directory(), 'chr*.2.fq')
-            command += ' > '
-            command += os.path.join(self.get_current_job_directory(), 'test.2.fq')
-            print(command)
-            #output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
-        else:
-            command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
-            command += ' > '
-            command += os.path.join(self.get_current_job_directory(), 'test.fq')
-            print(command)
-            output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+        command += os.path.join(self.get_current_job_directory(), 'chr*.1.fq')
+        command += ' > '
+        command += os.path.join(self.get_current_job_directory(), 'strand.1.fq')
+        print(command)
+        #output = subprocess.call(command, shell = True, stdout = FNULL, stderr = subprocess.STDOUT)
+        command = 'cat '
+        command += os.path.join(self.get_current_job_directory(), 'chr*.2.fq')
+        command += ' > '
+        command += os.path.join(self.get_current_job_directory(), 'strand.2.fq')
+        print(command)
 
     def export_fastq_jellyfish_table(self, channel, *args):
         c = config.Configuration()

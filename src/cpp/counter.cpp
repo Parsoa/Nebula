@@ -24,8 +24,6 @@ using namespace std ;
 
 int JOB = 0 ;
 bool DEBUG = false ;
-uint64_t MASK_Y = (uint64_t) 3 << 62 ;
-uint64_t MASK_X = (uint64_t) 3 << 46 ;
 
 #define MASK 6
 
@@ -145,6 +143,9 @@ string decode_base(uint64_t base) {
     return "N" ;
 }
 
+uint64_t MASK_Y = (uint64_t) 3 << 62 ;
+uint64_t MASK_X = (uint64_t) 3 << 46 ;
+
 bool is_subsequence(uint64_t x, uint64_t y) {
     x = x >> 8 ;
     //cout << "^ " << decode_kmer(y) << endl ;
@@ -154,7 +155,6 @@ bool is_subsequence(uint64_t x, uint64_t y) {
     int j = 46 ;
     int m = 0 ;
     int n = 0 ;
-    int u = 0 ;
     for (int i = 62; i >= 0 && j >= 0; i -= 2) {
         if ((x & mask_x) >> j == (y & mask_y) >> i) {
             //cout << "(^" << decode_base((y & mask_y) >> i) << "," << decode_base((x & mask_x) >> j) << ")" << endl ;
@@ -183,7 +183,7 @@ bool is_subsequence(uint64_t x, uint64_t y) {
     return res ;
 }
 
-void process_read(char* seq, int read, int line) {
+void process_read(char* seq) {
     int l = strlen(seq) ;
     l -- ; //newline skip
     char c ;
@@ -220,7 +220,6 @@ void process_read(char* seq, int read, int line) {
         */
         if (kmer != counts->end()) {
             if (JOB == COUNT_INNER_KMERS || JOB == COUNT_MIX_KMERS) {
-                //cout << line << " " << read << endl ;
                 //cout << i << " " << l << endl ;
                 //string d_l = decode_kmer(left) ;
                 //string d_r = decode_kmer(right) ;
@@ -264,7 +263,7 @@ void process_read(char* seq, int read, int line) {
     }
 }
 
-void process_gapped_read(char* seq, int read, int line) {
+void process_gapped_read(char* seq) {
     int l = strlen(seq) ;
     l-- ;
     char c ;
@@ -341,7 +340,9 @@ void output_counts(string path, int index) {
             auto type = (types->find(i->first))->second ; 
             if (type == KMER_TYPE_INNER) {
                 auto total = totals->find(i->first) ;
-                o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << endl ;
+                if (*count != 0 and *total->second != 0) {
+                    o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << endl ;
+                }
             } else {
                 o << decode_kmer(i->first) << ":" << *count << endl ;
             }
@@ -377,7 +378,7 @@ int process_bam(string bam, string path, int index, int threads) {
     bam_hdr_t *bam_header = sam_hdr_read(bam_file) ; //read header
     bam1_t *alignment = bam_init1(); //initialize an alignment
     int n = 0 ;
-    int u = 0 ;
+    unsigned long u = 0 ;
     uint32_t len = 0 ;
     char* line ; //= (char*) malloc(200) ;
     // Timing
@@ -404,12 +405,12 @@ int process_bam(string bam, string path, int index, int threads) {
         n += 1 ;
         u += 1 ;
         if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
-            process_read(line, u, u) ;
+            process_read(line) ;
         } else if (JOB == COUNT_MIX_KMERS) {
-            process_read(line, u, u) ;
-            //process_gapped_read(line, u, u) ;
+            process_read(line) ;
+            //process_gapped_read(line) ;
         } else {
-            process_gapped_read(line, u, u) ;
+            process_gapped_read(line) ;
         }
         if (n == 10000) {
             n = 0 ;
@@ -419,7 +420,7 @@ int process_bam(string bam, string path, int index, int threads) {
             if (s - t != 0 && DEBUG == 0) {
                 cout << std::left << setw(2) << index << "processed " << setw(12) << u << " reads, " ;
                 cout << " took: " << setw(7) << std::fixed << s - t ;
-                cout << " reads per second: " << u / (s - t) << endl ;
+                cout << " reads per second: " << u / (s - t) << "\r" ;
             }
         }
     }
@@ -458,7 +459,7 @@ int process_fastq(string fastq, string path, int index, int threads) {
     time(&t) ;
     // State management
     int n = 0 ;
-    int u = 0 ;
+    unsigned long u = 0 ;
     int chunk_offset ;
     int state = SEARCHING ;
     char buffer[BLOCK_SIZE] ;
@@ -485,7 +486,7 @@ int process_fastq(string fastq, string path, int index, int threads) {
                 cout << std::left << setw(2) << index << " progress: " << setw(14) << std::fixed << p ;
                 cout << " took: " << setw(7) << std::fixed << s - t << " ETA: " << setw(14) << e ;
                 cout << " current: " << setw(12) << ftell(fastq_file) << " limit: " << (index + 1) * chunk_size ;
-                cout << " reads per second: " << u / (s - t) << endl ;
+                cout << " reads per second: " << u / (s - t) << "\r" ;
             }
         }
         for (int i = 0; i < bytes_read; i++) {
@@ -515,14 +516,14 @@ int process_fastq(string fastq, string path, int index, int threads) {
                     //cout << line << endl ;
                     state = SKIPPING ;
                     if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
-                        process_read(line, u, u) ;
+                        process_read(line) ;
                     } else if (JOB == COUNT_MIX_KMERS) {
-                        process_read(line, u, u) ;
-                        if (half_mers->size() > 0) {
-                            process_gapped_read(line, u, u) ;
-                        }
+                        process_read(line) ;
+                        //if (half_mers->size() > 0) {
+                        //    process_gapped_read(line) ;
+                        //}
                     } else {
-                        process_gapped_read(line, u, u) ;
+                        process_gapped_read(line) ;
                     }
                     //cout << "Skipping" << endl;
                 } else {
@@ -540,6 +541,7 @@ int process_fastq(string fastq, string path, int index, int threads) {
         }
         offset += bytes_read ;
     }
+    cout << std::endl ;
     if (DEBUG == 0) {
         output_counts(path, index) ;
     }

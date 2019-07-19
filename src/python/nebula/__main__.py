@@ -42,14 +42,6 @@ def preprocess():
         job = FilterLociIndicatorKmersJob()
         job.execute()
 
-    def supply_gapped_kmers():
-        job = ExtractGappedKmersJob()
-        job.execute()
-        job = UniqueGappedKmersJob()
-        job.execute()
-        job = UniqueGappedKmersScoringJob()
-        job.execute()
-
     def supply_junction_kmers():
         job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
         job.execute()
@@ -85,31 +77,39 @@ def genotype():
         load_tracks()
         job = CgcCounterJob(resume_from_reduce = c.reduce)
         if c.reduce:
-            stats = {'coverage': 50, 'std': 17}
+            stats = {'coverage': 40, 'std': 8}
         else:
             stats = job.execute()
         config.Configuration.update(stats)
-        job = CgcCoverageCorrectingIntegerProgrammingJob()
-        job.execute()
-        exit()
+        #job = CgcCoverageCorrectingIntegerProgrammingJob()
+        #job.execute()
+        #exit()
         job = CgcIntegerProgrammingJob()
         job.execute()
-        job = CgcInnerKmersIntegerProgrammingJob()
-        job.execute()
+        exit()
+        #job = CgcInnerKmersIntegerProgrammingJob()
+        #job.execute()
         job = CgcJunctionKmersIntegerProgrammingJob()
         job.execute()
 
 def cluster():
     c = config.Configuration()
-    job = cgc.CgcClusteringJob()
+    load_tracks()
+    job = CgcClusteringJob(begin = 1000, end = 1005)
+    job = UnifiedGenotypingJob(begin = 1000, end = 1050, genotyping_batch = 0)
+    #job = UnifiedGenotypingOrchestrator()
     job.execute()
 
 def export():
     c = config.Configuration()
+    load_tracks()
     job = cgc.ExportGenotypingKmersJob()
     job.execute()
 
 def simulate():
+    c = config.Configuration()
+    if c.seed == 0:
+        print(red('Argument error. Must provide --seed'))
     load_tracks()
     job = Simulation()
     job.execute()

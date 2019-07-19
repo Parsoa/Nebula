@@ -25,13 +25,14 @@ from nebula import (
     visualizer,
     programming,
 )
-
-import numpy as np
-
 from nebula.debug import *
 from nebula.kmers import *
 from nebula.commons import *
 from nebula.chromosomes import *
+
+import pysam
+import numpy as np
+
 print = pretty_print
 
 # ============================================================================================================================ #
@@ -59,16 +60,50 @@ class ExtractInnerKmersJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def execute(self):
+        c = config.Configuration()
+        self.pre_process()
+        self.create_output_directories()
+        self.find_thread_count()
+        self.load_inputs()
+
     def load_inputs(self):
         c = config.Configuration()
         extract_whole_genome()
         self.tracks = c.tracks
         self.load_reference_counts_provider()
         self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
-        #self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
+        self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
+        if self.contigs:
+            self.extract_kmers()
+        else:
+            self.round_robin(self.tracks)
+
+    def extract_kmers(self):
+        c = config.Configuration()
+        contig_index = {}
+        output = {}
+        for track in self.tracks:
+            contig_index[self.tracks[track].contig] = self.tracks[track]
+        n = 0
+        print(len(contig_index), 'total tracks')
+        for read in self.contigs.fetch():
+            if read.query_name in contig_index:
+                track = contig_index[read.query_name]
+                inner_kmers = self.extract_inner_kmers(track, read.query_sequence[int(track.contig_start) - c.ksize: int(track.contig_end) + c.ksize])
+                if inner_kmers:
+                    path = os.path.join(self.get_current_job_directory(), track.id + '.json')
+                    with open(path, 'w') as json_file:
+                        json.dump(inner_kmers, json_file, indent = 4)
+                    output[track.id] = path
+                n += 1
+                if n % 1000 == 0:
+                    print(n)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump(output, json_file, indent = 4)
 
     def transform(self, track, track_name):
-        print(cyan(track_name))
+        print(green(track_name))
         c = config.Configuration()
         inner_kmers = self.extract_inner_kmers(track)
         if len(inner_kmers) == 0:
@@ -79,41 +114,27 @@ class ExtractInnerKmersJob(map_reduce.Job):
             json.dump(inner_kmers, json_file, sort_keys = True, indent = 4)
         return name
 
-    def extract_inner_kmers(self, track):
+    def extract_inner_kmers(self, track, assembly):
+        print(green(track.id))
         c = config.Configuration()
         chrom = extract_chromosome(track.chrom.lower())
-        inner_kmers = {}
         if not chrom:
             print(red(track.chrom.lower()))
-            return inner_kmers
-        slack = 5
+            return None
         if track.svtype == 'INS':
-            if hasattr(track, 'seq'):
-                inner_seq = track.seq.upper()[slack: -slack]
-                if len(inner_seq) >= 96: #make sure enough room for both masks
-                    for i in range(c.ksize, len(track.seq) - 2 * c.ksize + 1):
-                        kmer = canonicalize(inner_seq[i: i + c.ksize])
-                        if len(kmer) != c.ksize:
-                            print(red(kmer))
-                        if not kmer in inner_kmers:
-                            inner_kmers[kmer] = {
-                                'loci': {},
-                                'tracks': {},
-                                'reference': self.reference_counts_provider.get_kmer_count(kmer),
-                            }
-                        inner_kmers[kmer]['loci']['inside_' + track.id] = {
-                            'seq': {
-                                'all': inner_seq[i - c.ksize: i + c.ksize + c.ksize],
-                                'left': inner_seq[i - c.ksize: i],
-                                'right': inner_seq[i + c.ksize: i + c.ksize + c.ksize]
-                            }
-                        }
-                        if not track.id in inner_kmers[kmer]['tracks']:
-                            inner_kmers[kmer]['tracks'][track.id] = 0
-                        inner_kmers[kmer]['tracks'][track.id] += 1
+            inner_kmers = self.extract_insertion_kmers(track, assembly)
         if track.svtype == 'DEL':
-            inner_seq = chrom[track.begin + slack: track.end - slack]
-            for i in range(len(inner_seq) - c.ksize + 1):
+            inner_kmers = self.extract_deletion_kmers(track, chrom)
+        if len(inner_kmers) > 1000:
+            items = sorted(inner_kmers.items(), key = lambda item: item[1]['reference'])[0 : 1000]
+            return {item[0]: item[1] for item in items}
+        return inner_kmers
+
+    def extract_insertion_kmers(self, track, inner_seq):
+        c = config.Configuration()
+        inner_kmers = {}
+        if len(inner_seq) >= 3 * c.ksize:
+            for i in range(c.ksize, len(inner_seq) - 2 * c.ksize + 1):
                 kmer = canonicalize(inner_seq[i: i + c.ksize])
                 if not kmer in inner_kmers:
                     inner_kmers[kmer] = {
@@ -121,14 +142,35 @@ class ExtractInnerKmersJob(map_reduce.Job):
                         'tracks': {},
                         'reference': self.reference_counts_provider.get_kmer_count(kmer),
                     }
+                inner_kmers[kmer]['loci']['inside_' + track.id + '@' + str(i)] = {
+                    'seq': {
+                        'all': inner_seq[i - c.ksize: i + c.ksize + c.ksize],
+                        'left': inner_seq[i - c.ksize: i],
+                        'right': inner_seq[i + c.ksize: i + c.ksize + c.ksize]
+                    }
+                }
                 if not track.id in inner_kmers[kmer]['tracks']:
                     inner_kmers[kmer]['tracks'][track.id] = 0
                 inner_kmers[kmer]['tracks'][track.id] += 1
-        if len(inner_kmers) <= 1000:
-            return inner_kmers
-        else:
-            items = sorted(inner_kmers.items(), key = lambda item: item[1]['reference'])[0 : 1000]
-            return {item[0]: item[1] for item in items}
+        return inner_kmers
+
+    def extract_deletion_kmers(self, track, chrom):
+        c = config.Configuration()
+        inner_kmers = {}
+        slack = 5 # arbitray
+        inner_seq = chrom[track.begin + slack: track.end - slack]
+        for i in range(len(inner_seq) - c.ksize + 1):
+            kmer = canonicalize(inner_seq[i: i + c.ksize])
+            if not kmer in inner_kmers:
+                inner_kmers[kmer] = {
+                    'loci': {},
+                    'tracks': {},
+                    'reference': self.reference_counts_provider.get_kmer_count(kmer),
+                }
+            if not track.id in inner_kmers[kmer]['tracks']:
+                inner_kmers[kmer]['tracks'][track.id] = 0
+            inner_kmers[kmer]['tracks'][track.id] += 1
+        return inner_kmers
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -163,33 +205,34 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
         for track in self.tracks:
             with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                k = {}
-                for i in range(0, 5 + 1):
-                    k[i] = []
-                for kmer in kmers:
-                    if len(kmers[kmer]['tracks']) != 1:
-                        continue
-                    ref = kmers[kmer]['reference']
-                    if ref <= 5:
-                        k[ref].append(kmer)
-                n = 0
-                for i in range(0, 5 + 1):
-                    for kmer in k[i]:
-                        if n == 50:
-                            break
-                        if not kmer in self.inner_kmers:
-                            self.inner_kmers[kmer] = kmers[kmer]
-                        self.inner_kmers[kmer]['loci'].update(kmers[kmer]['loci'])
-                        self.inner_kmers[kmer]['tracks'].update(kmers[kmer]['tracks'])
-                        n += 1
+                self.keep_best_kmers(kmers)
         print('Finding loci for', green(len(self.inner_kmers)), 'kmers')
         self.round_robin(self.chroms)
+
+    # This will lose some shared kmers
+    def keep_best_kmers(self, kmers):
+        k = {}
+        for i in range(0, 5 + 1):
+            k[i] = []
+        for kmer in kmers:
+            ref = kmers[kmer]['reference']
+            if ref <= 5:
+                k[ref].append(kmer)
+        n = 0
+        for i in range(0, 5 + 1):
+            for kmer in k[i]:
+                if n == 50:
+                    break
+                if not kmer in self.inner_kmers:
+                    self.inner_kmers[kmer] = kmers[kmer]
+                self.inner_kmers[kmer]['loci'].update(kmers[kmer]['loci'])
+                self.inner_kmers[kmer]['tracks'].update(kmers[kmer]['tracks'])
+                n += 1
 
     def transform(self, sequence, chrom):
         c = config.Configuration()
         index = 0
         slack = c.ksize
-        print(cyan(chrom, len(sequence)))
         t = time.time()
         for kmer in stream_kmers(c.ksize, True, True, sequence):
             if kmer in self.inner_kmers:
