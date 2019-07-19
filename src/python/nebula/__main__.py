@@ -94,11 +94,15 @@ def genotype():
 
 def cluster():
     c = config.Configuration()
-    job = cgc.CgcClusteringJob()
+    load_tracks()
+    job = CgcClusteringJob(begin = 1000, end = 1005)
+    job = UnifiedGenotypingJob(begin = 1000, end = 1050, genotyping_batch = 0)
+    #job = UnifiedGenotypingOrchestrator()
     job.execute()
 
 def export():
     c = config.Configuration()
+    load_tracks()
     job = cgc.ExportGenotypingKmersJob()
     job.execute()
 
