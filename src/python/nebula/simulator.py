@@ -316,3 +316,38 @@ class Simulation(map_reduce.Job):
         #command = "samtools index {} {}".format(bam + '.bam', bam_index)
         #subprocess.call(command, shell = True, stdout=FNULL, stderr=subprocess.STDOUT)
         print('Done!')
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# Required arguments
+# --seed: random seed to use
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class KmerCountSimulator(map_reduce.Job):
+
+    _name = 'KmerCountSimulator'
+    _category = 'simulation'
+    _previous_job = None
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = KmerCountSimulator(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # Simulation
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        path = c.kmers[0]
+        with open(path, 'r') as json_file:
+            self.kmers = json.load(json_file)
+        for kmer_type in ['depth_kmers', 'inner_kmers', 'junction_kmers']:
+            for kmer in kmers[kmer_type]:
+                kmers[kmer_type][kmer] = None

@@ -32,9 +32,9 @@ class BedTrack:
         self.begin = begin
         self.end = end
         self.svtype = 'DEL'
-        self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
         for (k, v) in fields:
             setattr(self, k, v)
+        self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
         self.fields = fields
         self.name = self.id #alias
 

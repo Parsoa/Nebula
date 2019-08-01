@@ -387,6 +387,7 @@ int process_bam(string bam, string path, int index, int threads) {
     cout << "Processig BAM file" << endl ;
     //int m = get_number_of_alignments(bam) ;
     while (sam_read1(bam_file, bam_header, alignment) > 0){
+        break ;
         //cout << u << endl ;
         uint32_t l = alignment->core.l_qseq ; //length of the read
         if (l > len) {

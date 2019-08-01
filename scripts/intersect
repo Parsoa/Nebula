@@ -2,9 +2,17 @@
 
 import sys
 
-dest = 'a'
-if len(sys.argv) >= 4:
-    dest = sys.argv[3]
+dest = '-a'
+inverse = '-v' in sys.argv
+
+if '-b' in sys.argv:
+    dest = '-b'
+
+exact = True
+if '-f' in sys.argv:
+    i = sys.argv.index('-f')
+    match = float(sys.argv[i + 1])
+    exact = False
 
 header = ''
 
@@ -12,31 +20,65 @@ def index_file(path, get_header = False):
     index = {} 
     with open(path) as f:
         line = f.readline()
-        if get_header:
-            global header
-            header = line.strip()
-        line = f.readline()
+        tokens = line.split()
+        has_header = 'chrom' in tokens[0].lower()
+        if has_header:
+            if get_header:
+                global header
+                header = line.strip()
+            line = f.readline()
         while line:
             tokens = line.split()
             s = tokens[0] + '_' + tokens[1] + '_' + tokens[2]
-            index[s] = line
+            index[s] = (line, (int(tokens[1]), int(tokens[2])))
             line = f.readline()
     return index
+
+def overlap(a, b):
+    return max(0, min(a[1], b[1]) - max(a[0], b[0])) / float((a[1] - a[0]))
+
+def match_overlap(a, b, t):
+    l = match * (a[t][1][1] - a[t][1][0])
+    choice = (1 if inverse else 0, None)
+    for p in b:
+        o = overlap(a[t][1], b[p][1])
+        if o >= match and not inverse:
+            if o > choice[0]:
+                choice = (o, p)
+        if o < match and inverse:
+            if o < choice[0]:
+                choice = (o, p)
+    return choice[1]
 
 def intersect(a, b):
     i = []
     for track in a:
-        if track in b:
-            i.append(a[track] if dest == 'a' else b[track])
-    return i
+        if exact:
+            if inverse:
+                if track not in b:
+                    #i.append(a[track] if dest == '-a' else b[track])
+                    yield a[track] if dest == '-a' else b[track]
+            else:
+                if track in b:
+                    #i.append(a[track] if dest == '-a' else b[track])
+                    yield a[track] if dest == '-a' else b[track]
+        else:
+            p = match_overlap(a, b, track)
+            if p:
+                #i.append(a[track] if dest == '-a' else b[p])
+                yield a[track] if dest == '-a' else b[p]
+                b.pop(p, None)
+    #return i
 
 def print_intersection(i):
     print(header)
     for line in i:
-        print(line.strip())
+        print(line[0].strip())
 
 a_index = index_file(sys.argv[1], True)
 b_index = index_file(sys.argv[2])
-i = intersect(a_index, b_index)
-print_intersection(i)
-
+#i = intersect(a_index, b_index)
+print(header)
+for track in intersect(a_index, b_index):
+    print(track[0].strip())
+#print_intersection(i)

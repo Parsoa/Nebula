@@ -19,7 +19,6 @@ from itertools import chain
 from nebula import (
     bed,
     config,
-    gapped,
     counter,
     reduction,
     map_reduce,
@@ -61,21 +60,20 @@ class ExtractJunctionKmersJob(map_reduce.Job):
 
     def execute(self):
         c = config.Configuration()
-        self.pre_process()
         self.create_output_directories()
-        self.find_thread_count()
-        self.prepare()
         self.load_inputs()
 
     def load_inputs(self):
         c = config.Configuration()
-        self.contigs = pysam.AlignmentFile(c.contigs, "rb")
+        self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         self.tracks = c.tracks
-        self.extract_kmers()
-        self.num_threads = 1
+        if self.contigs:
+            self.extract_kmers_with_contigs()
+        else:
+            self.extract_kmers()
 
-    def extract_kmers(self):
+    def extract_kmers_with_contigs(self):
         c = config.Configuration()
         contig_index = {}
         output = {}
@@ -97,6 +95,23 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                     n += 1
                 if n % 1000 == 0:
                     print(n)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump(output, json_file, indent = 4)
+
+    def extract_kmers(self):
+        c = config.Configuration()
+        output = {}
+        n = 0
+        for track in self.tracks:
+            kmers = self.extract_mapping_kmers(self.tracks[track])
+            if len(kmers) > 0:
+                path = os.path.join(self.get_current_job_directory(), track + '.json')
+                with open(path, 'w') as json_file:
+                    json.dump(kmers, json_file, indent = 4)
+                output[track] = path
+            n += 1
+            if n % 1000 == 0:
+                print(n)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump(output, json_file, indent = 4)
 
@@ -131,11 +146,12 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         junction_kmers = {}
         slack = 100
         stride = c.ksize
-        # may file to fine associated contig in mapping
         try:
-            if track.svtype == 'DEL':
+            # Events that alter or remove a part of the reference
+            if track.svtype == 'DEL' or track.svtype == 'INV':
                 reads = chain(self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack), self.alignments.fetch(track.chrom, track.end - slack, track.end + slack))
-            if track.svtype == 'INS':
+            # Events that add sequence that wasn't there
+            if track.svtype == 'INS' or track.svtype == 'ALU' or track.svtype == 'MEI':
                 reads = self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack)
         except:
             return {}
@@ -155,6 +171,9 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                     index = 0
                     # Should try and correct for sequencing errors in masks by doing a consensus
                     for kmer in stream_kmers(c.ksize, True, True, seq):
+                        if 'N' in kmers:
+                            index += 1
+                            continue
                         if self.is_clipped((index, index + c.ksize), clips):
                             locus = 'junction_' + track.id
                             if not kmer in junction_kmers:
@@ -197,9 +216,9 @@ class ExtractJunctionKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class UniqueJunctionKmersJob(map_reduce.Job):
+class JunctionKmersScoringJob(map_reduce.Job):
 
-    _name = 'UniqueJunctionKmersJob'
+    _name = 'JunctionKmersScoringJob'
     _category = 'preprocessing'
     _previous_job = ExtractJunctionKmersJob
 
@@ -209,58 +228,32 @@ class UniqueJunctionKmersJob(map_reduce.Job):
 
     @staticmethod
     def launch(**kwargs):
-        job = UniqueJunctionKmersJob(**kwargs)
+        job = JunctionKmersScoringJob(**kwargs)
         job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
 
     def load_inputs(self):
         c = config.Configuration()
-        self.junction_kmers = {} 
-        tracks = self.load_previous_job_results()
-        for track in tracks:
-            with open(os.path.join(self.get_previous_job_directory(), tracks[track]), 'r') as json_file:
-                junction_kmers = json.load(json_file)
-                for kmer in junction_kmers:
+        self.kmers = {}
+        self.tracks = self.load_previous_job_results()
+        for track in self.tracks:
+            print(cyan(track))
+            with open(self.tracks[track], 'r') as json_file:
+                kmers = json.load(json_file)
+                for kmer in kmers:
                     k = canonicalize(kmer)
-                    if not k in self.junction_kmers:
-                        self.junction_kmers[k] = copy.deepcopy(junction_kmers[kmer])
-                        self.junction_kmers[k]['loci'] = {}
-                        self.junction_kmers[k]['tracks'] = {}
-                    if not track in self.junction_kmers[k]['tracks']:
-                        self.junction_kmers[k]['loci'].update(junction_kmers[kmer]['loci'])
-                        self.junction_kmers[k]['tracks'][track] = 0
-                    self.junction_kmers[k]['tracks'][track] += 1
-        self.round_robin(tracks)
-
-    def transform(self, track, track_name):
-        c = config.Configuration()
-        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
-            junction_kmers = json.load(json_file)
-        junction_kmers = {canonicalize(kmer): self.junction_kmers[canonicalize(kmer)] for kmer in junction_kmers if 'N' not in kmer}
-        path = os.path.join(self.get_current_job_directory(), track_name  + '.json')
-        with open(path, 'w') as json_file:
-            json.dump(junction_kmers, json_file, sort_keys = True, indent = 4)
-        return track_name + '.json'
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class JunctionKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
-
-    _name = 'JunctionKmersScoringJob'
-    _category = 'preprocessing'
-    _previous_job = UniqueJunctionKmersJob
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        job = JunctionKmersScoringJob(**kwargs)
-        job.execute()
+                    if not k in self.kmers:
+                        self.kmers[k] = copy.deepcopy(kmers[kmer])
+                        self.kmers[k]['loci'] = {}
+                        self.kmers[k]['count'] = 0
+                        self.kmers[k]['tracks'] = {}
+                    self.kmers[k]['loci'].update(kmers[kmer]['loci'])
+                    self.kmers[k]['tracks'][track] = 1
+        self.chroms = extract_whole_genome()
+        self.round_robin(self.chroms)
 
     def transform(self, sequence, chrom):
         c = config.Configuration()
@@ -272,20 +265,54 @@ class JunctionKmersScoringJob(gapped.UniqueGappedKmersScoringJob):
                 p = index / float(len(sequence))
                 e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
                 print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-            half_mer = sequence[index: index + c.hsize]
-            if not half_mer in self.half_mers:
-                continue
-            for k in range(32, 32 + 1):
-                kmer = canonicalize(sequence[index: index + k])
-                kmer = kmer[:c.hsize] + kmer[-c.hsize:]
-                if kmer in self.kmers:
-                    self.kmers[kmer]['count'] += 1
-                    self.kmers[kmer]['loci'][chrom + '_' + str(index)] = {
-                            'masks': {
-                                'left': sequence[index - c.ksize: index],
-                                'right': sequence[index + k: index + k + c.ksize]
-                            }
+            kmer = canonicalize(sequence[index: index + k])
+            if kmer in self.kmers:
+                self.kmers[kmer]['count'] += 1
+                self.kmers[kmer]['loci'][chrom + '_' + str(index)] = {
+                    'masks': {
+                        'left': sequence[index - c.ksize: index],
+                        'right': sequence[index + k: index + k + c.ksize]
                         }
+                    }
+
+    def output_batch(self, batch):
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
+        json_file.close()
+        exit()
+
+    def merge_counts(self):
+        c = config.Configuration()
+        print('merging kmer counts...')
+        for batch in self.load_output():
+            for kmer in batch:
+                self.kmers[kmer]['count'] += batch[kmer]['count']
+                if 'loci' in batch[kmer]:
+                    self.kmers[kmer]['loci'].update(batch[kmer]['loci'])
+
+    def reduce(self):
+        self.merge_counts()
+        self.tracks = {}
+        print('merged', len(self.kmers), 'kmers')
+        n = 0
+        for kmer in self.kmers:
+            for track in self.kmers[kmer]['tracks']:
+                if not track in self.tracks:
+                    self.tracks[track] = {}
+                self.tracks[track][kmer] = self.kmers[kmer]
+            n += 1
+            if n % 10000 == 0:
+                print('processed', n, 'out of', len(self.kmers), 'kmers')
+        job.execute()
+        #for track in self.tracks:
+        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
+        #        json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+        #    n += 1
+        #    if n % 1000 == 0:
+        #        print('exported', n, 'out of', len(self.tracks), 'tracks')
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        return self.tracks
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -315,13 +342,12 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
-        self.tracks = self.load_previous_job_results()
         self.round_robin(self.tracks)
         print('filtering', len(self.tracks), 'tracks')
 
     def transform(self, track, track_name):
-        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
-            kmers = json.load(json_file)
+        if track_name:
+            kmers = track
             for kmer in kmers:
                 if kmers[kmer]['count'] <= 3:
                     interest_kmers = {}
@@ -387,9 +413,7 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
-        print(len(self.tracks))
-        #visualizer.histogram(list(map(lambda kmer: len(self.kmers[kmer]['loci']), self.kmers)), 'number_of_loci', self.get_current_job_directory(), 'number of loci', 'number of kmers')
-        #print(len(self.tracks))
+        print(len(self.tracks), 'tracks after filtering returning kmers')
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
