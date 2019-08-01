@@ -270,6 +270,9 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         c = config.Configuration()
         t = c.tracks[track_name]
         lp_kmers = {}
+        t = c.tracks[track_name]
+        if t.chrom.lower() != 'chr17':
+            return None
         for kmer in kmers['inner_kmers']:
             if len(kmers['inner_kmers'][kmer]['loci']) > 3:
                 continue
@@ -287,8 +290,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        with open(path, 'w') as json_file:
-            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4)
         return path
 
     def calculate_residual_coverage(self):
@@ -862,7 +863,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
     def load_inputs(self):
         c = config.Configuration()
         #self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/genotyping/CutlessCandy/CgcIntegerProgrammingJobOld/chr17.bed']
-        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob/merge.bed' for i in range(self.begin, self.end)]
+        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob/merge.bed' for i in range(1000, 1407)]
         self.tracks = {}
         self.clusters = []
         for index, path in enumerate(self.paths):
@@ -937,65 +938,6 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
             k += 1
         if max_lp >= 0.8:
             k += 1
-
-    def fit_gaussian_mixture(self, track, track_name, features):
-        print(cyan(track_name))
-        means = [0.0, 0.0, 0.0]
-        max_likelihood = -1
-        choice = None
-        k = self.find_num_unique_lp_values(features)
-        if k == 1:
-            m = np.argmax(features)
-            print(yellow('HERE'))
-            return [track[self.paths[m]].lp_genotype] * len(features), [1.0] * len(features)
-        features = features.flatten()
-        for K in range(2, k + 1):
-            mean_step = 0.05
-            std_step = 0.03
-            if K == 1:
-                mean_choices = [(mean_step * i,) for i in range(0, 3)]
-                std_choices = [(std_step * i,) for i in range(1, 6)]
-            if K == 2:
-                mean_choices = [(mean_step * i, mean_step * j) for i in range(0, int(1.0 / mean_step) - 4) for j in range(i + 3, int(1.0 / mean_step) + 1)]
-                std_choices = [(std_step * i, std_step * j) for i in range(1, 6) for j in range(1, 5)]
-            if K == 3:
-                mean_choices = [(mean_step * 0, mean_step * j, mean_step * k) for j in range(4, int(1.0 / mean_step) - 4) for k in range(j + 3, int(1.0 / mean_step) + 1)]
-                std_choices = [(std_step * i, std_step * j, std_step * k) for i in range(1, 6) for j in range(1, 6) for k in range(1, 5)]
-            for mean_choice in mean_choices:
-                for std_choice in std_choices:
-                    #print(mean_choice)
-                    #print(std_choice)
-                    l = self.calculate_likelihood(features, mean_choice, std_choice)
-                    if l > max_likelihood:
-                        max_likelihood = l
-                        choice = (mean_choice, std_choice)
-        print(yellow(choice))
-        self.plot_distribution(features, choice[0], choice[1], track_name)
-        #debug_breakpoint()
-        return self.likelihood_genotype(features, choice)
-
-    #def fit_normal_dsitributions_em(self, trakc, track_name, features):
-    #    for K in range(2, 3 + 1):
-
-    def likelihood_genotype(self, features, choice):
-        distributions = [statistics.NormalDistribution(mean, std) for mean, std in zip(choice[0], choice[1])]
-        genotypes = ['00', '10', '11']
-        likelihoods = [np.argmax([distribution.pmf(feature) for distribution in distributions]) for feature in features]
-        return [genotypes[i] for i in likelihoods], [distributions[i].pmf(feature) for feature, i in zip(features, likelihoods)]
-
-    def calculate_likelihood(self, features, means, stds):
-        distributions = [statistics.NormalDistribution(mean, std) for mean, std in zip(means, stds)]
-        likelihood = sum([max([distribution.pmf(feature) for distribution in distributions]) for feature in features])
-        return likelihood
-
-    def plot_distribution(self, features, mean, std, track_name):
-        #x = [0.05 * i for i in range(0, 21)]
-        #data = [graph_objs.Scatter(x = x, y = stats.norm(loc = m, scale = s).pdf(x) * 10, mode = 'lines', line = dict(color = 'rgba(0, 0, 0)')) for m, s in zip(mean, std)]
-        #data.append(graph_objs.Histogram(x = features, xbins = dict(start = 0.0, size = 0.05, end = 1.0)))
-        #layout = graph_objs.Layout(title = track_name)
-        #figure = graph_objs.Figure(data = data, layout = layout)
-        #plotly.plot(figure, filename = os.path.join(self.get_current_job_directory(), 'normal_overlay_' + track_name + '.html'), auto_open = False)
-        pass
 
     def kmeans(self, track, track_name, features):
         print(blue('clustering', track_name))
@@ -1149,8 +1091,57 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                     if path == 'error':
                         continue
                     t = track[path]
-                    files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['lp_value'] + '\t' + str(t['likelihood']) + '\t' + t['id'] + '\n')
+                    files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['id'] + '\t' + t['lp_value'] + '\n')
+        self.simulation_analysis()
+        self.gather_genotype_statistics()
+
+    def simulation_analysis(self):
+        files = {}
+        for path in self.paths:
+            name = path.split('/')[-1]
+            files[path] = open(os.path.join(os.path.split(path)[0], 'cluster.bed'), 'w')
+            files[path].write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+        for batch in self.load_output():
+            for track in batch:
+                track = json.load(open(batch[track]))
+                for path in track:
+                    if path == 'error':
+                        continue
+                    t = track[path]
+                    files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['lp_value'] + '\t' + t['id'] + '\n')
         self.tracks = {}
+
+    def tabulate(self, name, cwd, i):
+        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/tabulate.sh', name + '.bed'], cwd = cwd)
+        p.wait()
+        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', '/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/CutlessCandyChr17/{}/Simulation'.format(str(i))], cwd = cwd)
+        p.wait()
+        for p in ['00', '10', '11']:
+            for q in ['00', '10', '11']:
+                s = p + '_as_' + q
+                tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, s + '.bed'))
+                for track in tracks:
+                    self.tracks[track][name][s][0] += 1
+                    self.tracks[track][name][s][1].append(i)
+
+    def gather_genotype_statistics(self):
+        self.tracks = {}
+        for i in range(1000, 1100):
+            cwd = '/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob'
+            print(cwd)
+            if i == 1000:
+                tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, 'merge.bed'))
+                for track in tracks:
+                    self.tracks[track] = {'merge': {}, 'cluster': {}}
+                for p in ['00', '10', '11']:
+                    for q in ['00', '10', '11']:
+                        for track in self.tracks:
+                            self.tracks[track]['merge'][p + '_as_' + q] = [0, []]
+                            self.tracks[track]['cluster'][p + '_as_' + q] = [0, []]
+            self.tabulate('merge', cwd, i)
+            self.tabulate('cluster', cwd, i)
+        with open(os.path.join(self.get_current_job_directory(), 'statistics.json'), 'w') as json_file:
+            json.dump(self.tracks, json_file, indent = 4)
 
     def gather_genotype_statistics(self):
         self.stats = {}

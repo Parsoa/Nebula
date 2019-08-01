@@ -12,13 +12,10 @@ def index_file(path, get_header = False):
     index = {} 
     with open(path) as f:
         line = f.readline()
-        tokens = line.split()
-        has_header = 'chrom' in tokens[0].lower()
-        if has_header:
-            if get_header:
-                global header
-                header = line.strip()
-            line = f.readline()
+        if get_header:
+            global header
+            header = line.strip()
+        line = f.readline()
         while line:
             tokens = line.split()
             s = tokens[0] + '_' + tokens[1] + '_' + tokens[2]
