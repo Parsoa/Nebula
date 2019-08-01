@@ -60,10 +60,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
 
     def execute(self):
         c = config.Configuration()
-        self.pre_process()
         self.create_output_directories()
-        self.find_thread_count()
-        self.prepare()
         self.load_inputs()
 
     def load_inputs(self):
@@ -286,16 +283,12 @@ class JunctionKmersScoringJob(map_reduce.Job):
 
     def merge_counts(self):
         c = config.Configuration()
-        print('merging kmer counts ...')
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            with open (path, 'r') as json_file:
-                batch = json.load(json_file)
-                for kmer in batch:
-                    self.kmers[kmer]['count'] += batch[kmer]['count']
-                    if 'loci' in batch[kmer]:
-                        self.kmers[kmer]['loci'].update(batch[kmer]['loci'])
+        print('merging kmer counts...')
+        for batch in self.load_output():
+            for kmer in batch:
+                self.kmers[kmer]['count'] += batch[kmer]['count']
+                if 'loci' in batch[kmer]:
+                    self.kmers[kmer]['loci'].update(batch[kmer]['loci'])
 
     def reduce(self):
         self.merge_counts()
@@ -310,10 +303,6 @@ class JunctionKmersScoringJob(map_reduce.Job):
             n += 1
             if n % 10000 == 0:
                 print('processed', n, 'out of', len(self.kmers), 'kmers')
-        n = 0
-        job = map_reduce.TrackExportHelper()
-        job.tracks = self.tracks
-        job.current_job_directory = self.get_current_job_directory()
         job.execute()
         #for track in self.tracks:
         #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
@@ -353,13 +342,12 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
-        self.tracks = self.load_previous_job_results()
         self.round_robin(self.tracks)
         print('filtering', len(self.tracks), 'tracks')
 
     def transform(self, track, track_name):
-        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
-            kmers = json.load(json_file)
+        if track_name:
+            kmers = track
             for kmer in kmers:
                 if kmers[kmer]['count'] <= 3:
                     interest_kmers = {}
@@ -425,9 +413,7 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
-        print(len(self.tracks))
-        #visualizer.histogram(list(map(lambda kmer: len(self.kmers[kmer]['loci']), self.kmers)), 'number_of_loci', self.get_current_job_directory(), 'number of loci', 'number of kmers')
-        #print(len(self.tracks))
+        print(len(self.tracks), 'tracks after filtering returning kmers')
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)

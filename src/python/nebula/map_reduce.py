@@ -321,6 +321,7 @@ class TrackExportHelper(Job):
 
     def load_inputs(self):
         c = config.Configuration()
+        self.resume_from_reduce = False
         self.round_robin(self.tracks)
 
     def transform(self, track, track_name):
@@ -331,7 +332,7 @@ class TrackExportHelper(Job):
     def get_current_job_directory(self):
         return self.current_job_directory
 
-    def output_batch(self):
+    def output_batch(self, batch):
         pass
 
     def reduce(self):
