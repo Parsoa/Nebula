@@ -72,12 +72,15 @@ class ExtractInnerKmersJob(map_reduce.Job):
         extract_whole_genome()
         self.tracks = c.tracks
         self.load_reference_counts_provider()
-        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
         self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
         if self.contigs:
             self.extract_kmers()
         else:
-            self.round_robin(self.tracks)
+            print('No assembly contigs provided, extracting from reference')
+            self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
+            self.distribute_workload()
+            self.wait_for_children()
+            self.reduce()
 
     def extract_kmers(self):
         c = config.Configuration()
@@ -103,9 +106,10 @@ class ExtractInnerKmersJob(map_reduce.Job):
             json.dump(output, json_file, indent = 4)
 
     def transform(self, track, track_name):
+        debug_breakpoint()
         print(green(track_name))
         c = config.Configuration()
-        inner_kmers = self.extract_inner_kmers(track)
+        inner_kmers = self.extract_inner_kmers(track, None)
         if len(inner_kmers) == 0:
             print(red('skipping', track_name, 'no inner kmers found'))
             return None
@@ -115,16 +119,20 @@ class ExtractInnerKmersJob(map_reduce.Job):
         return name
 
     def extract_inner_kmers(self, track, assembly):
-        print(green(track.id))
         c = config.Configuration()
         chrom = extract_chromosome(track.chrom.lower())
         if not chrom:
             print(red(track.chrom.lower()))
             return None
+        inner_kmers = {}
         if track.svtype == 'INS':
-            inner_kmers = self.extract_insertion_kmers(track, assembly)
+            if assembly:
+                inner_kmers = self.extract_insertion_kmers(track, assembly)
+            elif hasattr(track, 'seq'):
+                inner_kmers = self.extract_insertion_kmers(track, track.seq.upper())
         if track.svtype == 'DEL':
             inner_kmers = self.extract_deletion_kmers(track, chrom)
+        # No inner kmers for INV, MEI or ALU
         if len(inner_kmers) > 1000:
             items = sorted(inner_kmers.items(), key = lambda item: item[1]['reference'])[0 : 1000]
             return {item[0]: item[1] for item in items}

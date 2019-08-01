@@ -43,18 +43,17 @@ def preprocess():
         job.execute()
 
     def supply_junction_kmers():
-        job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
-        job.execute()
-        job = UniqueJunctionKmersJob(resume_from_reduce = False)
-        job.execute()
+        #job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
+        #job.execute()
         job = JunctionKmersScoringJob()
         job.execute()
-        job = FilterJunctionKmersJob()
-        job.execute()
+        #job = FilterJunctionKmersJob()
+        #job.execute()
 
     load_tracks()
-    supply_inner_kmers()
+    #supply_inner_kmers()
     supply_junction_kmers()
+    exit()
     job = MixKmersJob()
     job.execute()
 
@@ -78,6 +77,8 @@ def genotype():
         job = CgcCounterJob(resume_from_reduce = c.reduce)
         if c.reduce:
             stats = {'coverage': 40, 'std': 8}
+            stats = {'coverage': 23, 'std': 7}
+            stats = {'coverage': 50, 'std': 17}
         else:
             stats = job.execute()
         config.Configuration.update(stats)
@@ -95,10 +96,16 @@ def genotype():
 def cluster():
     c = config.Configuration()
     load_tracks()
-    job = CgcClusteringJob(begin = 1000, end = 1005)
-    job = UnifiedGenotypingJob(begin = 1000, end = 1050, genotyping_batch = 0)
+    #job = CgcClusteringJob(begin = 1000, end = 1005)
+    #job = UnifiedGenotypingJob(begin = 1000, end = 1050, genotyping_batch = 0)
     #job = UnifiedGenotypingOrchestrator()
+    job = UnifiedGenotypingJob(begin = 0, end = 5, genotyping_batch = '0')
     job.execute()
+    exit()
+    for i in range(1, 10):
+        job = UnifiedGenotypingJob(begin = i * 5, end = (i + 1) * 5, genotyping_batch = i)
+        job.execute()
+        exit()
 
 def export():
     c = config.Configuration()

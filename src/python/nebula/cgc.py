@@ -102,15 +102,10 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         print('Inner kmers:', blue(len(self.inner_kmers)))
         print('Depth kmers:', blue(len(self.depth_kmers)))
         print('GC kmers:', blue(len(self.gc_kmers)))
-        #with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-        #    kmers = {}
-        #    kmers['junction_kmers'] = self.junction_kmers
-        #    kmers['inner_kmers'] = self.inner_kmers
-        #    kmers['depth_kmers'] = self.depth_kmers
-        #    kmers['gc_kmers'] = self.gc_kmers
-        #    json.dump(kmers, json_file, indent = 4)
 
     def export_counter_input(self):
+        if self.resume_from_reduce:
+            return
         _kmers = {}
         for kmers in [self.inner_kmers, self.junction_kmers]:
             for kmer in kmers:
@@ -176,9 +171,6 @@ class CgcCounterJob(counter.BaseExactCountingJob):
 
     def estimate_gc_content_coverage(self):
         c = config.Configuration()
-        #counts = [[self.gc_kmers[kmer]['count'] for kmer in list(filter(lambda k: self.gc_kmers[kmer]['gc'] == gc, self.gc_kmers))], range(0, 96 + 1)]
-        #mean = np.mean(counts, axis = 1)
-        #std = np.std(counts, axis = 1)
 
     def reduce(self):
         c = config.Configuration()
@@ -198,25 +190,28 @@ class CgcCounterJob(counter.BaseExactCountingJob):
                     self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['junction_kmers'][kmer] = self.junction_kmers[kmer]
                 self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
-        for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
-                json.dump(self.tracks[track], json_file, indent = 4)
+        #for track in self.tracks:
+        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
+        #        json.dump(self.tracks[track], json_file, indent = 4)
         print(len(self.tracks), 'tracks')
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        job = ExportGenotypingKmersJob()
+        job.tracks = self.tracks
+        job.execute()
         return self.estimate_depth_of_coverage()
 
     def export_counted_kmers(self):
         c = config.Configuration()
         print('Exporting counted kmers...')
-        with open(os.path.join(self.get_current_job_directory(), 'gc_kmers'), 'w') as json_file:
-            json.dump(self.gc_kmers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'depth_kmers'), 'w') as json_file:
-            json.dump(self.depth_kmers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
-            json.dump(self.inner_kmers, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'junction_kmers.json'), 'w') as json_file:
-            json.dump(self.junction_kmers, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'gc_kmers'), 'w') as json_file:
+        #    json.dump(self.gc_kmers, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'depth_kmers'), 'w') as json_file:
+        #    json.dump(self.depth_kmers, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'inner_kmers.json'), 'w') as json_file:
+        #    json.dump(self.inner_kmers, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'junction_kmers.json'), 'w') as json_file:
+        #    json.dump(self.junction_kmers, json_file, indent = 4)
         kmers = {}
         kmers['gc_kmers'] = self.gc_kmers
         kmers['depth_kmers'] = self.depth_kmers
@@ -230,6 +225,7 @@ class CgcCounterJob(counter.BaseExactCountingJob):
             path = os.path.join(self.get_current_job_directory(), name)
         with open(path, 'w') as json_file:
             json.dump(kmers, json_file, indent = 4)
+
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -861,8 +857,9 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
 
     def load_inputs(self):
         c = config.Configuration()
-        #self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/genotyping/CutlessCandy/CgcIntegerProgrammingJobOld/chr17.bed']
-        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob/merge.bed' for i in range(self.begin, self.end)]
+        #self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob/merge.bed' for i in range(self.begin, self.end)]
+        self.paths = c.bed
+        self.load_basis()
         self.tracks = {}
         self.clusters = []
         for index, path in enumerate(self.paths):
@@ -874,6 +871,12 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                 if track in self.tracks:
                     self.tracks[track][path] = tracks[track]
         self.round_robin(self.tracks)
+
+    def load_basis(self):
+        self.gold = []
+        for i, path in enumerate(self.paths):
+            sample = path.split('/')[-2]
+            self.gold.append(os.path.join('/share/hormozdiarilab/Codes/NebulousSerendipity/data/Audano/Simons', 'Audano.SGDP_' + name + '.hg38.ALL.bed'))
 
     def transform(self, track, track_name):
         c = config.Configuration()
@@ -1117,8 +1120,6 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         return np.linalg.norm(a - b, axis = None if a.shape == b.shape else 1)
 
     def reduce(self):
-        self.kmer_distribution()
-        exit()
         print('reducing')
         files = {}
         for path in self.paths:
@@ -1133,8 +1134,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                         continue
                     t = track[path]
                     files[path].write(t['chrom'] + '\t' + str(t['begin']) + '\t' + str(t['end']) + '\t' + t['genotype'] + '\t' + t['lp_value'] + '\t' + str(t['likelihood']) + '\t' + t['id'] + '\n')
-        self.simulation_analysis()
-        self.gather_genotype_statistics()
+        #self.gather_genotype_statistics()
 
     def simulation_analysis(self):
         files = {}
@@ -1153,6 +1153,7 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
         self.tracks = {}
 
     def gather_genotype_statistics(self):
+        c = config.Configuration()
         self.stats = {}
         self.tracks = {}
         for name in ['merge', 'cluster']:
@@ -1167,11 +1168,13 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
                 for name in ['merge', 'cluster']:
                     self.stats[name]['state'][p + q] = 0
                     self.stats[name]['likelihood'][p + q] = []
-        for i in range(self.begin, self.end):
-            cwd = '/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob'
-            print(cwd)
+        cwd = c.workdir
+        for i in range(len(self.paths)):
+        #for i in range(self.begin, self.end):
+            #cwd = '/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob'
             if i == 1000:
-                tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, 'merge.bed'))
+                tracks = bed.load_tracks_from_file_as_dict(self.paths[i])
+                #tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, 'merge.bed'))
                 for track in tracks:
                     self.tracks[track] = {'merge': {}, 'cluster': {}}
                 for p in ['00', '10', '11']:
@@ -1197,7 +1200,8 @@ class CgcClusteringJob(map_reduce.BaseGenotypingJob):
     def tabulate(self, name, cwd, i):
         p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/tabulate.sh', name + '.bed'], cwd = cwd)
         p.wait()
-        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', '/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/CutlessCandyChr17/{}/Simulation'.format(str(i))], cwd = cwd)
+        #p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', '/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/CutlessCandyChr17/{}/Simulation'.format(str(i))], cwd = cwd)
+        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', self.gold[i]], cwd = cwd)
         p.wait()
         tp = 0
         tn = 0

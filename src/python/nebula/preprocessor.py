@@ -57,6 +57,8 @@ class TrackPreprocessorJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    SUPPORTED_SVTYPES = ['DEL', 'INS', 'INV', 'ALU', 'MEI']
+
     def execute(self):
         c = config.Configuration()
         tracks = {}
@@ -64,10 +66,10 @@ class TrackPreprocessorJob(map_reduce.Job):
             tracks.update(bed.load_tracks_from_file_as_dict(path, parse_header = True))
         tracks = [tracks[track] for track in tracks]
         print('loaded', len(tracks), 'tracks')
-        #tracks = self.filter_overlapping_tracks(\
-        #            sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
-        #        )
-        tracks = {track.id: track for track in tracks}
+        tracks = self.filter_overlapping_tracks(\
+                    sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
+                )
+        tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
         print('removed overlapping tracks:', len(tracks))
         return tracks
 

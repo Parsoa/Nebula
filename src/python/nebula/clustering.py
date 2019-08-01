@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import io
+import gc
 import os
 import re
 import pwd
@@ -65,14 +66,22 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def load_genotyping_paths(self):
+        #self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) for i in range(self.begin, self.end)]
+        base = '/share/hormozdiarilab/Codes/NebulousSerendipity/output/cgc/genotyping/july-19-19'
+        for (dirpath, dirnames, filenames) in os.walk(base):
+            self.paths = [os.path.join(dirpath, dirname) for dirname in dirnames]
+            break
+        self.paths = sorted(self.paths)[self.begin: self.end]
+        print(self.paths)
+        self.gold = []
+        for path in self.paths:
+            base, name = os.path.split(path)
+            self.gold.append(os.path.join('/share/hormozdiarilab/Codes/NebulousSerendipity/data/Audano/Simons', 'Audano.SGDP_' + name + '.hg38.ALL.bed'))
+
     def load_inputs(self):
-        self.paths = ['/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) for i in range(self.begin, self.end)]
-        # Assume all events have the same set of tracks
+        self.load_genotyping_paths()
         tracks = json.load(open(os.path.join(self.paths[0], 'CgcCounterJob', 'batch_merge.json' )))
-        t = 'CHM1_chr17-41265461-DEL-10305'
-        t = 'HG00514_chr17-66934425-DEL-316'
-        t = 'HG00514_chr9-17700059-INS-96'
-        #tracks = {t: tracks[t]}
         self.round_robin(tracks)
         self.lp_kmers = {}
 
@@ -81,6 +90,34 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
 
     def get_current_job_directory(self):
         return os.path.abspath(os.path.join(self.get_output_directory(), 'UnifiedGenotypingOrchestrator', str(self.genotyping_batch)))
+
+    def transform(self, path, track_name):
+        kmers = json.load(open(os.path.join(self.get_previous_job_directory(), path), 'r'))
+        c = config.Configuration()
+        t = c.tracks[track_name]
+        lp_kmers = {}
+        for kmer in kmers['inner_kmers']:
+            if len(kmers['inner_kmers'][kmer]['loci']) > 3:
+                continue
+            if any(['chr17' in track for track in kmers['inner_kmers'][kmer]['tracks']]):
+                lp_kmers[kmer] = True
+                self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
+                self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
+                self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
+        for kmer in kmers['junction_kmers']:
+            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
+                continue
+            if len(kmers['junction_kmers'][kmer]['loci']) > 1:
+                continue
+            if any(['chr17' in track for track in kmers['junction_kmers'][kmer]['tracks']]):
+                lp_kmers[kmer] = True
+                self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
+                self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
+                self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
+        path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+        with open(path, 'w') as json_file:
+            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4)
+        return path
 
     def reduce(self):
         c = config.Configuration()
@@ -109,10 +146,12 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
             with open(os.path.join(path, 'CgcCounterJob', 'kmers.json'), 'r') as json_file:
                 kmers = json.load(json_file)
                 for kmer in self.lp_kmers:
-                    k = kmer['kmer']
-                    for kmer_type in ['inner_kmers', 'junction_kmers']:
-                        if k in kmers[kmer_type]:
-                            kmer['count'].append(min(kmers[kmer_type][k]['count'], kmer['coverage'][i] * kmer['reference']))
+                    if any(['chr17' in track for track in kmer['tracks']]):
+                        k = kmer['kmer']
+                        for kmer_type in ['inner_kmers', 'junction_kmers']:
+                            if k in kmers[kmer_type]:
+                                kmer['count'].append(min(kmers[kmer_type][k]['count'], kmer['coverage'][i] * kmer['reference']))
+            gc.collect()
 
     def generate_mps_linear_program(self):
         c = config.Configuration()
@@ -250,10 +289,9 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
                 for name in ['merge', 'union']:
                     self.diff[name][p + q] = []
                     self.stats[name]['state'][p + q] = 0
-        for i in range(self.begin, self.end):
-            cwd = '/share/hormozdiarilab/Codes/NebulousSerendipity/output/clustering/CutlessCandyChr17/' + str(i) + '/CgcIntegerProgrammingJob'
-            print(cwd)
-            if i == self.begin:
+        for i in range(len(self.paths)):
+            cwd = os.path.join(self.paths[i], 'CgcIntegerProgrammingJob')
+            if i == 0:
                 tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, 'merge.bed'))
                 for track in tracks:
                     self.tracks[track] = {}
@@ -265,7 +303,6 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
                                 self.tracks[track][name][p + '_as_' + q] = [0, []]
             self.tabulate('merge', cwd, i)
             self.tabulate('union', cwd, i)
-        self.plot_likelihoods()
         self.diff['diff'] = {'merge': {}, 'union': {}}
         for p in ['t', 'f']:
             for q in ['p', 'n']:
@@ -279,27 +316,19 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
             json.dump(self.stats, json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'diff.json'), 'w') as json_file:
             json.dump(self.diff['diff'], json_file, indent = 4)
-        for track in self.tracks:
-            if 'chr17' in track:
-                self.plot_coverage_count_difference(track)
-
-    def plot_likelihoods(self):
-        #data = [graph_objs.Histogram(x = self.stats['cluster']['likelihood'][s]) for s in ['tp', 'tn', 'fp', 'fn']]
-        #layout = graph_objs.Layout(title = 'Likelihoods')
-        #figure = graph_objs.Figure(data = data, layout = layout)
-        #plotly.plot(figure, filename = os.path.join(self.get_current_job_directory(), 'likelihoods.html'), auto_open = False)
-        pass
 
     def tabulate(self, name, cwd, i):
         p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/tabulate.sh', name + '.bed'], cwd = cwd)
         p.wait()
-        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', '/share/hormozdiarilab/Codes/NebulousSerendipity/output/simulation/CutlessCandyChr17/{}/Simulation'.format(str(i))], cwd = cwd)
+        p = subprocess.Popen(['/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/verify_sim.sh', self.gold[i]], cwd = cwd)
         p.wait()
         for p in ['00', '10', '11']:
             for q in ['00', '10', '11']:
                 s = p + '_as_' + q
                 tracks = bed.load_tracks_from_file_as_dict(os.path.join(cwd, s + '.bed'))
                 for track in tracks:
+                    if not 'chr17' in track:
+                        continue
                     self.tracks[track][name][s][0] += 1
                     self.tracks[track][name][s][1].append(i)
                     self.stats[name]['genotype'][s] += 1
@@ -333,7 +362,6 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
                     for j in range(self.begin - 1000, self.end - 1000):
                         if i != j:
                             x.append(abs((self.lp_values[track][i] - self.lp_values[track][j]) * 40 - kmer['count'][i] + kmer['count'][j]))
-        #print(x)
         if len(x) > 10000:
             x = [x[i] for i in sorted(random.sample(xrange(len(x)), 10000))] 
         visualizer.histogram(x, 'coverage_count_diff_' + track, self.get_current_job_directory(), 'diff', 'count')

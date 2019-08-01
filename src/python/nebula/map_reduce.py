@@ -63,7 +63,6 @@ class Job(object):
         else:
             print('resuming from reduce')
         output = self.reduce()
-        self.plot(output)
         return output
 
     def pre_process(self):
@@ -167,7 +166,7 @@ class Job(object):
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
             else:
                 print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
-        print(cyan('all forks done, merging output ...'))
+        print(cyan('all forks done, merging output...'))
 
     def reduce(self):
         c = config.Configuration()
@@ -195,12 +194,6 @@ class Job(object):
         with open(path, 'r') as json_file:
             output = json.load(json_file)
             return output
-
-    def plot(self, output):
-        pass
-
-    def post_process(self):
-        pass
 
     def clean_up(self):
         c = config.Configuration()
@@ -300,3 +293,46 @@ class GenomeDependentJob(BaseGenotypingJob):
             return s
         else:
             return os.path.abspath(os.path.join(self.get_output_directory(), self._name))
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class TrackExportHelper(Job):
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    _name = 'TrackExportHelper'
+    _category = 'genotyping'
+    _previous_job = None
+
+    @staticmethod
+    def launch(**kwargs):
+        job = TrackExportHelper(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.round_robin(self.tracks)
+
+    def transform(self, track, track_name):
+        with open(os.path.join(self.get_current_job_directory(), track_name + '.json'), 'w') as json_file:
+            json.dump(track, json_file, indent = 4)
+        return None
+
+    def get_current_job_directory(self):
+        return self.current_job_directory
+
+    def output_batch(self):
+        pass
+
+    def reduce(self):
+        pass
