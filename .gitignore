@@ -17,6 +17,7 @@ __pycache__/
 *.ct
 *.out
 *.log
+.nfs*
 output/
 simulation/
 programming/

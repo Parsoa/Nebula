@@ -62,6 +62,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         c = config.Configuration()
         self.create_output_directories()
         self.load_inputs()
+        return self.tracks
 
     def load_inputs(self):
         c = config.Configuration()
@@ -80,6 +81,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         for track in self.tracks:
             contig_index[self.tracks[track].contig] = self.tracks[track]
         n = 0
+        self.tracks = {}
         print(len(contig_index), 'total tracks')
         for read in self.contigs.fetch():
             if read.query_name in contig_index:
@@ -88,15 +90,16 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                 kmers.update(self.extract_assembly_kmers(t, read.query_sequence))
                 kmers.update(self.extract_mapping_kmers(t))
                 if len(kmers) > 0:
-                    path = os.path.join(self.get_current_job_directory(), t.id + '.json')
-                    with open(path, 'w') as json_file:
-                        json.dump(kmers, json_file, indent = 4)
-                    output[t.id] = path
+                    self.tracks[t.id] = kmers
+                    #path = os.path.join(self.get_current_job_directory(), t.id + '.json')
+                    #with open(path, 'w') as json_file:
+                    #    json.dump(kmers, json_file, indent = 4)
+                    #output[t.id] = path
                     n += 1
                 if n % 1000 == 0:
                     print(n)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump(output, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+        #    json.dump(output, json_file, indent = 4)
 
     def extract_kmers(self):
         c = config.Configuration()
@@ -171,7 +174,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                     index = 0
                     # Should try and correct for sequencing errors in masks by doing a consensus
                     for kmer in stream_kmers(c.ksize, True, True, seq):
-                        if 'N' in kmers:
+                        if 'N' in kmer:
                             index += 1
                             continue
                         if self.is_clipped((index, index + c.ksize), clips):
@@ -238,20 +241,18 @@ class JunctionKmersScoringJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
-        self.tracks = self.load_previous_job_results()
+        #self.tracks = self.load_previous_job_results()
         for track in self.tracks:
-            print(cyan(track))
-            with open(self.tracks[track], 'r') as json_file:
-                kmers = json.load(json_file)
-                for kmer in kmers:
-                    k = canonicalize(kmer)
-                    if not k in self.kmers:
-                        self.kmers[k] = copy.deepcopy(kmers[kmer])
-                        self.kmers[k]['loci'] = {}
-                        self.kmers[k]['count'] = 0
-                        self.kmers[k]['tracks'] = {}
-                    self.kmers[k]['loci'].update(kmers[kmer]['loci'])
-                    self.kmers[k]['tracks'][track] = 1
+            kmers = self.tracks[track]
+            for kmer in kmers:
+                k = canonicalize(kmer)
+                if not k in self.kmers:
+                    self.kmers[k] = copy.deepcopy(kmers[kmer])
+                    self.kmers[k]['loci'] = {}
+                    self.kmers[k]['count'] = 0
+                    self.kmers[k]['tracks'] = {}
+                self.kmers[k]['loci'].update(kmers[kmer]['loci'])
+                self.kmers[k]['tracks'][track] = 1
         self.chroms = extract_whole_genome()
         self.round_robin(self.chroms)
 
@@ -303,15 +304,14 @@ class JunctionKmersScoringJob(map_reduce.Job):
             n += 1
             if n % 10000 == 0:
                 print('processed', n, 'out of', len(self.kmers), 'kmers')
-        job.execute()
         #for track in self.tracks:
         #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
         #        json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
         #    n += 1
         #    if n % 1000 == 0:
         #        print('exported', n, 'out of', len(self.tracks), 'tracks')
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+        #    json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         return self.tracks
 
 # ============================================================================================================================ #

@@ -44,8 +44,8 @@ def preprocess():
 
     def supply_junction_kmers():
         job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
-        job.execute()
-        job = JunctionKmersScoringJob()
+        tracks = job.execute()
+        job = JunctionKmersScoringJob(track = tracks)
         tracks = job.execute()
         job = FilterJunctionKmersJob(tracks = tracks)
         job.execute()

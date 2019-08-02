@@ -122,8 +122,8 @@ class CgcCounterJob(counter.BaseExactCountingJob):
             _kmers[kmer] = {}
             _kmers[kmer]['loci'] = {}
         print('Dumping', green(len(_kmers)), 'kmers for the counter')
-        with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
-            json.dump(_kmers, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
+        #    json.dump(_kmers, json_file, indent = 4)
 
     def merge_count(self, kmer, tokens):
         count = tokens[0] 

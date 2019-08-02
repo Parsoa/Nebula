@@ -320,6 +320,11 @@ void process_gapped_read(char* seq) {
     }
 }
 
+const int SEARCHING = 0 ;
+const int SKIPPING = 1 ;
+const int READING = 2 ;
+const unsigned long BLOCK_SIZE = 4096 * 2 ;
+
 void output_counts(string path, int index) {
     nlohmann::json payload ;
     cout << "dumping kmer counts..." << endl ;
@@ -337,15 +342,8 @@ void output_counts(string path, int index) {
         } else if (JOB == COUNT_GAPPED_KMERS) {
             o << decode_kmer(i->first) << ":" << *count << endl ; 
         } else if (JOB == COUNT_MIX_KMERS) {
-            auto type = (types->find(i->first))->second ; 
-            if (type == KMER_TYPE_INNER) {
-                auto total = totals->find(i->first) ;
-                if (*count != 0 and *total->second != 0) {
-                    o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << endl ;
-                }
-            } else {
-                o << decode_kmer(i->first) << ":" << *count << endl ;
-            }
+            auto total = totals->find(i->first) ;
+            o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << "\n" ;
         } else {
             auto total = totals->find(i->first) ;
             o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << endl ;
@@ -353,11 +351,6 @@ void output_counts(string path, int index) {
     }
     cout << "done" << endl ;
 }
-
-const int SEARCHING = 0 ;
-const int SKIPPING = 1 ;
-const int READING = 2 ;
-const unsigned long BLOCK_SIZE = 4096 * 2 ;
 
 int get_number_of_alignments(samFile* bam_file, bam_hdr_t* bam_header, bam1_t* alignment) {
     cout << "Estimating number of reads" << endl ;
