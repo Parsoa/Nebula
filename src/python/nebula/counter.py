@@ -20,7 +20,7 @@ from nebula import (
 )
 
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 print = pretty_print
 
 # ============================================================================================================================ #

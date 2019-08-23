@@ -24,7 +24,7 @@ from nebula import (
 )
 
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 from nebula.chromosomes import *
 print = pretty_print
 
@@ -37,12 +37,11 @@ from pulp import *
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
+class IntegerProgrammingJob(map_reduce.Job):
 
     _name = 'IntegerProgrammingJob'
     _category = 'preprocessing'
     _previous_job = None
-    _kmer_type = 'unique_inner'
 
     @staticmethod
     def launch(**kwargs):
@@ -61,22 +60,14 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
 
     def output_batch(self, batch):
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
-        print(cyan(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json')))
         json.dump(self.lp_kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
-        exit()
 
     def reduce(self):
         c = config.Configuration()
         self.index_kmers()
         self.index_tracks()
         self.calculate_residual_coverage()
-        #print('exporting kmers...')
-        #with open(os.path.join(self.get_current_job_directory(), 'lp_kmers.json'), 'w') as json_file:
-        #    json.dump(self.lp_kmers, json_file, indent = 4, sort_keys = True)
-        #with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
-        #    json.dump(self.tracks, json_file, indent = 4)
-        #print('generating linear program...')
         self.solve()
 
     def index_kmers(self):
@@ -84,22 +75,16 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         self.tracks = {}
         self.lp_kmers = []
         index = {}
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
-            print(path)
-            if not os.path.isfile(path):
-                debug_log('batch not found:', path)
-            with open(path, 'r') as json_file:
-                kmers = json.load(json_file)
-                for kmer in kmers:
-                    if not kmer in index:
-                        index[kmer] = len(self.lp_kmers)
-                        self.lp_kmers.append(copy.deepcopy(kmers[kmer]))
-                        self.lp_kmers[len(self.lp_kmers) - 1]['kmer'] = kmer
-                        for track in kmers[kmer]['tracks']:
-                            if not track in self.tracks:
-                                self.tracks[track] = {}
-        print(green(len(self.lp_kmers)), 'kmers')
+        for batch in self.load_output():
+            kmers = batch
+            for kmer in kmers:
+                if not kmer in index:
+                    index[kmer] = len(self.lp_kmers)
+                    self.lp_kmers.append(copy.deepcopy(kmers[kmer]))
+                    self.lp_kmers[len(self.lp_kmers) - 1]['kmer'] = kmer
+                    for track in kmers[kmer]['tracks']:
+                        if not track in self.tracks:
+                            self.tracks[track] = {}
         return self.lp_kmers
 
     def index_tracks(self):
@@ -111,18 +96,7 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
         for index, kmer in enumerate(self.lp_kmers):
             for track in kmer['tracks']:
                 self.tracks[track]['kmers'].append(index)
-        print(len(self.tracks), 'tracks')
         return self.tracks
-
-    def calculate_residual_coverage(self):
-        c = config.Configuration()
-        for kmer in self.lp_kmers:
-            r = 0
-            for track in kmer['tracks']:
-                r += kmer['tracks'][track]
-            # put an upperbound on a kmer's impact on LP score
-            kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
-            kmer['residue'] = kmer['reference'] - r
 
     def add_error_absolute_value_constraints(self, problem, index):
         globals()['cplex'] = __import__('cplex')
@@ -167,7 +141,9 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
             self.solution = problem.solution.get_values()
             with open(os.path.join(self.get_current_job_directory(), 'solution_cplex.json'), 'w') as json_file:
                 json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
+        self.round_lp()
         self.export_solution()
+        self.export_kmers()
         if c.rum:
             self.verify_genotypes()
         return self.tracks
@@ -190,47 +166,44 @@ class IntegerProgrammingJob(map_reduce.BaseGenotypingJob):
                 name = tokens[1]
                 index = int(tokens[0])
                 value = float(tokens[2])
+                # tracks are indexed lexicographically, different from iteration index
                 if name[0] == 'c':
                     self.solution[var_index[name[1:]]] = value
                 else:
                     self.solution[index] = value
                 line = f.readline()
 
-    def export_solution(self):
+    def round_lp(self):
         c = config.Configuration()
-        self.errors = self.solution[len(self.tracks):]
-        for track in self.tracks:
-            index = self.tracks[track]['index']
-            self.tracks[track]['coverage'] = self.solution[index]
-            self.tracks[track]['lp_kmers'] = []
-        for index, kmer in enumerate(self.lp_kmers):
-            for track in kmer['tracks']:
-                self.tracks[track]['lp_kmers'].append(kmer)
         self.find_rounding_break_points()
         print('Rounding', len(self.tracks), 'tracks')
+        for track in self.tracks:
+            t = c.tracks[track]
+            index = self.tracks[track]['index']
+            self.tracks[track]['lp_value'] = self.solution[index]
+            self.tracks[track]['lp_genotype'] = self.round_genotype(self.solution[index], t.svtype)[1]
+            self.tracks[track]['lp_kmers'] = []
+
+    def export_solution(self):
+        c = config.Configuration()
         name = 'merge.bed' if not c.cgc else 'genotypes_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.bed'
         path = os.path.join(os.getcwd() if c.cgc else self.get_current_job_directory(), name)
         with open(path, 'w') as bed_file:
-            bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+            bed_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
             for track in self.tracks:
                 t = c.tracks[track]
                 index = self.tracks[track]['index']
-                g = self.round_genotype(self.solution[index], t.svtype)
-                bed_file.write(t.chrom + '\t' +
-                    str(t.begin) + '\t' +
-                    str(t.end) + '\t' +
-                    str(g[1]) + '\t' +
-                    str(self.solution[index]) + '\t' + 
-                    str(t.id) + '\n')
-        self.export_kmers()
+                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, self.tracks[track]['lp_genotype'], self.tracks[track]['lp_value'], t.id]]) + '\n')
 
     def export_kmers(self):
+        c = config.Configuration()
         tracks = {}
         for index, kmer in enumerate(self.lp_kmers):
             for track in kmer['tracks']:
                 if not track in tracks:
                     tracks[track] = {}
                 tracks[track][kmer['kmer']] = kmer
+                self.tracks[track]['lp_kmers'].append(kmer)
         for track in tracks:
             path = os.path.join(self.get_current_job_directory(), track + '.json')
             with open(path, 'w') as json_file:

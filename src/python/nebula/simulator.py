@@ -24,7 +24,7 @@ from nebula import (
 )
 
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 from nebula.chromosomes import *
 print = pretty_print
 
@@ -109,41 +109,23 @@ class Simulation(map_reduce.Job):
 
     def assign_event_zygosities(self):
         c = config.Configuration()
-        if c.random:
-            n = len(self.tracks) / 2
-            r = sorted(random.sample(xrange(len(self.tracks)), n))
-            a = list(filter(lambda i: i not in r, range(len(self.tracks))))
-            self.absent = [ self.tracks[i] for i in a ]
-            self.present = [ self.tracks[i] for i in r ]
-            self.homozygous, self.heterozygous = self.select_events(self.present)
-        else:
-            self.absent = []
-            self.present = []
-            self.homozygous = []
-            self.heterozygous = []
-            for track in self.tracks:
-                if hasattr(track, 'genotype'):
-                    if track.genotype == '10' or track.genotype == '01':
-                        self.heterozygous.append(track)
-                        self.present.append(track)
-                    elif track.genotype == '11':
-                        self.homozygous.append(track)
-                        self.present.append(track)
-                    else:
-                        self.absent.append(track)
+        self.absent = []
+        self.present = []
+        self.homozygous = []
+        self.heterozygous = []
+        for track in self.tracks:
+            r = random.randint(0, 2)
+            if r == 2:
+                self.absent.append(track)
+                track.add_field('genotype', '00')
+            else:
+                self.present.append(track)
+                if r == 1:
+                    self.heterozygous.append(track)
+                    track.add_field('genotype', '10')
                 else:
-                    r = random.randint(0, 2)
-                    if r == 2:
-                        self.absent.append(track)
-                        track.add_field('genotype', '00')
-                    else:
-                        self.present.append(track)
-                        if r == 1:
-                            self.heterozygous.append(track)
-                            track.add_field('genotype', '10')
-                        else:
-                            self.homozygous.append(track)
-                            track.add_field('genotype', '11')
+                    self.homozygous.append(track)
+                    track.add_field('genotype', '11')
         print(len(self.tracks), 'non-overlapping tracks')
         print(len(self.absent), '0|0')
         print(len(self.present), '1|1 or 1|0')
@@ -163,14 +145,14 @@ class Simulation(map_reduce.Job):
         c = config.Configuration()
         strand_1 = self.apply_events_to_chromosome(chrom, self.present)
         strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
-        if c.diploid:
-            self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
-            self.export_fastq(seq, chrom + '_diploid')
-        else:
-            self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
-            self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
-            self.export_fastq(seq, chrom + '_strand_1')
-            self.export_fastq(seq, chrom + '_strand_2')
+        #if c.diploid:
+        self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
+        self.export_fastq(seq, chrom + '_diploid')
+        #else:
+        #    self.export_chromosome_fasta(chrom, strand_1, chrom + '_strand_1')
+        #    self.export_chromosome_fasta(chrom, strand_2, chrom + '_strand_2')
+        #    self.export_fastq(seq, chrom + '_strand_1')
+        #    self.export_fastq(seq, chrom + '_strand_2')
         exit()
 
     def export_diploid_chromosome_fasta(self, chrom, strands):

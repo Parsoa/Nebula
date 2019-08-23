@@ -14,12 +14,8 @@ import argparse
 import traceback
 import statistics as stats
 
-from nebula import (
-    config,
-)
-
-from nebula.debug import *
-from nebula.commons import *
+#from nebula.debug import *
+#from nebula.logger import *
 
 # ============================================================================================================================ #
 # kmer helpers
@@ -31,7 +27,6 @@ def canonicalize(seq):
     return seq if seq < reverse_complement else reverse_complement
 
 def c_extract_kmers(k = 32, counter = lambda x: 1, count = 1, overlap = True, canonical = True, *args):
-    c = config.Configuration()
     kmers = {}
     for s in args:
         i = 0
@@ -51,7 +46,6 @@ def c_extract_kmers(k = 32, counter = lambda x: 1, count = 1, overlap = True, ca
     return kmers
 
 def extract_kmers(k = 32, canonical = True, *args):
-    c = config.Configuration()
     kmers = {}
     for s in args:
         for i in range(0, len(s) - k + 1):
@@ -134,3 +128,18 @@ def calculate_gc_content(seq):
             n += 1
     return n
     #return len(list(filter(lambda x: x == 'G' or x == 'C', seq)))
+
+def is_kmer_low_entropy(kmer):
+    kmers = {}
+    m = 0
+    for k in stream_kmers(3, False, True, kmer):
+        if not k in kmers:
+            kmers[k] = 0
+        kmers[k] += 1
+        if kmers[k] > m:
+            m = kmers[k]
+    if len(kmers) < 7:
+        return True
+    if m > (len(kmer) - 3 + 1) / 3:
+        return True
+    return False

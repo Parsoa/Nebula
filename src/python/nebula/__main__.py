@@ -5,11 +5,8 @@ from nebula import (
     map_reduce,
 )
 
-# import jobs
 from cgc import *
 from misc import *
-#from depth import *
-from gapped import *
 from junction import *
 from reduction import *
 from simulator import *
@@ -17,10 +14,9 @@ from clustering import *
 from programming import *
 from preprocessor import *
 
-# import helpers
 from debug import *
 from kmers import *
-from commons import *
+from logger import *
 from chromosomes import *
 
 print = pretty_print
@@ -36,16 +32,17 @@ def preprocess():
 
     def supply_inner_kmers():
         job = ExtractInnerKmersJob()
-        job.execute()
+        tracks = job.execute()
         job = ExtractLociIndicatorKmersJob()
-        job.execute()
-        job = FilterLociIndicatorKmersJob()
+        tracks = job.execute()
+        job = FilterLociIndicatorKmersJob(tracks = tracks)
         job.execute()
 
     def supply_junction_kmers():
-        job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
-        tracks = job.execute()
-        job = JunctionKmersScoringJob(track = tracks)
+        tracks = {}
+        #job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
+        #job.execute()
+        job = JunctionKmersScoringJob(resume_from_reduce = True)
         tracks = job.execute()
         job = FilterJunctionKmersJob(tracks = tracks)
         job.execute()
@@ -53,7 +50,6 @@ def preprocess():
     load_tracks()
     #supply_inner_kmers()
     supply_junction_kmers()
-    exit()
     job = MixKmersJob()
     job.execute()
 
@@ -79,18 +75,18 @@ def genotype():
             stats = {'coverage': 40, 'std': 8}
             stats = {'coverage': 23, 'std': 7}
             stats = {'coverage': 50, 'std': 17}
+            tracks, stats = job.execute()
         else:
-            stats = job.execute()
+            tracks, stats = job.execute()
         config.Configuration.update(stats)
-        #job = CgcCoverageCorrectingIntegerProgrammingJob()
-        #job.execute()
-        #exit()
-        job = CgcIntegerProgrammingJob()
+        job = CgcIntegerProgrammingJob(tracks = tracks)
         job.execute()
         exit()
-        #job = CgcInnerKmersIntegerProgrammingJob()
-        #job.execute()
-        job = CgcJunctionKmersIntegerProgrammingJob()
+        job = CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
+        job.execute()
+        job = CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
+        job.execute()
+        job = ExportGenotypingKmersJob()
         job.execute()
 
 def cluster():
@@ -99,7 +95,7 @@ def cluster():
     #job = CgcClusteringJob(begin = 1000, end = 1005)
     #job = UnifiedGenotypingJob(begin = 1000, end = 1050, genotyping_batch = 0)
     #job = UnifiedGenotypingOrchestrator()
-    job = UnifiedGenotypingJob(begin = 0, end = 5, genotyping_batch = '0')
+    job = UnifiedGenotypingJob(begin = 0, end = 5, genotyping_batch = 'for-august-presentation')
     job.execute()
     exit()
     for i in range(1, 10):
@@ -129,20 +125,20 @@ def simulate():
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-if __name__ == '__main__':
+def print_banner():
     print('Nebula, ultra-efficient mapping-free structural variation genotyper')
+
+if __name__ == '__main__':
     config.init()
+    print_banner()
     c = config.Configuration()
-    if c.job:
-        getattr(sys.modules[__name__], c.job).launch(resume_from_reduce = c.reduce)
-    else:
-        if c.command == 'preprocess':
-            preprocess()
-        if c.command == 'genotype':
-            genotype()
-        if c.command == 'simulate':
-            simulate()
-        if c.command == 'cluster':
-            cluster()
-        if c.command == 'export':
-            export()
+    if c.command == 'export':
+        export()
+    if c.command == 'cluster':
+        cluster()
+    if c.command == 'simulate':
+        simulate()
+    if c.command == 'genotype':
+        genotype()
+    if c.command == 'preprocess':
+        preprocess()

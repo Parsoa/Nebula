@@ -14,7 +14,7 @@ counter: counter.o
 	$(CC) counter.o -o counter.out $(LDFLAGS)
 
 debug: counter.cpp
-	$(CC) -g $(CFLAGS) counter.cpp -o counter.out $(LDFLAGS)
+	$(CC) -g $(CFLAGS) -DDEBUG counter.cpp -o counter.out $(LDFLAGS)
 
 docker: counter.cpp
 	$(CC) -g $(DCFLAGS) counter.cpp -o counter.out $(DLDFLAGS)

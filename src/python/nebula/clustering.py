@@ -31,7 +31,7 @@ from nebula import (
 
 from nebula.debug import *
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 from nebula.chromosomes import *
 print = pretty_print
 
@@ -166,7 +166,7 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
                 variables[p * len(self.tracks) + self.tracks[track]['index']] = LpVariable(prefix, 0, 1)
         self.add_mps_error_absolute_value_constraints(problem, variables)
         self.add_mps_coverage_diff_absolute_value_constraints(problem, variables)
-        expr = LpAffineExpression([(variables[n * (len(self.tracks) + len(self.lp_kmers)) + i], self.lp_kmers[i % len(self.lp_kmers)]['weight']) for i in range(0, n * len(self.lp_kmers))] + [(variables[j], 1.0 / n) for j in range(n * (len(self.tracks) + 2 * len(self.lp_kmers)), len(variables))])
+        expr = LpAffineExpression([(variables[n * (len(self.tracks) + len(self.lp_kmers)) + i], 0 * self.lp_kmers[i % len(self.lp_kmers)]['weight']) for i in range(0, n * len(self.lp_kmers))] + [(variables[j], 1.0 / n) for j in range(n * (len(self.tracks) + 2 * len(self.lp_kmers)), len(variables))])
         problem += expr
         self.add_mps_optimization_constraints(problem, variables)
         return problem, variables
@@ -221,6 +221,20 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
                 expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
                 problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(p) + '_' + str(i), rhs)
 
+    def solve(self):
+        c = config.Configuration()
+        problem, variables = self.generate_mps_linear_program()
+        problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin.lp'))
+        problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin.mps'))
+        command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution.mps')
+        output = subprocess.call(command, shell = True)
+        self.import_lp_values()
+        with open(os.path.join(self.get_current_job_directory(), 'solution_coin.json'), 'w') as json_file:
+            json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
+        self.export_solution()
+        self.export_kmers()
+        return self.tracks
+
     def import_lp_values(self, path = 'solution.mps'):
         c = config.Configuration()
         self.solution = []
@@ -260,8 +274,8 @@ class UnifiedGenotypingJob(cgc.CgcIntegerProgrammingJob):
             self.find_rounding_break_points()
             with open(os.path.join(self.get_current_job_directory(), 'merge_' + str(p) + '.bed'), 'w') as bed_file:
                 with open(os.path.join(path, 'CgcIntegerProgrammingJob', 'union.bed'), 'w') as cluster_file:
-                    bed_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
-                    cluster_file.write('CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+                    bed_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+                    cluster_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
                     for track in self.tracks:
                         t = c.tracks[track]
                         index = self.tracks[track]['index']

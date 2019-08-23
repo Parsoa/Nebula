@@ -17,7 +17,6 @@ import subprocess
 from nebula import (
     bed,
     config,
-    gapped,
     counter,
     junction,
     reduction,
@@ -28,7 +27,7 @@ from nebula import (
 )
 
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 from nebula.chromosomes import *
 print = pretty_print
 
@@ -65,12 +64,12 @@ class TrackPreprocessorJob(map_reduce.Job):
         for path in c.bed:
             tracks.update(bed.load_tracks_from_file_as_dict(path, parse_header = True))
         tracks = [tracks[track] for track in tracks]
-        print('loaded', len(tracks), 'tracks')
+        user_print('Loaded', len(tracks), 'tracks.')
         tracks = self.filter_overlapping_tracks(\
                     sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
                 )
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
-        print('removed overlapping tracks:', len(tracks))
+        user_print('Removed overlapping tracks.', len(tracks), ' non-overlapping tracks.')
         return tracks
 
     def filter_overlapping_tracks(self, tracks):
@@ -84,7 +83,7 @@ class TrackPreprocessorJob(map_reduce.Job):
                     break
                 if tracks[j].begin <= tracks[i].end:
                     remove.append(j)
-                    print(red(str(tracks[j])), 'overlaps', blue(str(tracks[i])))
+                    user_print_warning(str(tracks[j]), 'overlaps', blue(str(tracks[i])))
                     continue
                 else:
                     i = j
@@ -185,11 +184,6 @@ class MixKmersJob(map_reduce.Job):
 
     def load_gc_content_kmers(self):
         self.gc_kmers = {}
-    #    job = depth.ChromosomeGcContentEstimationJob()
-    #    kmers = job.execute()
-    #    for kmer in kmers:
-    #        if kmer not in self.junction_kmers and kmer not in self.inner_kmers:
-    #            self.gc_kmers[kmer] = {'gc': {}, 'loci': {}, 'count': 0}
 
     def export_tracks(self):
         c = config.Configuration()

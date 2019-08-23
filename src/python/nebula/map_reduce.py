@@ -23,7 +23,7 @@ from nebula import (
 )
 
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 print = pretty_print
 
 def on_exit(job):
@@ -50,30 +50,24 @@ class Job(object):
             setattr(self, k, v)
 
     def execute(self):
+        start = time.clock() 
         c = config.Configuration()
-        self.pre_process()
         self.find_thread_count()
         self.create_output_directories()
-        self.prepare()
         self.load_inputs()
         if not self.resume_from_reduce: 
-            print('normal execution flow')
             self.distribute_workload()
             self.wait_for_children()
         else:
-            print('resuming from reduce')
+            system_print_high('Resuming from reduce...')
         output = self.reduce()
+        end = time.clock()
+        system_print_high('Stage ' + self._name + ' finished. Execution time', end - start)
         return output
-
-    def pre_process(self):
-        pass
 
     def find_thread_count(self):
         c = config.Configuration()
         self.num_threads = c.threads
-
-    def prepare(self):
-        pass
 
     def load_inputs(self):
         tracks = self.load_previous_job_results()
@@ -89,7 +83,6 @@ class Job(object):
 
     def round_robin(self, tracks, filter_func = lambda x: False):
         c = config.Configuration()
-        print('round robin', c.threads)
         n = 0
         self.batch = {}
         for track in tracks:
@@ -99,7 +92,7 @@ class Job(object):
             if not index in self.batch:
                 self.batch[index] = {}
             self.batch[index][track] = tracks[track]
-            print(blue('assigned ', track, ' to ', index))
+            system_print('assigned ', track, ' to ', index)
             n = n + 1
             self.num_threads = min(c.threads, n)
 
@@ -108,13 +101,12 @@ class Job(object):
             pid = os.fork()
             if pid == 0:
                 self.index = index
-                # atexit.register(on_exit, self)
                 self.run_batch(self.batch[index])
                 exit()
             else:
                 self.children[pid] = index
-                print('spawned child', '{:2d}'.format(index), ':', pid)
-        print(cyan('done distributing workload'))
+                system_print('spawned child', '{:2d}'.format(index), ':', pid)
+        system_print('done distributing workload')
 
     def run_batch(self, batch):
         c = config.Configuration()
@@ -127,14 +119,15 @@ class Job(object):
                 if batch[track] == None:
                     remove[track] = True
             except Exception as e:
-                print(red(e))
-                traceback.print_exc()
+                system_print_error(track)
+                system_print_error(traceback.format_exc())
                 remove[track] = True
+                debug_breakpoint()
             n = n + 1
             t = time.time()
             p = float(n) / len(batch)
             eta = (1.0 - p) * ((1.0 / p) * (t - start)) / 3600
-            print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
+            system_print('{:2d}'.format(self.index), 'progress:', '{:7.5f}'.format(p), 'ETA:', '{:8.6f}'.format(eta))
             if n % 1000 == 0:
                 gc.collect()
         for track in remove:
@@ -156,17 +149,15 @@ class Job(object):
         json_file.close()
 
     def wait_for_children(self):
-        while True:
-            if len(self.children) == 0:
-                break
+        while self.children:
             (pid, e) = os.wait()
             index = self.children[pid]
             self.children.pop(pid, None)
             if os.path.isfile(os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')):
-                print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining'))
+                system_print_high('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished,', '{:2d}'.format(len(self.children)), 'remaining')
             else:
-                print(red('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining'))
-        print(cyan('all forks done, merging output...'))
+                system_print_high('pid', '{:5d}'.format(pid) + ', index', '{:2d}'.format(index), 'finished didn\'t produce output,', len(self.children), 'remaining')
+        system_print_high('All forks done, merging output...')
 
     def reduce(self):
         c = config.Configuration()
@@ -183,23 +174,17 @@ class Job(object):
 
     def load_output(self):
         for i in range(0, self.num_threads):
-            print('reading batch', i)
+            system_print('reading batch', i)
             yield self.load_output_batch(i)
 
     def load_output_batch(self, index):
         path = os.path.join(self.get_current_job_directory(), 'batch_' + str(index) + '.json')
         if not os.path.isfile(path):
-            print(yellow('didn\'t find batch', index))
+            system_print_error('didn\'t find batch', index)
             return {}
         with open(path, 'r') as json_file:
             output = json.load(json_file)
             return output
-
-    def clean_up(self):
-        c = config.Configuration()
-        for i in range(0, self.num_threads):
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json')
-            os.remove(path)
 
     # ============================================================================================================================ #
     # misc helpers
@@ -211,17 +196,6 @@ class Job(object):
             return bed.load_tracks_from_file_as_dict(os.path.join(self.get_simulation_directory(), name))
         else:
             return bed.load_tracks_from_file_as_dict(c.bed)
-
-    def get_sv_type(self):
-        c = config.Configuration()
-        bed_file_name = c.bed.split('/')[-1]
-        if bed_file_name.find('DEL') != -1:
-            return 'DEL'
-        if bed_file_name.find('INV') != -1:
-            return 'INV'
-        if bed_file_name.find('ALU') != -1:
-            return 'ALU'
-        return 'DEL'
 
     def load_reference_counts_provider(self):
         c = config.Configuration()
@@ -262,28 +236,7 @@ class Job(object):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class BaseGenotypingJob(Job):
-
-    pass
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# First job in the genotyping pipeline, it may have a predecessor non-genotyping job, so the output directory for the previous
-# job may be different
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class FirstGenotypingJob(BaseGenotypingJob):
-
-    pass
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# Base class for every job that is a direct part of the genotyping process
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class GenomeDependentJob(BaseGenotypingJob):
+class GenomeDependentJob(Job):
 
     def get_current_job_directory(self):
         c = config.Configuration()

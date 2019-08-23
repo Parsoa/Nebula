@@ -27,7 +27,7 @@ from nebula import (
 )
 from nebula.debug import *
 from nebula.kmers import *
-from nebula.commons import *
+from nebula.logger import *
 from nebula.chromosomes import *
 
 import pysam
@@ -62,7 +62,6 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
     def execute(self):
         c = config.Configuration()
-        self.pre_process()
         self.create_output_directories()
         self.find_thread_count()
         self.load_inputs()
@@ -76,7 +75,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
         if self.contigs:
             self.extract_kmers()
         else:
-            print('No assembly contigs provided, extracting from reference')
+            system_print_high('No assembly contigs provided, extracting from reference')
             self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
             self.distribute_workload()
             self.wait_for_children()
@@ -107,11 +106,10 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
     def transform(self, track, track_name):
         debug_breakpoint()
-        print(green(track_name))
         c = config.Configuration()
         inner_kmers = self.extract_inner_kmers(track, None)
         if len(inner_kmers) == 0:
-            print(red('skipping', track_name, 'no inner kmers found'))
+            system_print_warning('Skipping ' + track_name + ', no inner kmers found.')
             return None
         name = track_name  + '.json'
         with open(os.path.join(self.get_current_job_directory(), name), 'w') as json_file:
@@ -122,7 +120,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
         c = config.Configuration()
         chrom = extract_chromosome(track.chrom.lower())
         if not chrom:
-            print(red(track.chrom.lower()))
+            system_print_warning('Chromosome', track.chrom.lower(), 'not found.')
             return None
         inner_kmers = {}
         if track.svtype == 'INS':
@@ -214,7 +212,6 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
             with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
                 self.keep_best_kmers(kmers)
-        print('Finding loci for', green(len(self.inner_kmers)), 'kmers')
         self.round_robin(self.chroms)
 
     # This will lose some shared kmers
@@ -267,26 +264,20 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
         exit()
 
     def reduce(self):
-        for i in range(0, self.num_threads):
-            print('adding batch', i)
-            path = os.path.join(self.get_current_job_directory(), 'batch_' + str(i) + '.json') 
-            if not os.path.isfile(path):
-                print(red('couldn\'t find batch'), i, red('results will be unreliable'))
-                continue
-            with open (path, 'r') as json_file:
-                batch = json.load(json_file)
-                for kmer in batch:
-                    self.inner_kmers[kmer]['loci'].update(batch[kmer]['loci'])
+        for batch in self.load_output():
+            for kmer in batch:
+                self.inner_kmers[kmer]['loci'].update(batch[kmer]['loci'])
         for track in self.tracks:
             self.tracks[track] = {}
         for kmer in self.inner_kmers:
             for track in self.inner_kmers[kmer]['tracks']:
                 self.tracks[track][kmer] = self.inner_kmers[kmer]
-        for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as track_file:
-                json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+        return self.tracks
+        #for track in self.tracks:
+        #    with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as track_file:
+        #        json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
+        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+        #    json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
 
     def plot_kmer_reference_count(self):
         x = []
@@ -326,13 +317,14 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
-        self.tracks = self.load_previous_job_results()
+        #self.tracks = self.load_previous_job_results()
         self.round_robin(self.tracks)
 
-    def transform(self, track, track_name):
+    def transform(self, kmers, track_name):
         c = config.Configuration()
-        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
-            kmers = json.load(json_file)
+        #with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
+        if track_name:
+            #kmers = json.load(json_file)
             t = c.tracks[track_name]
             for kmer in kmers:
                 if kmer.find('N') != -1:
@@ -359,12 +351,12 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         c = config.Configuration()
         for track in kmer['tracks']:
             t = c.tracks[track]
-            for loci in kmer['loci']:
-                if not 'inside' in loci:
-                    start = int(loci.split('_')[1])
-                    if abs(start - t.begin) < 2 * c.ksize:
-                        return True
+            for locus in kmer['loci']:
+                if not 'inside' in locus:
+                    start = int(locus.split('_')[1])
                     if abs(start - t.end) < 2 * c.ksize:
+                        return True
+                    if abs(start - t.begin) < 2 * c.ksize:
                         return True
         return False
 
@@ -380,7 +372,6 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
-        exit()
 
     def get_shared_masks(self, interest_kmers, kmers):
         l = []
@@ -397,12 +388,12 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
             for kmer in batch:
                 self.kmers[kmer] = batch[kmer]
         #
-        print(len(self.kmers), 'kmers')
+        system_print_high(len(self.kmers), 'kmers before filtering.')
         returning_kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if self.is_kmer_returning(self.kmers[kmer])}
         with open(os.path.join(self.get_current_job_directory(), 'returning.json'), 'w') as json_file:
             json.dump(returning_kmers, json_file, indent = 4)
         self.kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if not self.is_kmer_returning(self.kmers[kmer])}
-        print(len(self.kmers), 'kmers after filtering returning kmers')
+        system_print_high(len(self.kmers), 'kmers after filtering returning kmers.')
         #
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
@@ -413,6 +404,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
         #
+        system_print_high(len(self.tracks), 'tracks with eligible inner kmers.')
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
@@ -423,7 +415,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class AdjustCoverageGcContentJob(map_reduce.BaseGenotypingJob):
+class AdjustCoverageGcContentJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # Launcher

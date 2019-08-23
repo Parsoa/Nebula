@@ -23,7 +23,11 @@ using namespace std ;
 //using nson = nlohmann::json ;
 
 int JOB = 0 ;
-bool DEBUG = false ;
+int DEBUG = 0 ;
+
+//#ifndef DEBUG
+//#define DEBUG 0
+//#endif
 
 #define MASK 6
 
@@ -148,8 +152,10 @@ uint64_t MASK_X = (uint64_t) 3 << 46 ;
 
 bool is_subsequence(uint64_t x, uint64_t y) {
     x = x >> 8 ;
-    //cout << "^ " << decode_kmer(y) << endl ;
-    //cout << "# " << decode_kmer(x) << endl ;
+    #ifdef DEBUGG
+    cout << "^ " << decode_kmer(y) << endl ;
+    cout << "# " << decode_kmer(x) << endl ;
+    #endif
     uint64_t mask_y = MASK_Y ;
     uint64_t mask_x = MASK_X ;
     int j = 46 ;
@@ -157,29 +163,40 @@ bool is_subsequence(uint64_t x, uint64_t y) {
     int n = 0 ;
     for (int i = 62; i >= 0 && j >= 0; i -= 2) {
         if ((x & mask_x) >> j == (y & mask_y) >> i) {
-            //cout << "(^" << decode_base((y & mask_y) >> i) << "," << decode_base((x & mask_x) >> j) << ")" << endl ;
+            #ifdef DEBUGG
+            cout << "(^" << decode_base((y & mask_y) >> i) << "," << decode_base((x & mask_x) >> j) << ")" << endl ;
+            #endif
             j -= 2 ;
             mask_x = mask_x >> 2 ;
+            #ifdef DEBUGG
             //cout << decode_kmer(mask_x) << " " << decode_kmer((x & mask_x) >> j) << "," << j << endl ;
+            #endif
         } else {
+            #ifdef DEBUGG
+            cout << "(#" << decode_base((y & mask_y) >> i) << "," << decode_base((x & mask_x) >> j) << ")" << endl ;
+            //cout << decode_kmer(mask_x) << " " << decode_kmer((x & mask_x) >> j) << "," << j << endl ;
+            #endif
             if (n < 2) {
                 if ((x & (mask_x >> 2)) >> (j - 2) == (y & (mask_y >> 2)) >> (i - 2)) {
+                    #ifdef DEBUGG
+                    cout << "(>" << decode_base((y & (mask_y >> 2)) >> (i - 2)) << "," << decode_base((x & (mask_x >> 2)) >> (j - 2)) << ")" << endl ;
+                    #endif
                     j -= 2 ;
                     mask_x = mask_x >> 2 ;
                 }
             }
-            //cout << "(#" << decode_base((y & mask_y) >> i) << "," << decode_base((x & mask_x) >> j) << ")" << endl ;
-            //cout << decode_kmer(mask_x) << " " << decode_kmer((x & mask_x) >> j) << "," << j << endl ;
         }
         mask_y = mask_y >> 2 ; 
     }
     bool res = j == -2 ;
-    /*if (res) {
+    #ifdef DEBUGG
+    if (res) {
         cout << "subsequence" << endl ;
         cin >> j ;
     } else {
         cout << "not" << endl ;
-    }*/
+    }
+    #endif
     return res ;
 }
 
@@ -380,7 +397,6 @@ int process_bam(string bam, string path, int index, int threads) {
     cout << "Processig BAM file" << endl ;
     //int m = get_number_of_alignments(bam) ;
     while (sam_read1(bam_file, bam_header, alignment) > 0){
-        break ;
         //cout << u << endl ;
         uint32_t l = alignment->core.l_qseq ; //length of the read
         if (l > len) {
@@ -627,6 +643,14 @@ int transform_gapped(int index, string path) {
 } 
 
 int main(int argc, char** argv) {
+    ///////////////////////////////////////////////
+    #ifdef DEBUGG
+    uint64_t x = encode_kmer("TTTAGATGTCATAGGTAGTGGTTGTTCTGATG") ;
+    uint64_t y = encode_kmer("TATAGCTGCAATAGATAGTGATTCTTCAGATA") ;
+    is_subsequence(x, y) ;
+    return 0 ;
+    #endif
+    ///////////////////////////////////////////////
     string path(argv[2]) ;
     string fastq(argv[3]) ;
     int index = std::stoi(string(argv[1]), nullptr, 10) ;

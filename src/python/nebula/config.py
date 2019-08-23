@@ -13,7 +13,6 @@ class Configuration:
         def __init__(self, args):
             for arg in args:
                 for attr, value in arg.__dict__.iteritems():
-                    print attr, value
                     setattr(self, attr, value)
             setattr(self, 'hsize', self.ksize / 2)
             if hasattr(self, 'simulation'):
@@ -21,6 +20,7 @@ class Configuration:
                     self.simulation = int(self.simulation[:-1])
             if self.debug:
                 self.threads = 1
+            self.log_level = 1
 
     __instance = None
     __cmd_options = None
@@ -46,9 +46,7 @@ class Configuration:
 # ============================================================================================================================ #
 
 def init():
-    print('configuring...')
     Configuration(parse_args())
-    print('configuration created')
 
 def parse_args():
     parser = argparse.ArgumentParser(add_help = False)

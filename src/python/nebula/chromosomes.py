@@ -18,7 +18,7 @@ from nebula import (
     config,
 )
 
-from nebula.commons import *
+from nebula.logger import *
 
 # ============================================================================================================================ #
 # kmer helpers
@@ -30,15 +30,14 @@ whole_genome_extracted = False
 def extract_chromosome(chromosome):
     chromosome = chromosome.lower()
     if chromosome in chroms:
-        print(yellow('loading from cache'))
+        system_print('Loading', chromosome, 'from cache.')
         return chroms[chromosome]
     else:
-        print(red('chromosome not found'), chromosome)
+        system_print_error('Chromosome not found', chromosome)
         if whole_genome_extracted:
             return None
     c = config.Configuration()
     sequence = ''
-    print(yellow(c.reference))
     ref = open(c.reference)
     line = ref.readline().lower().strip()
     found = False
@@ -92,10 +91,17 @@ def extract_chromosomes(chromosomes):
 
 def extract_whole_genome():
     c = config.Configuration()
+    if c.reduce:
+        a = ['chr' + str(x) for x in range(1, 23)]
+        a.append('chrx')
+        a.append('chry')
+        for chrom in a:
+            chroms[chrom] = 'dummy'
+        return chroms
     global whole_genome_extracted
     if whole_genome_extracted:
         return chroms
-    print('extracting whole genome')
+    system_print('Extracting whole genome...')
     if not c.chromosomes:
         a = ['chr' + str(x) for x in range(1, 23)]
         a.append('chrx')

@@ -14,7 +14,7 @@ from nebula import (
 
 from nebula.kmers import *
 from nebula.debug import *
-from nebula.commons import *
+from nebula.logger import *
 from nebula.chromosomes import *
 print = pretty_print
 
@@ -31,12 +31,13 @@ class BedTrack:
         self.chrom = chrom
         self.begin = begin
         self.end = end
-        self.svtype = 'DEL'
         for (k, v) in fields:
             setattr(self, k, v)
-        self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
+        if not hasattr(self, 'svtype'):
+            self.svtype = 'DEL'
+        if not hasattr(self, 'id'):
+            self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
         self.fields = fields
-        self.name = self.id #alias
 
     def __str__(self):
         return self.id
