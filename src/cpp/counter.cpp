@@ -20,14 +20,9 @@
 #include "json.hpp"
 
 using namespace std ;
-//using nson = nlohmann::json ;
 
 int JOB = 0 ;
 int DEBUG = 0 ;
-
-//#ifndef DEBUG
-//#define DEBUG 0
-//#endif
 
 #define MASK 6
 
@@ -45,12 +40,9 @@ const int SEQUENCE_LINE = 1 ;
 const int THIRD_LINE = 2 ;
 const int QUALITY_LINE = 3 ;
 
-std::unordered_map<uint32_t, std::unordered_map<uint32_t, uint64_t>*> *half_mers = new std::unordered_map<uint32_t, std::unordered_map<uint32_t, uint64_t>*> ;
-std::unordered_map<uint32_t, bool> *other_mers = new std::unordered_map<uint32_t, bool> ;
+std::unordered_map<uint64_t, int> *types = new std::unordered_map<uint64_t, int> ;
 std::unordered_map<uint64_t, int*> *counts = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, int*> *totals = new std::unordered_map<uint64_t, int*> ;
-std::unordered_map<uint64_t, int>  *types = new std::unordered_map<uint64_t, int> ;
-std::unordered_map<uint64_t, int*> *gaps = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, std::vector<uint64_t>*> *masks = new std::unordered_map<uint64_t, std::vector<uint64_t>*> ;
 
 string reverse_complement(string s) {
@@ -280,63 +272,6 @@ void process_read(char* seq) {
     }
 }
 
-void process_gapped_read(char* seq) {
-    int l = strlen(seq) ;
-    l-- ;
-    char c ;
-    uint32_t k = 0 ;
-    std::unordered_map<uint32_t, std::vector<int>> index ;
-    bool found_half = false ;
-    for (int i = 0 ; i <= l - 16 ; i++) {
-        if (i == 0) {
-            k = encode_half_mer(seq) ;
-        } else {
-            k = k << 2 ;
-            k += (seq[i + 15] & MASK) >> 1 ;
-        }
-        if (half_mers->find(k) == half_mers->end()) {
-            if (found_half == true) {
-                if (other_mers->find(k) != other_mers->end()) {
-                    index[k].push_back(i) ;
-                }
-            }
-        } else {
-            // don't need to store other kmers as long as we haven't seen a valid half_mer yet.
-            found_half = true ;
-            index[k].push_back(i) ;
-        }
-    }
-    //
-    for (std::unordered_map<uint32_t, std::vector<int>>::iterator it = index.begin(); it != index.end(); it++) {
-        auto half = half_mers->find(it->first) ;
-        if (half == half_mers->end()) {
-            continue ;
-        }
-        for(std::unordered_map<uint32_t, uint64_t>::iterator j = half->second->begin(); j != half->second->end(); j++){
-            uint64_t kmer = j->second ;
-            auto other = index.find(j->first) ;
-            if (other != index.end()) {
-                for (std::vector<int>::iterator a = it->second.begin(); a != it->second.end(); a++) {
-                    for (std::vector<int>::iterator b = other->second.begin(); b != other->second.end(); b++) {
-                        int d = *b - (*a + 16) ;
-                        if (JOB == SELECT_GAPPED_KMERS) {
-                            if (d >= 0 && d <= 10) {
-                                int* count = counts->at(kmer) ;
-                                count[d] = count[d] + 1 ;
-                            }
-                        } else {
-                            if (d >= 0 && d == *gaps->at(kmer)) {
-                                int* count = counts->at(kmer) ;
-                                *count += 1 ;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 const int SEARCHING = 0 ;
 const int SKIPPING = 1 ;
 const int READING = 2 ;
@@ -418,9 +353,6 @@ int process_bam(string bam, string path, int index, int threads) {
             process_read(line) ;
         } else if (JOB == COUNT_MIX_KMERS) {
             process_read(line) ;
-            //process_gapped_read(line) ;
-        } else {
-            process_gapped_read(line) ;
         }
         if (n == 10000) {
             n = 0 ;
@@ -529,11 +461,6 @@ int process_fastq(string fastq, string path, int index, int threads) {
                         process_read(line) ;
                     } else if (JOB == COUNT_MIX_KMERS) {
                         process_read(line) ;
-                        //if (half_mers->size() > 0) {
-                        //    process_gapped_read(line) ;
-                        //}
-                    } else {
-                        process_gapped_read(line) ;
                     }
                     //cout << "Skipping" << endl;
                 } else {
@@ -558,7 +485,7 @@ int process_fastq(string fastq, string path, int index, int threads) {
     return u ;
 }
 
-int transform(int index, string path) {
+int load_kmers(int index, string path) {
     // load json file
     cout << "loading kmers" << endl ;
     ifstream json_file(path + "/pre_inner_kmers.json") ;
@@ -590,11 +517,7 @@ int transform(int index, string path) {
                 if (m->size()) {
                     masks->emplace(std::make_pair(k, m)) ;
                     masks->emplace(std::make_pair(rc_k, m)) ;
-                } else {
-                    if (it.key() == "AGAAACCAGTCATCGGGCCGGGCGCGGTGGCT") {
-                        cout << "here" << endl ;
-                    }
-                }
+                } 
             }
         }
     }
@@ -602,61 +525,7 @@ int transform(int index, string path) {
     return 0 ;
 }
 
-int transform_gapped(int index, string path) {
-    // load json file
-    cout << "loading kmers" << endl ;
-    ifstream kmers_json_file(path + "/pre_gapped_kmers.json") ;
-    nlohmann::json kmers_json ;
-    kmers_json_file >> kmers_json ;
-    //
-    for (nlohmann::json::iterator i = kmers_json.begin(); i != kmers_json.end(); ++i) {
-        auto kmer = i.value() ;
-        uint64_t k = encode_kmer(std::string(i.key()).c_str()) ;
-        types->insert(std::make_pair(k, KMER_TYPE_GAPPED)) ;
-        if (JOB == SELECT_GAPPED_KMERS) {
-            int* count = new int[11] ;
-            counts->insert(std::make_pair(k, count)) ;
-            for (int j = 0 ; j <= 10 ; j++) {
-                count[j] = 0;
-            }
-        } else {
-            int* count = new int ;
-            *count = 0 ;
-            counts->insert(std::make_pair(k, count)) ;
-            int* gap = new int ;
-            *gap = kmer["gap"] ;
-            gaps->insert(std::make_pair(k, gap)) ;
-        }
-    }
-    // 
-    cout << "loading half mers" << endl ;
-    ifstream half_mer_json_file(path + "/half_mers.json") ;
-    nlohmann::json half_mers_json ;
-    half_mer_json_file >> half_mers_json ;
-    //
-    for (nlohmann::json::iterator i = half_mers_json.begin(); i != half_mers_json.end(); ++i) {
-        auto half_mer = i.value() ;
-        std::unordered_map<uint32_t, uint64_t>* map = new std::unordered_map<uint32_t, uint64_t> ;
-        for (nlohmann::json::iterator j = half_mer.begin(); j != half_mer.end(); ++j) { 
-            uint32_t h = encode_half_mer(std::string(j.key()).c_str()) ;
-            map->insert(std::make_pair(h, encode_kmer(std::string(j.value().get<std::string>()).c_str()))) ;
-            other_mers->insert(std::make_pair(h, true)) ;
-        }
-        half_mers->insert(std::make_pair(encode_half_mer(std::string(i.key()).c_str()), map)) ;
-    }
-    cout << counts->size() << " kmers" << endl ;
-    return 0 ;
-} 
-
 int main(int argc, char** argv) {
-    ///////////////////////////////////////////////
-    #ifdef DEBUGG
-    uint64_t x = encode_kmer("TTTAGATGTCATAGGTAGTGGTTGTTCTGATG") ;
-    uint64_t y = encode_kmer("TATAGCTGCAATAGATAGTGATTCTTCAGATA") ;
-    is_subsequence(x, y) ;
-    return 0 ;
-    #endif
-    ///////////////////////////////////////////////
     string path(argv[2]) ;
     string fastq(argv[3]) ;
     int index = std::stoi(string(argv[1]), nullptr, 10) ;
@@ -668,14 +537,7 @@ int main(int argc, char** argv) {
     time_t t ;
     time(&t) ;
     cout << "index " << index << " counting " << fastq << endl ;
-    if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
-        transform(index, path) ;
-    } else if (JOB == COUNT_GAPPED_KMERS || JOB == SELECT_GAPPED_KMERS) {
-        transform_gapped(index, path) ;
-    } else if (JOB == COUNT_MIX_KMERS) {
-        //transform_gapped(index, path) ;
-        transform(index, path) ;
-    }
+    transform(index, path) ;
     int n = 0;
     if (fastq.compare(fastq.size() - 4, 4, ".bam") == 0) {
         cout << "input is BAM file" << endl ;
