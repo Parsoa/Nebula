@@ -31,6 +31,7 @@ from nebula import (
 
 import pysam
 
+from nebula.debug import *
 from nebula.kmers import *
 from nebula.logger import *
 from nebula.chromosomes import *
@@ -73,6 +74,8 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         self.tracks = c.tracks
+        #t = 'DEL@chr11_27800676_27800872'
+        #self.tracks = {t : c.tracks[t]}
         if self.contigs:
             self.extract_kmers_with_contigs()
         else:
@@ -87,7 +90,9 @@ class ExtractJunctionKmersJob(map_reduce.Job):
             with open(path, 'w') as json_file:
                 json.dump(kmers, json_file, indent = 4)
             return path
-        return None
+        else:
+            system_print_warning('No kmers found')
+            return None
 
     def extract_kmers_with_contigs(self):
         c = config.Configuration()
@@ -145,7 +150,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
     def extract_mapping_kmers(self, track):
         c = config.Configuration()
         junction_kmers = {}
-        slack = 100
+        slack = 120
         stride = c.ksize
         try:
             # Events that alter or remove a part of the reference
@@ -157,12 +162,14 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         except:
             return {}
         locus = 'junction_' + track.id
+        #print('range: ', track.begin - slack, 'to', track.begin + slack)
+        #print('range: ', track.end - slack, 'to', track.end + slack)
         for read in reads:
             # These MAPQ scores vary from aligner to aligner but < 5 should be bad enough anywhere
             if read.mapping_quality <= 5:
                 continue
+            seq = read.query_sequence
             if read.query_alignment_length != len(read.query_sequence): # not everything was mapped
-                seq = read.query_sequence
                 if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
                     cigartuples = read.cigartuples
                     clips = []
@@ -185,29 +192,33 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                                     'loci': {
                                         locus: {
                                             'masks': {
-                                                'left': None,
-                                                'right': None
+                                                #'left': None,
+                                                #'right': None
                                             }
                                         }
                                     },
                                     'read': {
                                         'end': read.reference_end,
                                         'start': read.reference_start, 
-                                    }
+                                    },
                                 }
+                            #junction_kmers[kmer]['reads'].append(seq)
                             if len(seq[index - c.ksize: index]) == c.ksize:
                                 junction_kmers[kmer]['loci'][locus]['masks']['left'] = seq[index - c.ksize: index]
                             if len(seq[index + c.ksize: index + c.ksize + c.ksize]) == c.ksize:
                                 junction_kmers[kmer]['loci'][locus]['masks']['right'] = seq[index + c.ksize: index + c.ksize + c.ksize]
                             junction_kmers[kmer]['count'] += 1
                         index += 1
+        incomplete_kmers = {kmer: junction_kmers[kmer] for kmer in junction_kmers if len(junction_kmers[kmer]['loci'][locus]['masks']) != 2}
+        #json_print(junction_kmers)
+        #debug_breakpoint()
         _junction_kmers = {}
         for kmer in junction_kmers:
-            if junction_kmers[kmer]['count'] >= 3 and junction_kmers[kmer]['loci'][locus]['masks']['right'] and junction_kmers[kmer]['loci'][locus]['masks']['left']:
+            if junction_kmers[kmer]['count'] >= min(5, c.coverage / 4):# and junction_kmers[kmer]['loci'][locus]['masks']['right'] and junction_kmers[kmer]['loci'][locus]['masks']['left']:
                 _junction_kmers[kmer] = junction_kmers[kmer]
-        # heurisitc, we are eexpecting many more kmers than 5
-        if len(_junction_kmers) < 5:
-            return {}
+        # heurisitc, we are expecting many more kmers than 5
+        #if len(_junction_kmers) < 5:
+        #    return {}
         return _junction_kmers
 
     def is_clipped(self, kmer, clips):
@@ -258,11 +269,11 @@ class JunctionKmersScoringJob(map_reduce.Job):
                     self.kmers[k]['count'] = 0
                     self.kmers[k]['tracks'] = {}
                     self.kmers[k].pop('read', None)
+                    self.kmers[k].pop('reads', None)
                 self.kmers[k]['loci'].update(kmers[kmer]['loci'])
                 self.kmers[k]['tracks'][track] = 1
-        #self.chroms = extract_whole_genome()
-        #self.round_robin(self.chroms)
-        self.num_threads = 23
+        self.chroms = extract_whole_genome()
+        self.round_robin(self.chroms)
 
     def transform(self, sequence, chrom):
         c = config.Configuration()
@@ -308,20 +319,23 @@ class JunctionKmersScoringJob(map_reduce.Job):
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
+                #self.tracks[track][kmer].pop('reads', None)
             n += 1
             if n % 10000 == 0:
                 system_print('Processed', n, 'out of', len(self.kmers), 'kmers.')
-        n = 0
-        #for track in self.tracks:
-        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
-        #        json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
-        #    n += 1
-        #    if n % 1000 == 0:
-        #        system_print('exported', n, 'out of', len(self.tracks), 'tracks')
-        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-        #    json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
-        ##debug_breakpoint()
+        #with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
+        #    json.dump(self.tracks, json_file, indent = 4, sort_keys = True)
         return self.tracks
+        n = 0
+        for track in self.tracks:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
+                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+            n += 1
+            if n % 1000 == 0:
+                system_print('exported', n, 'out of', len(self.tracks), 'tracks')
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        return None
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -348,22 +362,29 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def execute(self):
+        start = time.clock() 
+        c = config.Configuration()
+        self.create_output_directories()
+        self.kmers = {}
+        for track in self.tracks:
+            self.transform(self.tracks[track], track)
+        self.filter_loci()
+        self.export_kmers()
+        end = time.clock()
+        system_print_high('Stage ' + self._name + ' finished. Execution time', end - start)
+
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
         self.tracks = self.load_previous_job_results()
-        self.tracks = {}
-        for track in self._tracks:
-            kmers = json.load(open(os.path.join(self.get_previous_job_directory(), self._tracks[track]), 'r'))
-            self.tracks[track] = kmers
-        self._tracks = self.tracks
-        self.tracks = {track: None for track in self.tracks}
         self.round_robin(self.tracks)
 
+    # only breakpoint loci may lack a mask, if has more than one loci in such cases check for overlap. If overlap found ignore kmer. If not found then ok.
     def transform(self, track, track_name):
         if track_name:
-            kmers = self._tracks[track_name]
             #kmers = json.load(open(os.path.join(self.get_previous_job_directory(), track), 'r'))
+            kmers = track
             for kmer in kmers:
                 if kmers[kmer]['count'] <= 3:
                     if not kmer in self.kmers:
@@ -377,10 +398,11 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
                         self.kmers[kmer]['tracks'] = copy.deepcopy(kmers[kmer]['tracks'])
                         self.kmers[kmer]['reference'] = kmers[kmer]['count']
                         self.kmers[kmer]['interest_masks'] = {}
+                        l = len(self.kmers[kmer]['loci'])
                         for locus in self.kmers[kmer]['loci']:
-                            self.kmers[kmer]['loci'][locus]['masks'] = {self.kmers[kmer]['loci'][locus]['masks']['left']: True, self.kmers[kmer]['loci'][locus]['masks']['right']: True}
+                            self.kmers[kmer]['loci'][locus]['masks'] = {self.kmers[kmer]['loci'][locus]['masks'][side]: True for side in self.kmers[kmer]['loci'][locus]['masks']}
                         for locus in self.kmers[kmer]['loci']:
-                            if 'junction_' in locus:
+                            if 'junction_' in locus: #or len(self.kmers[kmer]['loci'][locus]['masks']) != 2:
                                 self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
             return None
 
@@ -397,14 +419,36 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
                         return True
         return False
 
-    def output_batch(self, batch):
+    def filter_loci(self):
         remove = {}
         for kmer in self.kmers:
+            l_1 = len(self.kmers[kmer]['loci'])
+            loci = copy.deepcopy(self.kmers[kmer]['loci'])
             for locus in self.kmers[kmer]['loci'].keys():
                 l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
                 if l == 0:
                     self.kmers[kmer]['loci'].pop(locus, None)
+            l_2 = len(self.kmers[kmer]['loci'])
+            # filter non-overlapping loci
+            a = any(map(lambda locus: len(self.kmers[kmer]['loci'][locus]['masks']) != 2, self.kmers[kmer]['loci']))
+            b = all(map(lambda locus: 'junction' in locus, self.kmers[kmer]['loci']))
+            if a: # there are junction loci with missing masks
+                if l_1 != l_2: # non-junction loci exist and some were filtered
+                    if b: # all non-junction loci were filtered, count them instead 
+                        self.kmers[kmer]['junction_loci'] = self.kmers[kmer]['loci']
+                        self.kmers[kmer]['loci'] = {locus: loci[locus] for locus in loci if not 'junction' in locus}
+                        self.kmers[kmer]['inverse'] = True
+                    else: # some non-junction loci remain
+                        remove[kmer] = True
+                else: # all known loci are being counted (or non-junction loci don't exist), masks shouldn't make a difference
+                    for locus in self.kmers[kmer]['loci']:
+                        self.kmers[kmer]['loci'][locus]['masks'] = {}
             self.kmers[kmer].pop('interest_masks', None)
+        for kmer in remove:
+            self.kmers.pop(kmer, None)
+
+    def output_batch(self, batch):
+        self.filter_loci()
         json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
         json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
@@ -414,7 +458,9 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
         for batch in self.load_output():
             for kmer in batch:
                 self.kmers[kmer] = batch[kmer]
-        #
+        self.export_kmers()
+
+    def export_kmers(self):
         system_print_high(len(self.kmers), 'kmers before filtering.')
         returning_kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if self.is_kmer_returning(self.kmers[kmer])}
         with open(os.path.join(self.get_current_job_directory(), 'returning.json'), 'w') as json_file:

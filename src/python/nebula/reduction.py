@@ -15,7 +15,6 @@ import subprocess
 
 from nebula import (
     bed,
-    depth,
     config,
     counter,
     simulator,
@@ -408,66 +407,4 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
-class AdjustCoverageGcContentJob(map_reduce.Job):
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    _name = 'AdjustCoverageGcContentJob'
-    _category = 'preprocessing'
-    _previous_job = None
-
-    @staticmethod
-    def launch(**kwargs):
-        job = AdjustCoverageGcContentJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
-            self.kmers = json.load(json_file)
-        print(len(self.kmers))
-        gc_coverage_job = depth.ChromosomeGcContentEstimationJob()
-        with open(os.path.join(gc_coverage_job.get_current_job_directory(), 'coverage.json'), 'r') as json_file:
-            self.coverage = json.load(json_file)
-        print('Adjusting GC coverage for', green(len(self.kmers)), 'kmers')
-        n = 0
-        for kmer in self.kmers:
-            self.transform(self.kmers[kmer], kmer)
-            n += 1
-            if n % 1000 == 0:
-                print(n, 'out of', len(self.kmers))
-        self.tracks = {}
-        for kmer in self.kmers:
-            for track in self.kmers[kmer]['tracks']:
-                if not track in self.tracks:
-                    self.tracks[track] = {}
-                self.tracks[track][kmer] = self.kmers[kmer]
-        for track in self.tracks:
-            print('exporting track', track)
-            with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as json_file:
-                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
-        exit()
-
-    def transform(self, kmer, k):
-        coverage = []
-        for locus in kmer['loci']:
-            gc = calculate_gc_content(kmer['loci'][locus]['seq']['all'])
-            kmer['loci'][locus]['coverage'] = self.coverage[gc]
-            coverage.append(self.coverage[gc])
-        kmer['coverage'] = statistics.mean(coverage)
 

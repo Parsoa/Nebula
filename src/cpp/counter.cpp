@@ -587,8 +587,14 @@ int transform(int index, string path) {
                         m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
                     }
                 }
-                masks->emplace(std::make_pair(k, m)) ;
-                masks->emplace(std::make_pair(rc_k, m)) ;
+                if (m->size()) {
+                    masks->emplace(std::make_pair(k, m)) ;
+                    masks->emplace(std::make_pair(rc_k, m)) ;
+                } else {
+                    if (it.key() == "AGAAACCAGTCATCGGGCCGGGCGCGGTGGCT") {
+                        cout << "here" << endl ;
+                    }
+                }
             }
         }
     }

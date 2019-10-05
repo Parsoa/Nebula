@@ -13,6 +13,7 @@ class Configuration:
         def __init__(self, args):
             for arg in args:
                 for attr, value in arg.__dict__.iteritems():
+                    print(attr, value)
                     setattr(self, attr, value)
             setattr(self, 'hsize', self.ksize / 2)
             if hasattr(self, 'simulation'):
@@ -101,7 +102,8 @@ def parse_args():
     parser.add_argument("--reference", default = '/share/hormozdiarilab/Data/ReferenceGenomes/Hg19/hg19.ref')
     # tmp file directory 
     parser.add_argument("--workdir", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/output')
-
+    # path to a set of kmers for gc content estimation
+    parser.add_argument("--gckmers", default = None)
     ## Simulation options
     # whether to generate random events during simulation or not
     parser.add_argument("--random", action = 'store_true')
@@ -132,6 +134,10 @@ def parse_args():
     simulation_parser = subparsers.add_parser('simulate', parents = [parser])
     ################## End of arguments
     clustering_parser = subparsers.add_parser('cluster', parents = [parser])
+    ################## End of arguments
+    miscellaneous_parser = subparsers.add_parser('misc', parents = [parser])
+    ################## End of arguments
+    verification_parser = subparsers.add_parser('verify', parents = [parser])
     ################## End of arguments
     export_parser = subparsers.add_parser('export', parents = [parser])
     ################## End of arguments

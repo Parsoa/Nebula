@@ -22,6 +22,7 @@ from nebula import (
     counttable,
 )
 
+from nebula.debug import *
 from nebula.kmers import *
 from nebula.logger import *
 print = pretty_print

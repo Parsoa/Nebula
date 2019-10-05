@@ -36,7 +36,6 @@ print = pretty_print
 import numpy as np
 
 from pulp import *
-from scipy import stats
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -75,7 +74,7 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         path = c.kmers[0]
         with open(path, 'r') as json_file:
             self.kmers = json.load(json_file)
-        self.gc_kmers = {}#self.kmers['gc_kmers']
+        self.gc_kmers = self.kmers['gc_kmers']
         self.depth_kmers = self.kmers['depth_kmers']
         self.inner_kmers = self.kmers['inner_kmers']
         self.junction_kmers = self.kmers['junction_kmers']
@@ -101,8 +100,6 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         user_print('GC kmers:', blue(len(self.gc_kmers)))
 
     def export_counter_input(self):
-        if self.resume_from_reduce:
-            return
         _kmers = {}
         for kmers in [self.inner_kmers, self.junction_kmers]:
             for kmer in kmers:
@@ -116,8 +113,12 @@ class CgcCounterJob(counter.BaseExactCountingJob):
             _kmers[kmer] = {}
             _kmers[kmer]['loci'] = {}
         for kmer in self.gc_kmers:
+            # TODO: temporary fix, remove
+            self.gc_kmers[kmer]['count'] = 0
             _kmers[kmer] = {}
             _kmers[kmer]['loci'] = {}
+        if self.resume_from_reduce:
+            return
         system_print('Dumping', green(len(_kmers)), 'kmers for the counter')
         with open(os.path.join(self.get_current_job_directory(), 'pre_inner_kmers.json'), 'w') as json_file:
             json.dump(_kmers, json_file, indent = 4)
@@ -135,7 +136,7 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         if canon in self.depth_kmers:
             self.depth_kmers[canon]['count'] += count / 2
         if canon in self.gc_kmers:
-            self.depth_kmers[canon]['count'] += count / 2
+            self.gc_kmers[canon]['count'] += count / 2
 
     def estimate_depth_of_coverage(self):
         c = config.Configuration()
@@ -156,20 +157,45 @@ class CgcCounterJob(counter.BaseExactCountingJob):
 
     def estimate_gc_content_coverage(self):
         c = config.Configuration()
+        self.gc = [0] * (96 + 1)
+        print(len(self.gc))
+        for gc in range(0, 96 + 1):
+            print('Calc GC for', gc)
+            counts = [self.gc_kmers[kmer]['count'] for kmer in self.gc_kmers if self.gc_kmers[kmer]['gc'] == gc]
+            if len(counts) == 0:
+                self.gc[gc] = c.coverage
+                continue
+            while True:
+                std = np.std(counts)
+                mean = np.mean(counts)
+                counts = list(filter(lambda x: x < 3 * mean, counts))
+                print(len(counts), mean, std)
+                if len(counts) == 0:
+                    self.gc[gc] = c.coverage
+                    break
+                if abs(np.mean(counts) - mean) < 0.5 or len(counts) == 0:
+                    self.gc[gc] = mean
+                    break
 
     def reduce(self):
         c = config.Configuration()
         self.merge_counts()
+        self.estimate_gc_content_coverage()
         self.export_counted_kmers()
         self.tracks = {}
         system_print('Exporting genotyping tracks...')
         for kmer in self.inner_kmers:
+            self.adjust_kmer_gc_coverage(self.inner_kmers[kmer], kmer)
             for track in self.inner_kmers[kmer]['tracks']:
                 if not track in self.tracks:
                     self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['inner_kmers'][kmer] = self.inner_kmers[kmer]
                 self.tracks[track]['inner_kmers'][kmer]['type'] = 'inner'
         for kmer in self.junction_kmers:
+            #self.adjust_kmer_gc_coverage(self.junction_kmers[kmer], kmer)
+            self.junction_kmers[kmer]['gc_coverage'] = c.coverage
+            if 'inverse' in self.junction_kmers[kmer]:
+                self.junction_kmers[kmer]['count'] = self.junction_kmers[kmer]['total'] - self.junction_kmers[kmer]['count']
             for track in self.junction_kmers[kmer]['tracks']:
                 if not track in self.tracks:
                     self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
@@ -178,6 +204,19 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         return self.tracks, self.estimate_depth_of_coverage()
+
+    def adjust_kmer_gc_coverage(self, kmer, kmer_seq):
+        n = 0
+        gc = 0
+        for locus in kmer['loci']:
+            if len(kmer['loci'][locus]['masks']) == 2:
+                n += 1
+                masks = kmer['loci'][locus]['masks']
+                gc += self.gc[calculate_gc_content(''.join([mask for mask in masks]) + kmer_seq)]
+        if n == 0:
+            json_print(kmer)
+            debug_breakpoint()
+        kmer['gc_coverage'] = int(math.floor(float(gc) / n))
 
     def export_counted_kmers(self):
         c = config.Configuration()
@@ -231,7 +270,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         #t = c.kmers[track_name]
+        # if all kmers are non-unique then ignore
+        all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
         for kmer in kmers['inner_kmers']:
+            if all_non_unique:
+                continue
             if len(kmers['inner_kmers'][kmer]['loci']) > 3:
                 continue
             if is_kmer_low_entropy(kmer):
@@ -242,8 +285,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
         for kmer in kmers['junction_kmers']:
             if kmers['junction_kmers'][kmer]['source'] == 'assembly':
-                continue
-            if len(kmers['junction_kmers'][kmer]['loci']) > 1:
                 continue
             if is_kmer_low_entropy(kmer):
                 continue
@@ -263,7 +304,7 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             for track in kmer['tracks']:
                 r += kmer['tracks'][track]
                 kmer['svtype'] = c.tracks[track].svtype
-            kmer['coverage'] = c.coverage
+            kmer['coverage'] = kmer['gc_coverage']
             kmer['residue'] = kmer['reference'] - r
             kmer['weight'] = 1.0
             kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
@@ -322,11 +363,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     def round_genotype(self, c, svtype):
         if c > 0.75:
-            return (1.0, '11')
+            return (1.0, '1/1')
         elif c > 0.25:# or svtype == 'INS' and c > 0.15:
-            return (0.5, '10')
+            return (0.5, '1/0')
         else:
-            return (0.0, '00')
+            return (0.0, '0/0')
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -353,7 +394,12 @@ class CgcInnerKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
     def transform(self, kmers, track_name):
         c = config.Configuration()
         lp_kmers = {}
+        all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
+        if kmers['junction_kmers']:
+            return None
         for kmer in kmers['inner_kmers']:
+            if all_non_unique:
+                continue
             if len(kmers['inner_kmers'][kmer]['loci']) > 3:
                 continue
             lp_kmers[kmer] = True
@@ -390,6 +436,9 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
     def transform(self, kmers, track_name):
         c = config.Configuration()
         lp_kmers = {}
+        all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
+        if not kmers['junction_kmers']:
+            return None
         for kmer in kmers['junction_kmers']:
             if kmers['junction_kmers'][kmer]['source'] == 'assembly':
                 continue
@@ -399,6 +448,15 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
+        for kmer in kmers['inner_kmers']:
+            if all_non_unique:
+                continue
+            if len(kmers['inner_kmers'][kmer]['loci']) > 3:
+                continue
+            lp_kmers[kmer] = True
+            self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
+            self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
+            self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)

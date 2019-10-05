@@ -101,7 +101,7 @@ def is_subsequence(x, y):
     if len(y) < len(x):
         return False
     it = iter(y)
-    debug_log('Checking', green(x), 'substring of', blue(y))
+    #debug_log('Checking', green(x), 'substring of', blue(y))
     return all(c in it for c in x)
 
 def is_canonical_subsequence(x, y):

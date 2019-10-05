@@ -65,9 +65,10 @@ class TrackPreprocessorJob(map_reduce.Job):
             tracks.update(bed.load_tracks_from_file_as_dict(path, parse_header = True))
         tracks = [tracks[track] for track in tracks]
         user_print('Loaded', len(tracks), 'tracks.')
-        tracks = self.filter_overlapping_tracks(\
-                    sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
-                )
+        if self.filter_overlap:
+            tracks = self.filter_overlapping_tracks(\
+                        sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
+                    )
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
         user_print('Removed overlapping tracks.', len(tracks), ' non-overlapping tracks.')
         return tracks
@@ -95,6 +96,82 @@ class TrackPreprocessorJob(map_reduce.Job):
             tracks.pop(index - n)
             n = n + 1
         return tracks
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
+
+    _name = 'ChromosomeGcContentEstimationJob'
+    _category = 'preprocessing'
+    _previous_job = None
+
+    @staticmethod
+    def launch(**kwargs):
+        job = ChromosomeGcContentEstimationJob(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.gc = {}
+        self.window_size = 96
+        for i in range(0, self.window_size + 1):
+            self.gc[i] = {}
+        self.chromosomes = extract_whole_genome()
+        self.load_reference_counts_provider() 
+        self.round_robin(self.chromosomes)
+
+    def transform(self, sequence, chrom):
+        l = len(sequence)
+        d = l / self.window_size
+        t = time.time()
+        for i in range(0, d):
+            window = sequence[i * self.window_size: (i + 1) * self.window_size]
+            gc = calculate_gc_content(window)
+            kmers = c_extract_kmers(32, self.reference_counts_provider.get_kmer_count, 1, True, True, window)
+            for kmer in kmers:
+                self.gc[gc][kmer] = 0
+                break
+            if i % 100 == 0:
+                s = time.time()
+                p = (len(sequence) - i * 100) / float(len(sequence))
+                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+        return None
+
+    def output_batch(self, batch):
+        json_file = open(os.path.join(self.get_current_job_directory(), 'batch_' + str(self.index) + '.json'), 'w')
+        json.dump(self.gc, json_file, sort_keys = True, indent = 4)
+        json_file.close()
+
+    def reduce(self):
+        c = config.Configuration()
+        self.kmers = {}
+        random.seed(c.seed)
+        for batch in self.load_output():
+            for i in range(0, self.window_size + 1):
+                for kmer in batch[str(i)]:
+                    self.gc[i][kmer] = 0
+        for gc in self.gc:
+            print(len(self.gc[gc]), 'kmers with GC content', gc)
+            if len(self.gc[gc]) > 10000:
+                k = list(self.gc[gc].keys())
+                for kmer in [k[i] for i in sorted(random.sample(xrange(len(k)), 10000))]:
+                    self.kmers[kmer] = gc
+            else:
+                for kmer in self.gc[gc]:
+                    self.kmers[kmer] = gc
+        print('counting', len(self.kmers), 'kmers')
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
+        return self.gc
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -183,7 +260,13 @@ class MixKmersJob(map_reduce.Job):
         self.unload_reference_counts_provider()
 
     def load_gc_content_kmers(self):
+        c = config.Configuration()
+        job = GcContentKmerSelectionJob()
+        gc_kmers = json.load(open(c.gckmers)) if c.gckmers else job.execute()
         self.gc_kmers = {}
+        for kmer in gc_kmers:
+            if kmer not in self.inner_kmers and kmer not in self.junction_kmers:
+                self.gc_kmers[kmer] = {'loci': {}, 'gc': gc_kmers[kmer], 'count': 0}
 
     def export_tracks(self):
         c = config.Configuration()
@@ -201,6 +284,9 @@ class MixKmersJob(map_reduce.Job):
                 self.tracks[track]['junction_kmers'][kmer] = self.junction_kmers[kmer]
                 self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
         print('Kmers exported for', len(self.tracks), 'tracks')
+        with open(os.path.join(self.get_current_job_directory(), 'tracks.bed'), 'w') as bed_file:
+            for track in self.tracks:
+                bed_file.write(c.tracks[track].serialize())
         #for track in self.tracks:
         #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
         #        json.dump(self.tracks[track], json_file, indent = 4)

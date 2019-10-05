@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from nebula import (
     config,
+    pacbio,
     map_reduce,
 )
 
@@ -23,10 +24,14 @@ print = pretty_print
 
 # ============================================================================================================================ #
 
-def load_tracks():
-    job = TrackPreprocessorJob()
+def load_tracks(filter_overlap = True):
+    job = TrackPreprocessorJob(filter_overlap = filter_overlap)
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
+
+def misc():
+    job = GcContentKmerSelectionJob()
+    job.execute()
 
 def preprocess():
 
@@ -40,16 +45,16 @@ def preprocess():
 
     def supply_junction_kmers():
         tracks = {}
-        #job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
-        #job.execute()
-        job = JunctionKmersScoringJob(resume_from_reduce = True)
+        job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
+        job.execute()
+        job = JunctionKmersScoringJob(resume_from_reduce = False)
         tracks = job.execute()
         job = FilterJunctionKmersJob(tracks = tracks)
         job.execute()
 
     load_tracks()
     #supply_inner_kmers()
-    supply_junction_kmers()
+    #supply_junction_kmers()
     job = MixKmersJob()
     job.execute()
 
@@ -69,19 +74,15 @@ def genotype():
     if c.cgc:
         cgc_genotype()
     else:
-        load_tracks()
+        load_tracks(filter_overlap = False)
         job = CgcCounterJob(resume_from_reduce = c.reduce)
         if c.reduce:
-            stats = {'coverage': 40, 'std': 8}
-            stats = {'coverage': 23, 'std': 7}
-            stats = {'coverage': 50, 'std': 17}
             tracks, stats = job.execute()
         else:
             tracks, stats = job.execute()
         config.Configuration.update(stats)
         job = CgcIntegerProgrammingJob(tracks = tracks)
         job.execute()
-        exit()
         job = CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
         job.execute()
         job = CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
@@ -102,6 +103,12 @@ def cluster():
         job = UnifiedGenotypingJob(begin = i * 5, end = (i + 1) * 5, genotyping_batch = i)
         job.execute()
         exit()
+
+def verify():
+    c = config.Configuration()
+    load_tracks()
+    job = pacbio.PacBioVerificationJob() 
+    job.execute()
 
 def export():
     c = config.Configuration()
@@ -132,8 +139,12 @@ if __name__ == '__main__':
     config.init()
     print_banner()
     c = config.Configuration()
+    if c.command == 'misc':
+        misc()
     if c.command == 'export':
         export()
+    if c.command == 'verify':
+        verify()
     if c.command == 'cluster':
         cluster()
     if c.command == 'simulate':
