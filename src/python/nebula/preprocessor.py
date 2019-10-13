@@ -26,6 +26,7 @@ from nebula import (
     programming
 )
 
+from nebula.debug import *
 from nebula.kmers import *
 from nebula.logger import *
 from nebula.chromosomes import *
@@ -118,30 +119,125 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
     # MapReduce overrides
     # ============================================================================================================================ #
 
+    def plot(self):
+        values = open(os.path.join(self.get_current_job_directory(), 'depth_all.bed'), 'r').readlines()
+        values = [float(line) for line in values]
+        visualizer.scatter(list(range(0, 100)), values, 'GC_content_bp', self.get_current_job_directory(), 'GC', 'Coverage') 
+        exit()
+
     def load_inputs(self):
         c = config.Configuration()
         self.gc = {}
-        self.window_size = 96
-        for i in range(0, self.window_size + 1):
+        self.window_size = 500
+        self.bin_size = self.window_size / 100
+        for i in range(0, 100 + 1):
             self.gc[i] = {}
-        self.chromosomes = extract_whole_genome()
+        #self.chromosomes = {'chr1': extract_chromosome('chr1')}
         self.load_reference_counts_provider() 
+        self.chromosomes = extract_whole_genome()
+        self.load_exon_regions()
         self.round_robin(self.chromosomes)
 
+    def load_exon_regions(self):
+        c = config.Configuration()
+        exons = bed.load_tracks_from_file_as_dict(c.bed[0])
+        self.exons = {}
+        for chrom in self.chromosomes:
+            self.exons[chrom] = {}
+        for exon in exons:
+            chrom = exons[exon].chrom.lower()
+            if chrom in self.exons:
+                self.exons[chrom][exon] = exons[exon]
+        print(len(self.exons))
+
     def transform(self, sequence, chrom):
-        l = len(sequence)
-        d = l / self.window_size
+        c = config.Configuration()
         t = time.time()
-        for i in range(0, d):
-            window = sequence[i * self.window_size: (i + 1) * self.window_size]
-            gc = calculate_gc_content(window)
-            kmers = c_extract_kmers(32, self.reference_counts_provider.get_kmer_count, 1, True, True, window)
-            for kmer in kmers:
-                self.gc[gc][kmer] = 0
-                break
+        n = 0
+        for exon in self.exons[chrom]:
+            track = self.exons[chrom][exon]
+            ends = track.exonends.split(',')
+            begins = track.exonstarts.split(',')
+            for j, begin in enumerate(begins[:-1]):
+                seq = sequence[int(begin): int(ends[j])]
+                l = len(seq)
+                i = self.window_size / 2
+                while i < l - self.window_size / 2:
+                    kmer = canonicalize(seq[i - c.ksize / 2: i + c.ksize / 2])
+                    if self.reference_counts_provider.get_kmer_count(kmer) == 1:
+                        contig = 'chrX' if 'x' in chrom else 'chrY' if 'y' in chrom else chrom + ':' + str(int(begin) + i - self.window_size / 2) + '-' + str(int(begin) + i + self.window_size / 2)
+                        command = "samtools depth -r %s %s | awk 'BEGIN {cnt = 0} {sum+=$3; cnt++} END {OFS = \"\t\"; print sum / cnt}'" % (contig, c.bam)
+                        #coverage = subprocess.Popen(command, stdout = subprocess.PIPE, shell = True).communicate()[0].strip()
+                        #try:
+                        #    coverage = float(coverage)
+                        #except:
+                        #    system_print_error(command)
+                        #    i += 1
+                        #    continue
+                        gc = calculate_gc_content(seq[i - self.window_size / 2: i + self.window_size / 2]) / self.bin_size
+                        self.gc[gc][kmer] = {'contig': contig, 'gc': gc}
+                        i += self.window_size / 2 + c.ksize / 2
+                    else:
+                        i += 1
+                        continue
+            n += 1
+            if n % 100 == 0:
+                s = time.time()
+                p = n / float(len(self.exons[chrom]))
+                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+                print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
+        return None
+
+    #def transform(self, track, exon):
+    #    c = config.Configuration()
+    #    t = time.time()
+    #    ends = track.exonends.split(',')
+    #    begins = track.exonstarts.split(',')
+    #    for j, begin in enumerate(begins[:-1]):
+    #        seq = self.chromosomes['chr1'][int(begin): int(ends[j])]
+    #        l = len(seq)
+    #        i = self.window_size / 2
+    #        while i < l - self.window_size / 2 - c.ksize / 2:
+    #            kmer = canonicalize(seq[i: i + c.ksize])
+    #            if self.reference_counts_provider.get_kmer_count(kmer) == 1:
+    #                contig = 'chr1' + ':' + str(int(begin) + i + c.ksize / 2 - self.window_size / 2) + '-' + str(int(begin) + i + c.ksize / 2 + self.window_size / 2)
+    #                command = "samtools depth -r %s %s | awk 'BEGIN {cnt = 0} {sum+=$3; cnt++} END {OFS = \"\t\"; print sum / cnt}'" % (contig, c.bam)
+    #                coverage = subprocess.Popen(command, stdout = subprocess.PIPE, shell = True).communicate()[0].strip()
+    #                try:
+    #                    coverage = float(coverage)
+    #                except:
+    #                    system_print_error(coverage)
+    #                    i += 1
+    #                    continue
+    #                gc = calculate_gc_content(seq[i + c.ksize / 2 - self.window_size / 2: i + c.ksize / 2 + self.window_size / 2]) / self.bin_size
+    #                self.gc[gc][kmer] = {'contig': contig, 'coverage': coverage}
+    #                i += self.window_size / 2
+    #                self.windows[gc].append('\t'.join([str(s) for s in ['chr1', i + c.ksize / 2 - self.window_size / 2, i + c.ksize / 2 + self.window_size / 2]]))
+    #            else:
+    #                i += 1
+    #                continue
+    #    return None
+
+    def transform(self, sequence, chrom):
+        c = config.Configuration()
+        telomere_length = 10000
+        sequence = sequence[telomere_length: -telomere_length]
+        t = time.time()
+        l = len(sequence)
+        i = self.window_size/2
+        while i < l - self.window_size/2:
+            kmer = canonicalize(sequence[i - c.ksize/2: i + c.ksize/2])
+            if self.reference_counts_provider.get_kmer_count(kmer) == 1:
+                gc = calculate_gc_content(sequence[i - self.window_size/2: i + self.window_size/2]) / self.bin_size
+                contig = chrom + ':' + str(telomere_length + i - self.window_size/2) + '-' + str(telomere_length + i + self.window_size/2)
+                self.gc[gc][kmer] = {'contig': contig, 'gc': gc}
+                i += self.window_size/2 + c.ksize/2
+            else:
+                i += 1
+                continue
             if i % 100 == 0:
                 s = time.time()
-                p = (len(sequence) - i * 100) / float(len(sequence))
+                p = i / float(len(sequence))
                 e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
                 print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
         return None
@@ -155,19 +251,23 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
         c = config.Configuration()
         self.kmers = {}
         random.seed(c.seed)
+        gc_files = []
+        #for gc in range(0, 100 + 1):
+        #    gc_files.append(open(os.path.join(self.get_current_job_directory(), 'gc_' + str(gc) + '.bed'), 'w'))
         for batch in self.load_output():
-            for i in range(0, self.window_size + 1):
-                for kmer in batch[str(i)]:
-                    self.gc[i][kmer] = 0
+            for gc in range(0, 100 + 1):
+                for kmer in batch[str(gc)]:
+                    self.gc[gc][kmer] = batch[str(gc)][kmer]
+                    #gc_files[gc].write(batch[str(gc)][kmer]['contig'] + '\n')
         for gc in self.gc:
             print(len(self.gc[gc]), 'kmers with GC content', gc)
             if len(self.gc[gc]) > 10000:
                 k = list(self.gc[gc].keys())
                 for kmer in [k[i] for i in sorted(random.sample(xrange(len(k)), 10000))]:
-                    self.kmers[kmer] = gc
+                    self.kmers[kmer] = self.gc[gc][kmer]
             else:
                 for kmer in self.gc[gc]:
-                    self.kmers[kmer] = gc
+                    self.kmers[kmer] = self.gc[gc][kmer]
         print('counting', len(self.kmers), 'kmers')
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
@@ -266,7 +366,8 @@ class MixKmersJob(map_reduce.Job):
         self.gc_kmers = {}
         for kmer in gc_kmers:
             if kmer not in self.inner_kmers and kmer not in self.junction_kmers:
-                self.gc_kmers[kmer] = {'loci': {}, 'gc': gc_kmers[kmer], 'count': 0}
+                self.gc_kmers[kmer] = gc_kmers[kmer]
+                self.gc_kmers[kmer].update({'loci': {}, 'count': 0})
 
     def export_tracks(self):
         c = config.Configuration()

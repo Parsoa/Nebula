@@ -104,6 +104,8 @@ def parse_args():
     parser.add_argument("--workdir", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/output')
     # path to a set of kmers for gc content estimation
     parser.add_argument("--gckmers", default = None)
+    # if selecting kmers for genotyping 
+    parser.add_argument("--select", action = 'store_true')
     ## Simulation options
     # whether to generate random events during simulation or not
     parser.add_argument("--random", action = 'store_true')

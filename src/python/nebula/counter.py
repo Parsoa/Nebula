@@ -47,9 +47,6 @@ class BaseExactCountingJob(map_reduce.Job):
         c = config.Configuration()
         self.transform()
 
-    def export_accelerator_input(self):
-        pass
-
     def transform(self):
         c = config.Configuration()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')

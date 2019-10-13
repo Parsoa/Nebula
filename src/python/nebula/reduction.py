@@ -124,9 +124,9 @@ class ExtractInnerKmersJob(map_reduce.Job):
         inner_kmers = {}
         if track.svtype == 'INS':
             if assembly:
-                inner_kmers = self.extract_insertion_kmers(track, assembly)
+                inner_kmers = self.extract_insertion_kmers(track, assembly, chrom)
             elif hasattr(track, 'seq'):
-                inner_kmers = self.extract_insertion_kmers(track, track.seq.upper())
+                inner_kmers = self.extract_insertion_kmers(track, track.seq.upper(), chrom)
         if track.svtype == 'DEL':
             inner_kmers = self.extract_deletion_kmers(track, chrom)
         # No inner kmers for INV, MEI or ALU
@@ -135,9 +135,10 @@ class ExtractInnerKmersJob(map_reduce.Job):
             return {item[0]: item[1] for item in items}
         return inner_kmers
 
-    def extract_insertion_kmers(self, track, inner_seq):
+    def extract_insertion_kmers(self, track, inner_seq, chrom):
         c = config.Configuration()
         inner_kmers = {}
+        seq = chrom[track.begin - 250: track.begin] + inner_seq + chrom[track.end: track.end + 250]
         if len(inner_seq) >= 3 * c.ksize:
             for i in range(c.ksize, len(inner_seq) - 2 * c.ksize + 1):
                 kmer = canonicalize(inner_seq[i: i + c.ksize])
@@ -152,7 +153,8 @@ class ExtractInnerKmersJob(map_reduce.Job):
                         'all': inner_seq[i - c.ksize: i + c.ksize + c.ksize],
                         'left': inner_seq[i - c.ksize: i],
                         'right': inner_seq[i + c.ksize: i + c.ksize + c.ksize]
-                    }
+                    },
+                    'gc': calculate_gc_content(seq[250 + i + c.ksize / 2 - 250: 250 + i + c.ksize / 2 + 250]) / 5
                 }
                 if not track.id in inner_kmers[kmer]['tracks']:
                     inner_kmers[kmer]['tracks'][track.id] = 0
@@ -236,17 +238,17 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
     def transform(self, sequence, chrom):
         c = config.Configuration()
         index = 0
-        slack = c.ksize
         t = time.time()
         for kmer in stream_kmers(c.ksize, True, True, sequence):
             if kmer in self.inner_kmers:
                 locus = chrom + '_' + str(index)
                 self.inner_kmers[kmer]['loci'][locus] = {
                     'seq': {
-                        'all': sequence[index - slack: index + c.ksize + slack],
-                        'left': sequence[index - slack: index],
-                        'right': sequence[index + c.ksize: index + c.ksize + slack]
-                    }
+                        'all': sequence[index - c.ksize: index + c.ksize + c.ksize],
+                        'left': sequence[index - c.ksize: index],
+                        'right': sequence[index + c.ksize: index + c.ksize + c.ksize]
+                    },
+                    'gc': calculate_gc_content(sequence[index + c.ksize / 2 - 250: index + c.ksize / 2 + 250]) / 5
                 }
             index += 1
             if index % 10000 == 0:

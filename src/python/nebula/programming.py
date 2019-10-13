@@ -175,7 +175,6 @@ class IntegerProgrammingJob(map_reduce.Job):
 
     def round_lp(self):
         c = config.Configuration()
-        self.find_rounding_break_points()
         print('Rounding', len(self.tracks), 'tracks')
         for track in self.tracks:
             t = c.tracks[track]
@@ -209,57 +208,13 @@ class IntegerProgrammingJob(map_reduce.Job):
             with open(path, 'w') as json_file:
                 json.dump(tracks[track], json_file, indent = 4)
 
-    def find_rounding_break_points(self):
-        c = config.Configuration()
-        d_0 = statistics.NormalDistribution(0, min(c.std / 4.0, 3))
-        d_1 = statistics.NormalDistribution(c.coverage / 2, c.std / 2)
-        d_2 = statistics.NormalDistribution(c.coverage, c.std)
-        distributions = [{'inner': d_0, 'gapped': d_2, 'junction': d_2}, {'inner': d_1, 'gapped': d_1, 'junction': d_1}, {'inner': d_2, 'gapped': d_0, 'junction': d_0}]
-        m = None
-        step = 0.05
-        self.b1 = 0.25
-        self.b2 = 0.75
-        if not c.rounding:
-            return
-        for b1 in range(int(0.1 / step), int(0.5 / step)):
-            for b2 in range(int(0.55 / step), int(1.0 / step)):
-                print(b1, b2)
-                likelihood = 0
-                b_1 = b1 * step
-                b_2 = b2 * step
-                for track in self.tracks:
-                    if self.tracks[track]['coverage'] <= b_1:
-                        likelihood += self.estimate_likelihood(track, distributions[0])
-                    elif self.tracks[track]['coverage'] > b_1 and self.tracks[track]['coverage'] <= b_2:
-                        likelihood += self.estimate_likelihood(track, distributions[1])
-                    else:
-                        likelihood += self.estimate_likelihood(track, distributions[2])
-                if m == None:
-                    self.b1 = b_1
-                    self.b2 = b_2
-                    m = likelihood
-                elif likelihood > m:
-                    self.b1 = b_1
-                    self.b2 = b_2
-                    m = likelihood
-        print('[0,', cyan(self.b1), ',', yellow(self.b2), ', 1.0]')
-
-    def estimate_likelihood(self, track, distribution):
-        c = config.Configuration()
-        likelihood = 0.0
-        for index, kmer in enumerate(self.tracks[track]['lp_kmers']):
-            l = distribution[kmer['type']].log_pmf(kmer['count'] - kmer['residue'] * kmer['coverage'])
-            kmer['likelihood'] = l
-            likelihood += l
-        return likelihood / (index + 1)
-
     def round_genotype(self, c, svtype):
-        if c > self.b2:
-            return (1.0, '11')
-        elif c > self.b1:
-            return (0.5, '10')
+        if c > 0.75:
+            return (1.0, '1/1')
+        elif c > 0.25:# or svtype == 'INS' and c > 0.15:
+            return (0.5, '1/0')
         else:
-            return (0.0, '00')
+            return (0.0, '0/0')
 
     def verify_genotypes(self):
         c = config.Configuration()

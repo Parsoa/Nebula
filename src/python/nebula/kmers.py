@@ -123,7 +123,7 @@ def find_all(string, substring):
 
 def calculate_gc_content(seq):
     n = 0
-    for c in seq:
+    for c in seq.upper():
         if c == 'C' or c == 'G':
             n += 1
     return n

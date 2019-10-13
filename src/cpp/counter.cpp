@@ -26,12 +26,6 @@ int DEBUG = 0 ;
 
 #define MASK 6
 
-int SELECT_GAPPED_KMERS = 2 ;
-int COUNT_GAPPED_KMERS = 1 ;
-int COUNT_INNER_KMERS = 0 ;
-int COUNT_KMERS = 3 ;
-int COUNT_MIX_KMERS = 4 ;
-
 int KMER_TYPE_INNER = 0 ;
 int KMER_TYPE_GAPPED = 1 ;
 
@@ -40,7 +34,6 @@ const int SEQUENCE_LINE = 1 ;
 const int THIRD_LINE = 2 ;
 const int QUALITY_LINE = 3 ;
 
-std::unordered_map<uint64_t, int> *types = new std::unordered_map<uint64_t, int> ;
 std::unordered_map<uint64_t, int*> *counts = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, int*> *totals = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, std::vector<uint64_t>*> *masks = new std::unordered_map<uint64_t, std::vector<uint64_t>*> ;
@@ -228,45 +221,40 @@ void process_read(char* seq) {
         cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
         */
         if (kmer != counts->end()) {
-            if (JOB == COUNT_INNER_KMERS || JOB == COUNT_MIX_KMERS) {
-                //cout << i << " " << l << endl ;
-                //string d_l = decode_kmer(left) ;
-                //string d_r = decode_kmer(right) ;
-                //string d_k = decode_kmer(k) ;
-                //cout << "===================" << endl ;
-                //cout << seq ;
-                //cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
-                //cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
-                int* total = totals->at(kmer->first) ;
-                *total += 1 ;
-                if (masks->find(k) == masks->end()) {
-                    int* count = counts->at(kmer->first) ;
-                    *count += 1 ;
-                } else {
-                    std::vector<uint64_t>* m = masks->at(k) ;
-                    for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
-                        //cout << decode_kmer(*it) << endl ;
-                        if (i + 32 + 31 < l) {
-                            if (is_subsequence(*it, left)) {
-                                int* count = counts->at(kmer->first) ;
-                                *count += 1 ;
-                                //cout << "found" << endl ;
-                                break ;
-                            }
+            //cout << i << " " << l << endl ;
+            //string d_l = decode_kmer(left) ;
+            //string d_r = decode_kmer(right) ;
+            //string d_k = decode_kmer(k) ;
+            //cout << "===================" << endl ;
+            //cout << seq ;
+            //cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
+            //cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
+            int* total = totals->at(kmer->first) ;
+            *total += 1 ;
+            if (masks->find(k) == masks->end()) {
+                int* count = counts->at(kmer->first) ;
+                *count += 1 ;
+            } else {
+                std::vector<uint64_t>* m = masks->at(k) ;
+                for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
+                    //cout << decode_kmer(*it) << endl ;
+                    if (i + 32 + 31 < l) {
+                        if (is_subsequence(*it, left)) {
+                            int* count = counts->at(kmer->first) ;
+                            *count += 1 ;
+                            //cout << "found" << endl ;
+                            break ;
                         }
-                        if (i >= 32) {
-                            if (is_subsequence(*it, right)) {
-                                int* count = counts->at(kmer->first) ;
-                                *count += 1 ;
-                                //cout << "found" << endl ;
-                                break ;
-                            }
+                    }
+                    if (i >= 32) {
+                        if (is_subsequence(*it, right)) {
+                            int* count = counts->at(kmer->first) ;
+                            *count += 1 ;
+                            //cout << "found" << endl ;
+                            break ;
                         }
                     }
                 }
-            } else {
-                int* count = counts->at(kmer->first) ;
-                *count += 1 ;
             }
         }
     }
@@ -285,21 +273,8 @@ void output_counts(string path, int index) {
     std::ofstream o(p);
     for (std::unordered_map<uint64_t, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
         int* count = i->second ;
-        if (JOB == SELECT_GAPPED_KMERS) {
-            o << decode_kmer(i->first) ;
-            for (int i = 0 ; i <= 10; i++) {
-                o << ":" << count[i] ;
-            }
-            o << endl ;
-        } else if (JOB == COUNT_GAPPED_KMERS) {
-            o << decode_kmer(i->first) << ":" << *count << endl ; 
-        } else if (JOB == COUNT_MIX_KMERS) {
-            auto total = totals->find(i->first) ;
-            o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << "\n" ;
-        } else {
-            auto total = totals->find(i->first) ;
-            o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << endl ;
-        }
+        auto total = totals->find(i->first) ;
+        o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << "\n" ;
     }
     cout << "done" << endl ;
 }
@@ -349,11 +324,7 @@ int process_bam(string bam, string path, int index, int threads) {
         //cout << "#" << line << "#" << endl ;
         n += 1 ;
         u += 1 ;
-        if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
-            process_read(line) ;
-        } else if (JOB == COUNT_MIX_KMERS) {
-            process_read(line) ;
-        }
+        process_read(line) ;
         if (n == 10000) {
             n = 0 ;
             time_t s ;
@@ -457,11 +428,7 @@ int process_fastq(string fastq, string path, int index, int threads) {
                     buffer[i] = '\0' ; // null-terminate this
                     //cout << line << endl ;
                     state = SKIPPING ;
-                    if (JOB == COUNT_INNER_KMERS || JOB == COUNT_KMERS) {
-                        process_read(line) ;
-                    } else if (JOB == COUNT_MIX_KMERS) {
-                        process_read(line) ;
-                    }
+                    process_read(line) ;
                     //cout << "Skipping" << endl;
                 } else {
                     // phred line
@@ -495,8 +462,6 @@ int load_kmers(int index, string path) {
         auto kmer = it.value() ;
         uint64_t k = encode_kmer(std::string(it.key()).c_str()) ;
         uint64_t rc_k = encode_kmer(reverse_complement(std::string(it.key())).c_str()) ;
-        types->insert(std::make_pair(k, KMER_TYPE_INNER)) ;
-        types->insert(std::make_pair(rc_k, KMER_TYPE_INNER)) ;
         int* count = new int ;
         *count = 0 ;
         counts->emplace(std::make_pair(k, count)) ;
@@ -505,20 +470,18 @@ int load_kmers(int index, string path) {
         *total = 0 ;
         totals->emplace(std::make_pair(k, total)) ;
         totals->emplace(std::make_pair(rc_k, total)) ;
-        if (JOB == COUNT_INNER_KMERS || JOB == COUNT_MIX_KMERS) {
+        if (kmer["loci"].size()) {
             std::vector<uint64_t> *m = new std::vector<uint64_t> ;
-            if (kmer["loci"].size()) {
-                for (nlohmann::json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
-                    for (nlohmann::json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
-                        m->push_back(encode_kmer(mask.key().c_str())) ;
-                        m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
-                    }
+            for (nlohmann::json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
+                for (nlohmann::json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
+                    m->push_back(encode_kmer(mask.key().c_str())) ;
+                    m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
                 }
-                if (m->size()) {
-                    masks->emplace(std::make_pair(k, m)) ;
-                    masks->emplace(std::make_pair(rc_k, m)) ;
-                } 
             }
+            if (m->size()) {
+                masks->emplace(std::make_pair(k, m)) ;
+                masks->emplace(std::make_pair(rc_k, m)) ;
+            } 
         }
     }
     cout << counts->size() / 2 << " kmers" << endl ;
@@ -537,7 +500,7 @@ int main(int argc, char** argv) {
     time_t t ;
     time(&t) ;
     cout << "index " << index << " counting " << fastq << endl ;
-    transform(index, path) ;
+    load_kmers(index, path) ;
     int n = 0;
     if (fastq.compare(fastq.size() - 4, 4, ".bam") == 0) {
         cout << "input is BAM file" << endl ;

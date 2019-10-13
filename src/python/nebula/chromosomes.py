@@ -32,7 +32,7 @@ def extract_chromosome(chromosome):
     if chromosome in chroms:
         system_print('Loading', chromosome, 'from cache.')
         return chroms[chromosome]
-    else:
+    elif chroms:
         system_print_error('Chromosome not found', chromosome)
         if whole_genome_extracted:
             return None
