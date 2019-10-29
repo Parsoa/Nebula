@@ -36,8 +36,8 @@ def misc():
 def preprocess():
 
     def supply_inner_kmers():
-        job = ExtractInnerKmersJob()
-        tracks = job.execute()
+        #job = ExtractInnerKmersJob()
+        #tracks = job.execute()
         job = ExtractLociIndicatorKmersJob()
         tracks = job.execute()
         job = FilterLociIndicatorKmersJob(tracks = tracks)
@@ -54,7 +54,7 @@ def preprocess():
 
     load_tracks()
     #supply_inner_kmers()
-    #supply_junction_kmers()
+    supply_junction_kmers()
     job = MixKmersJob()
     job.execute()
 

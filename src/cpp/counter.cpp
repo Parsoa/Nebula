@@ -336,6 +336,10 @@ int process_bam(string bam, string path, int index, int threads) {
                 cout << " reads per second: " << u / (s - t) << "\r" ;
             }
         }
+        if (u == 200000000) {
+            cout << "midlife drop\n" << endl ;
+            output_counts(path, index) ;
+        }
     }
     bam_destroy1(alignment) ;
     sam_close(bam_file) ;

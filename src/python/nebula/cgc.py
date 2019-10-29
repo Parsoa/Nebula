@@ -102,6 +102,8 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         user_print('GC kmers:', blue(len(self.gc_kmers)))
 
     def export_counter_input(self):
+        for kmer in self.gc_kmers:
+            self.gc_kmers[kmer]['count'] = 0
         if self.resume_from_reduce:
             return
         _kmers = {}
@@ -127,9 +129,6 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         count = tokens[0] 
         total = tokens[1] 
         canon = canonicalize(kmer)
-        # TODO: canonicalize GC kmers before this stage
-        #if kmer in self.gc_kmers:
-        #    self.gc_kmers[kmer]['count'] += count / 2
         if canon in self.gc_kmers:
             self.gc_kmers[canon]['count'] += count / 2
         if canon in self.depth_kmers:
@@ -145,9 +144,11 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         c = config.Configuration()
         counts = list(map(lambda kmer: self.depth_kmers[kmer]['count'], self.depth_kmers))
         visualizer.histogram(counts, 'depth_unfiltered', self.get_current_job_directory(), 'count', 'kmers', 1)
+        print(len(counts), 'depth kmers')
         while True:
             std = np.std(counts)
             mean = np.mean(counts)
+            print(mean, std)
             counts = list(filter(lambda x: x < 3 * mean, counts))
             if abs(np.mean(counts) - mean) < 0.5:
                 break
@@ -164,62 +165,70 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         self.gc = [0] * (100 + 1)
         for gc in range(0, 100 + 1):
             counts = [self.gc_kmers[kmer]['count'] for kmer in self.gc_kmers if self.gc_kmers[kmer]['gc'] == gc]
-            if len(counts) == 0:
-                self.gc[gc] = c.coverage
+            if len(counts) == 0 or not any(counts):
+                self.gc[gc] = self.stats['coverage']
                 continue
             while True:
                 std = np.std(counts)
                 mean = np.mean(counts)
-                counts = list(filter(lambda x: x < 3 * mean, counts))
-                if abs(np.mean(counts) - mean) < 0.5 or len(counts) == 0:
-                    self.gc[gc] = mean
+                counts = list(filter(lambda x: x <= 3 * mean, counts))
+                if abs(np.mean(counts) - mean) < 0.5:
+                    self.gc[gc] = max(mean, 0.2 * self.stats['coverage'])
                     break
+        #g = [0] * (100 + 1)
+        #g = self.gc[74:24:-1] + self.gc[24:74]
+        #self.gc = g
         visualizer.scatter(list(range(0, 100 + 1)), self.gc, 'GC_coverage', self.get_current_job_directory(), 'GC', 'coverage')
         self.gc = savgol_filter(self.gc, 7, 3)
         visualizer.scatter(list(range(0, 100 + 1)), self.gc, 'smooth_GC_coverage', self.get_current_job_directory(), 'GC', 'coverage')
 
-    def plot_read_kmer_coverage(self):
-        read_cov = []
-        kmer_cov = []
-        for i in range(0, 100 + 1):
-            b = 0
-            k = 0
-            n = 0
-            for kmer in self.gc_kmers:
-                if self.gc_kmers[kmer]['gc'] == i:
-                    b += self.gc_kmers[kmer]['coverage']
-                    k += self.gc_kmers[kmer]['count']
-                    n += 1
-            if n != 0:
-                read_cov.append(float(b) / n)
-                kmer_cov.append(float(k) / n)
-            else:
-                read_cov.append(0)
-                kmer_cov.append(0)
-        import plotly.offline as plotly
-        import plotly.graph_objs as graph_objs
-        fig = graph_objs.Figure()
-        x = list(range(0, 100 + 1))
-        fig.add_trace(graph_objs.Scatter(x = x, y = read_cov, mode = 'lines'))
-        fig.add_trace(graph_objs.Scatter(x = x, y = kmer_cov, mode = 'lines'))
-        plotly.plot(fig, filename = os.path.join(self.get_current_job_directory(), 'scatter_read_depth_kmer_depth_gc.html'), auto_open = False)
-        with open(os.path.join(self.get_current_job_directory(), 'table.bed'), 'w') as bed_file:
-            bed_file.write('#KMER\tWINDOW\tGC\tCOUNT\tDEPTH\n')
-            for kmer in self.gc_kmers:
-                k = kmer
-                kmer = self.gc_kmers[kmer]
-                bed_file.write('\t'.join([str(s) for s in [k, kmer['contig'], kmer['gc'], kmer['count'], kmer['coverage']]]) + '\n')
+    #def plot_read_kmer_coverage(self):
+    #    read_cov = []
+    #    kmer_cov = []
+    #    for i in range(0, 100 + 1):
+    #        b = 0
+    #        k = 0
+    #        n = 0
+    #        for kmer in self.gc_kmers:
+    #            if self.gc_kmers[kmer]['gc'] == i:
+    #                b += self.gc_kmers[kmer]['coverage']
+    #                k += self.gc_kmers[kmer]['count']
+    #                n += 1
+    #        if n != 0:
+    #            read_cov.append(float(b) / n)
+    #            kmer_cov.append(float(k) / n)
+    #        else:
+    #            read_cov.append(0)
+    #            kmer_cov.append(0)
+    #    import plotly.offline as plotly
+    #    import plotly.graph_objs as graph_objs
+    #    fig = graph_objs.Figure()
+    #    x = list(range(0, 100 + 1))
+    #    fig.add_trace(graph_objs.Scatter(x = x, y = read_cov, mode = 'lines'))
+    #    fig.add_trace(graph_objs.Scatter(x = x, y = kmer_cov, mode = 'lines'))
+    #    plotly.plot(fig, filename = os.path.join(self.get_current_job_directory(), 'scatter_read_depth_kmer_depth_gc.html'), auto_open = False)
+    #    with open(os.path.join(self.get_current_job_directory(), 'table.bed'), 'w') as bed_file:
+    #        bed_file.write('#KMER\tWINDOW\tGC\tCOUNT\tDEPTH\n')
+    #        for kmer in self.gc_kmers:
+    #            k = kmer
+    #            kmer = self.gc_kmers[kmer]
+    #            bed_file.write('\t'.join([str(s) for s in [k, kmer['contig'], kmer['gc'], kmer['count'], kmer['coverage']]]) + '\n')
     
     def adjust_kmer_gc_coverage(self, kmer, kmer_seq):
+        c = config.Configuration()
+        for track in kmer['tracks']:
+            if c.tracks[track].svtype == 'INS':
+                kmer['gc_coverage'] = self.stats['coverage']
+                return
         kmer['gc_coverage'] = sum(map(lambda locus: self.gc[kmer['loci'][locus]['gc']], kmer['loci'])) / len(kmer['loci'])
 
     def reduce(self):
         self.merge_counts()
         self.export_counted_kmers()
-        self.plot_read_kmer_coverage()
+        self.stats = self.estimate_depth_of_coverage()
         self.estimate_gc_content_coverage()
         self.export_genotyping_tracks()
-        return self.tracks, self.estimate_depth_of_coverage()
+        return self.tracks, self.stats 
 
     def export_counted_kmers(self):
         c = config.Configuration()
@@ -294,8 +303,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
     def transform(self, kmers, track_name):
         c = config.Configuration()
         lp_kmers = {}
-        #t = c.kmers[track_name]
-        # if all kmers are non-unique then ignore
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
         for kmer in kmers['inner_kmers']:
             if all_non_unique:
@@ -330,10 +337,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 r += kmer['tracks'][track]
                 kmer['svtype'] = c.tracks[track].svtype
             kmer['coverage'] = kmer['gc_coverage']
-            kmer['residue'] = kmer['reference'] - r
+            kmer['residue'] = 0 if 'inverse' in kmer else kmer['reference'] - r
             kmer['weight'] = 1.0
-            kmer['count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
-        self.calculate_error_weights()
+            kmer['lp_count'] = min(kmer['count'], kmer['coverage'] * kmer['reference'])
+        if c.select:
+            self.calculate_error_weights()
 
     def calculate_error_weights(self):
         for track in self.tracks:
@@ -377,11 +385,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             if kmer['svtype'] == 'INS' or kmer['type'] == 'junction':
                 coeffs = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
                 coeffs.append(1.0)
-                rhs = kmer['count'] - kmer['coverage'] * kmer['residue']
+                rhs = kmer['lp_count'] - kmer['coverage'] * kmer['residue']
             if kmer['svtype'] == 'DEL' and kmer['type'] == 'inner':
                 coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
                 coeffs.append(1.0)
-                rhs = kmer['count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
+                rhs = kmer['lp_count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
             expr = LpAffineExpression([(variables[v], coeffs[index]) for index, v in enumerate(indices)])
             problem += LpConstraint(expr, LpConstraintEQ, 'k' + str(i), rhs)
         return problem, variables
@@ -470,6 +478,8 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
                 continue
             if len(kmers['junction_kmers'][kmer]['loci']) > 1:
                 continue
+            if is_kmer_low_entropy(kmer):
+                continue
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
@@ -525,6 +535,8 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         self.kmers['depth_kmers'] = kmers['depth_kmers']
         for kmer in self.kmers['depth_kmers']:
             self.kmers['depth_kmers'][kmer]['count'] = 0
+        for kmer in self.kmers['gc_kmers']:
+            self.kmers['gc_kmers'][kmer]['count'] = 0
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4)
         exit()

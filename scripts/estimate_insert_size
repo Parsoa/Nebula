@@ -1,5 +1,0 @@
-#!/bin/bash
-cd /share/hormozdiarilab/Codes/NebulousSerendipity
-source venv2/bin/activate
-cd scripts
-python estimate_insert_size.py

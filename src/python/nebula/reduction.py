@@ -164,19 +164,24 @@ class ExtractInnerKmersJob(map_reduce.Job):
     def extract_deletion_kmers(self, track, chrom):
         c = config.Configuration()
         inner_kmers = {}
-        slack = 5 # arbitray
-        inner_seq = chrom[track.begin + slack: track.end - slack]
+        returning_kmers = {}
+        new_seq = chrom[track.begin - c.ksize: track.begin] + chrom[track.end: track.end + c.ksize]
+        for i in range(len(new_seq) - c.ksize + 1):
+            kmer = canonicalize(new_seq[i: i + c.ksize])
+            returning_kmers[kmer] = True
+        inner_seq = chrom[track.begin - c.ksize: track.end + c.ksize]
         for i in range(len(inner_seq) - c.ksize + 1):
             kmer = canonicalize(inner_seq[i: i + c.ksize])
-            if not kmer in inner_kmers:
-                inner_kmers[kmer] = {
-                    'loci': {},
-                    'tracks': {},
-                    'reference': self.reference_counts_provider.get_kmer_count(kmer),
-                }
-            if not track.id in inner_kmers[kmer]['tracks']:
-                inner_kmers[kmer]['tracks'][track.id] = 0
-            inner_kmers[kmer]['tracks'][track.id] += 1
+            if not kmer in returning_kmers:
+                if not kmer in inner_kmers:
+                    inner_kmers[kmer] = {
+                        'loci': {},
+                        'tracks': {},
+                        'reference': self.reference_counts_provider.get_kmer_count(kmer),
+                    }
+                if not track.id in inner_kmers[kmer]['tracks']:
+                    inner_kmers[kmer]['tracks'][track.id] = 0
+                inner_kmers[kmer]['tracks'][track.id] += 1
         return inner_kmers
 
 # ============================================================================================================================ #
@@ -265,14 +270,18 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
         exit()
 
     def reduce(self):
+        no_mask_kmers = {}
         for batch in self.load_output():
             for kmer in batch:
                 self.inner_kmers[kmer]['loci'].update(batch[kmer]['loci'])
         for track in self.tracks:
             self.tracks[track] = {}
         for kmer in self.inner_kmers:
+            if len(self.inner_kmers[kmer]['loci']) == 0:
+                no_mask_kmers[kmer] = self.inner_kmers[kmer]
             for track in self.inner_kmers[kmer]['tracks']:
                 self.tracks[track][kmer] = self.inner_kmers[kmer]
+        json.dump(no_mask_kmers, open(os.path.join(self.get_current_job_directory(), 'no_mask_kmers.json'), 'w'), indent = 4)
         return self.tracks
         #for track in self.tracks:
         #    with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as track_file:
@@ -344,7 +353,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                         self.kmers[kmer]['loci'][locus]['masks'] = {self.kmers[kmer]['loci'][locus]['seq']['left']: True, self.kmers[kmer]['loci'][locus]['seq']['right']: True}
                 for locus in self.kmers[kmer]['loci']:
                     tokens = locus.split('_')
-                    if 'inside' in locus or (tokens[0].lower() == t.chrom.lower() and int(tokens[1]) >= t.begin and int(tokens[1]) < t.end):
+                    if 'inside' in locus or (tokens[0].lower() == t.chrom.lower() and int(tokens[1]) >= t.begin - c.ksize and int(tokens[1]) < t.end):
                         self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
         return None
 
@@ -352,20 +361,23 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         c = config.Configuration()
         for track in kmer['tracks']:
             t = c.tracks[track]
-            for locus in kmer['loci']:
-                if not 'inside' in locus:
-                    start = int(locus.split('_')[1])
-                    if abs(start - t.end) < 2 * c.ksize:
-                        return True
-                    if abs(start - t.begin) < 2 * c.ksize:
-                        return True
+            if t.svtype == 'INS':
+                for locus in kmer['loci']:
+                    if not 'inside' in locus:
+                        start = int(locus.split('_')[1])
+                        if abs(start - t.end) < 2 * c.ksize:
+                            return True
+                        if abs(start - t.begin) < 2 * c.ksize:
+                            return True
         return False
 
     def output_batch(self, batch):
         for kmer in self.kmers:
+            self.kmers[kmer]['filtered_loci'] = {}
             for locus in self.kmers[kmer]['loci'].keys():
                 l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
                 if l == 0:
+                    self.kmers[kmer]['filtered_loci'][locus] = self.kmers[kmer]['loci'][locus]
                     self.kmers[kmer]['loci'].pop(locus, None)
             self.kmers[kmer].pop('interest_masks', None)
             self.kmers[kmer]['reduction'] = self.kmers[kmer]['reference']

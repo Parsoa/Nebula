@@ -132,7 +132,7 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
         self.bin_size = self.window_size / 100
         for i in range(0, 100 + 1):
             self.gc[i] = {}
-        #self.chromosomes = {'chr1': extract_chromosome('chr1')}
+        self.chromosomes = {'chr1': extract_chromosome('chr1')}
         self.load_reference_counts_provider() 
         self.chromosomes = extract_whole_genome()
         self.load_exon_regions()
@@ -150,74 +150,45 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
                 self.exons[chrom][exon] = exons[exon]
         print(len(self.exons))
 
-    def transform(self, sequence, chrom):
-        c = config.Configuration()
-        t = time.time()
-        n = 0
-        for exon in self.exons[chrom]:
-            track = self.exons[chrom][exon]
-            ends = track.exonends.split(',')
-            begins = track.exonstarts.split(',')
-            for j, begin in enumerate(begins[:-1]):
-                seq = sequence[int(begin): int(ends[j])]
-                l = len(seq)
-                i = self.window_size / 2
-                while i < l - self.window_size / 2:
-                    kmer = canonicalize(seq[i - c.ksize / 2: i + c.ksize / 2])
-                    if self.reference_counts_provider.get_kmer_count(kmer) == 1:
-                        contig = 'chrX' if 'x' in chrom else 'chrY' if 'y' in chrom else chrom + ':' + str(int(begin) + i - self.window_size / 2) + '-' + str(int(begin) + i + self.window_size / 2)
-                        command = "samtools depth -r %s %s | awk 'BEGIN {cnt = 0} {sum+=$3; cnt++} END {OFS = \"\t\"; print sum / cnt}'" % (contig, c.bam)
-                        #coverage = subprocess.Popen(command, stdout = subprocess.PIPE, shell = True).communicate()[0].strip()
-                        #try:
-                        #    coverage = float(coverage)
-                        #except:
-                        #    system_print_error(command)
-                        #    i += 1
-                        #    continue
-                        gc = calculate_gc_content(seq[i - self.window_size / 2: i + self.window_size / 2]) / self.bin_size
-                        self.gc[gc][kmer] = {'contig': contig, 'gc': gc}
-                        i += self.window_size / 2 + c.ksize / 2
-                    else:
-                        i += 1
-                        continue
-            n += 1
-            if n % 100 == 0:
-                s = time.time()
-                p = n / float(len(self.exons[chrom]))
-                e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-                print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-        return None
-
-    #def transform(self, track, exon):
+    #def transform(self, sequence, chrom):
     #    c = config.Configuration()
     #    t = time.time()
-    #    ends = track.exonends.split(',')
-    #    begins = track.exonstarts.split(',')
-    #    for j, begin in enumerate(begins[:-1]):
-    #        seq = self.chromosomes['chr1'][int(begin): int(ends[j])]
-    #        l = len(seq)
-    #        i = self.window_size / 2
-    #        while i < l - self.window_size / 2 - c.ksize / 2:
-    #            kmer = canonicalize(seq[i: i + c.ksize])
-    #            if self.reference_counts_provider.get_kmer_count(kmer) == 1:
-    #                contig = 'chr1' + ':' + str(int(begin) + i + c.ksize / 2 - self.window_size / 2) + '-' + str(int(begin) + i + c.ksize / 2 + self.window_size / 2)
-    #                command = "samtools depth -r %s %s | awk 'BEGIN {cnt = 0} {sum+=$3; cnt++} END {OFS = \"\t\"; print sum / cnt}'" % (contig, c.bam)
-    #                coverage = subprocess.Popen(command, stdout = subprocess.PIPE, shell = True).communicate()[0].strip()
-    #                try:
-    #                    coverage = float(coverage)
-    #                except:
-    #                    system_print_error(coverage)
+    #    n = 0
+    #    for exon in self.exons[chrom]:
+    #        track = self.exons[chrom][exon]
+    #        ends = track.exonends.split(',')
+    #        begins = track.exonstarts.split(',')
+    #        for j, begin in enumerate(begins[:-1]):
+    #            seq = sequence[int(begin): int(ends[j])]
+    #            l = len(seq)
+    #            i = self.window_size / 2
+    #            while i < l - self.window_size / 2:
+    #                kmer = canonicalize(seq[i - c.ksize / 2: i + c.ksize / 2])
+    #                if self.reference_counts_provider.get_kmer_count(kmer) == 1:
+    #                    contig = 'chrX' if 'x' in chrom else 'chrY' if 'y' in chrom else chrom + ':' + str(int(begin) + i - self.window_size / 2) + '-' + str(int(begin) + i + self.window_size / 2)
+    #                    command = "samtools depth -r %s %s | awk 'BEGIN {cnt = 0} {sum+=$3; cnt++} END {OFS = \"\t\"; print sum / cnt}'" % (contig, c.bam)
+    #                    coverage = subprocess.Popen(command, stdout = subprocess.PIPE, shell = True).communicate()[0].strip()
+    #                    try:
+    #                        coverage = float(coverage)
+    #                    except:
+    #                        system_print_error(command)
+    #                        i += 1
+    #                        continue
+    #                    gc = calculate_gc_content(seq[i - self.window_size / 2: i + self.window_size / 2]) / self.bin_size
+    #                    self.gc[gc][kmer] = {'contig': contig, 'gc': gc, 'coverage': coverage}
+    #                    i += self.window_size / 2 + c.ksize / 2
+    #                else:
     #                    i += 1
     #                    continue
-    #                gc = calculate_gc_content(seq[i + c.ksize / 2 - self.window_size / 2: i + c.ksize / 2 + self.window_size / 2]) / self.bin_size
-    #                self.gc[gc][kmer] = {'contig': contig, 'coverage': coverage}
-    #                i += self.window_size / 2
-    #                self.windows[gc].append('\t'.join([str(s) for s in ['chr1', i + c.ksize / 2 - self.window_size / 2, i + c.ksize / 2 + self.window_size / 2]]))
-    #            else:
-    #                i += 1
-    #                continue
+    #        n += 1
+    #        if n % 100 == 0:
+    #            s = time.time()
+    #            p = n / float(len(self.exons[chrom]))
+    #            e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
+    #            print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
     #    return None
 
+    # No exon, unique kmers from all across the genome
     def transform(self, sequence, chrom):
         c = config.Configuration()
         telomere_length = 10000
@@ -230,12 +201,12 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
             if self.reference_counts_provider.get_kmer_count(kmer) == 1:
                 gc = calculate_gc_content(sequence[i - self.window_size/2: i + self.window_size/2]) / self.bin_size
                 contig = chrom + ':' + str(telomere_length + i - self.window_size/2) + '-' + str(telomere_length + i + self.window_size/2)
-                self.gc[gc][kmer] = {'contig': contig, 'gc': gc}
+                self.gc[gc][kmer] = {'contig': contig, 'gc': gc, 'coverage': gc}
                 i += self.window_size/2 + c.ksize/2
             else:
                 i += 1
                 continue
-            if i % 100 == 0:
+            if i % 10000 == 0:
                 s = time.time()
                 p = i / float(len(sequence))
                 e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)

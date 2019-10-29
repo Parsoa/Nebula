@@ -423,10 +423,12 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
         remove = {}
         for kmer in self.kmers:
             l_1 = len(self.kmers[kmer]['loci'])
+            self.kmers[kmer]['filtered_loci'] = {}
             loci = copy.deepcopy(self.kmers[kmer]['loci'])
             for locus in self.kmers[kmer]['loci'].keys():
                 l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
                 if l == 0:
+                    self.kmers[kmer]['filtered_loci'][locus] = self.kmers[kmer]['loci'][locus]
                     self.kmers[kmer]['loci'].pop(locus, None)
             l_2 = len(self.kmers[kmer]['loci'])
             # filter non-overlapping loci
