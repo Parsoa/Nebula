@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-import io
 import os
 import re
 import pwd
@@ -24,6 +23,7 @@ from nebula import (
     visualizer,
     programming,
 )
+
 from nebula.debug import *
 from nebula.kmers import *
 from nebula.logger import *

@@ -12,6 +12,8 @@ import argparse
 import operator
 import traceback
 
+from sets import Set
+
 from nebula import (
     bed,
     config,
@@ -31,13 +33,11 @@ from nebula.debug import *
 from nebula.kmers import *
 from nebula.logger import *
 from nebula.chromosomes import *
-print = pretty_print
-
-from scipy.signal import savgol_filter
 
 import numpy as np
 
 from pulp import *
+from scipy.signal import savgol_filter
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -80,6 +80,11 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         self.depth_kmers = self.kmers['depth_kmers']
         self.inner_kmers = self.kmers['inner_kmers']
         self.junction_kmers = self.kmers['junction_kmers']
+        user_print('Counting:')
+        user_print('Junction kmers:', blue(len(self.junction_kmers)))
+        user_print('Inner kmers:', blue(len(self.inner_kmers)))
+        user_print('Depth kmers:', blue(len(self.depth_kmers)))
+        user_print('GC kmers:', blue(len(self.gc_kmers)))
         for path in c.kmers[1:]:
             with open(path, 'r') as json_file:
                 kmers = json.load(json_file)
@@ -175,51 +180,12 @@ class CgcCounterJob(counter.BaseExactCountingJob):
                 if abs(np.mean(counts) - mean) < 0.5:
                     self.gc[gc] = max(mean, 0.2 * self.stats['coverage'])
                     break
-        #g = [0] * (100 + 1)
-        #g = self.gc[74:24:-1] + self.gc[24:74]
-        #self.gc = g
         visualizer.scatter(list(range(0, 100 + 1)), self.gc, 'GC_coverage', self.get_current_job_directory(), 'GC', 'coverage')
         self.gc = savgol_filter(self.gc, 7, 3)
         visualizer.scatter(list(range(0, 100 + 1)), self.gc, 'smooth_GC_coverage', self.get_current_job_directory(), 'GC', 'coverage')
 
-    #def plot_read_kmer_coverage(self):
-    #    read_cov = []
-    #    kmer_cov = []
-    #    for i in range(0, 100 + 1):
-    #        b = 0
-    #        k = 0
-    #        n = 0
-    #        for kmer in self.gc_kmers:
-    #            if self.gc_kmers[kmer]['gc'] == i:
-    #                b += self.gc_kmers[kmer]['coverage']
-    #                k += self.gc_kmers[kmer]['count']
-    #                n += 1
-    #        if n != 0:
-    #            read_cov.append(float(b) / n)
-    #            kmer_cov.append(float(k) / n)
-    #        else:
-    #            read_cov.append(0)
-    #            kmer_cov.append(0)
-    #    import plotly.offline as plotly
-    #    import plotly.graph_objs as graph_objs
-    #    fig = graph_objs.Figure()
-    #    x = list(range(0, 100 + 1))
-    #    fig.add_trace(graph_objs.Scatter(x = x, y = read_cov, mode = 'lines'))
-    #    fig.add_trace(graph_objs.Scatter(x = x, y = kmer_cov, mode = 'lines'))
-    #    plotly.plot(fig, filename = os.path.join(self.get_current_job_directory(), 'scatter_read_depth_kmer_depth_gc.html'), auto_open = False)
-    #    with open(os.path.join(self.get_current_job_directory(), 'table.bed'), 'w') as bed_file:
-    #        bed_file.write('#KMER\tWINDOW\tGC\tCOUNT\tDEPTH\n')
-    #        for kmer in self.gc_kmers:
-    #            k = kmer
-    #            kmer = self.gc_kmers[kmer]
-    #            bed_file.write('\t'.join([str(s) for s in [k, kmer['contig'], kmer['gc'], kmer['count'], kmer['coverage']]]) + '\n')
-    
     def adjust_kmer_gc_coverage(self, kmer, kmer_seq):
         c = config.Configuration()
-        for track in kmer['tracks']:
-            if c.tracks[track].svtype == 'INS':
-                kmer['gc_coverage'] = self.stats['coverage']
-                return
         kmer['gc_coverage'] = sum(map(lambda locus: self.gc[kmer['loci'][locus]['gc']], kmer['loci'])) / len(kmer['loci'])
 
     def reduce(self):
@@ -304,7 +270,20 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
+        n = 0
+        for kmer in kmers['junction_kmers']:
+            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
+                continue
+            if is_kmer_low_entropy(kmer):
+                continue
+            lp_kmers[kmer] = True
+            self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
+            self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
+            self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
+            n += 1
         for kmer in kmers['inner_kmers']:
+            if n > 0:
+                continue
             if all_non_unique:
                 continue
             if len(kmers['inner_kmers'][kmer]['loci']) > 3:
@@ -315,15 +294,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
             self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
-        for kmer in kmers['junction_kmers']:
-            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
-                continue
-            if is_kmer_low_entropy(kmer):
-                continue
-            lp_kmers[kmer] = True
-            self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
-            self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
-            self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4)
@@ -397,7 +367,7 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
     def round_genotype(self, c, svtype):
         if c > 0.75:
             return (1.0, '1/1')
-        elif c > 0.25:# or svtype == 'INS' and c > 0.15:
+        elif c > 0.25 or c > 0.15 and svtype == 'INS':
             return (0.5, '1/0')
         else:
             return (0.0, '0/0')
@@ -428,9 +398,8 @@ class CgcInnerKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
-        if not c.select:
-            if kmers['junction_kmers']:
-                return None
+        if kmers['junction_kmers']:
+            return None
         for kmer in kmers['inner_kmers']:
             if all_non_unique:
                 continue
@@ -471,8 +440,6 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
-        if not kmers['junction_kmers']:
-            return None
         for kmer in kmers['junction_kmers']:
             if kmers['junction_kmers'][kmer]['source'] == 'assembly':
                 continue
@@ -484,20 +451,18 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['junction_kmers'][kmer]['loci'])
-        if not c.select:
-            for kmer in kmers['inner_kmers']:
-                if all_non_unique:
-                    continue
-                if len(kmers['inner_kmers'][kmer]['loci']) > 3:
-                    continue
-                lp_kmers[kmer] = True
-                self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
-                self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
-                self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
         with open(path, 'w') as json_file:
             json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4, sort_keys = True)
         return path
+
+    def round_genotype(self, c, svtype):
+        if c > 0.75:
+            return (1.0, '1/1')
+        elif c > 0.25:#or svtype == 'INS' and c > 0.15:
+            return (0.5, '1/0')
+        else:
+            return (0.0, '0/0')
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -525,20 +490,10 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         c = config.Configuration()
         self.kmers = {}
         self.tracks = {}
-        self.not_tracks = {}
-        self.load_junction_kmer_tracks()
         self.load_inner_kmer_tracks()
-        self._previous_job = CgcCounterJob
-        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
-            kmers = json.load(json_file)
-        self.kmers['gc_kmers'] = kmers['gc_kmers']
-        self.kmers['depth_kmers'] = kmers['depth_kmers']
-        for kmer in self.kmers['depth_kmers']:
-            self.kmers['depth_kmers'][kmer]['count'] = 0
-        for kmer in self.kmers['gc_kmers']:
-            self.kmers['gc_kmers'][kmer]['count'] = 0
-        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
-            json.dump(self.kmers, json_file, indent = 4)
+        self.load_junction_kmer_tracks()
+        self.export_kmers()
+        self.export_tracks()
         exit()
 
     def load_junction_kmer_tracks(self):
@@ -546,52 +501,57 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         self.kmers['junction_kmers'] = {}
         job = CgcJunctionKmersIntegerProgrammingJob()
         tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
+        self.inner_tracks = Set()
         for track in tracks:
-            if float(track.lp_value) > 0.25:
+            if float(track.lp_value) > 0.25 or track.svtype == 'INS' and float(track.lp_value) > 0.15:
                 kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
                 self.tracks[track.id] = track
+                self.inner_tracks.add(track.id)
                 for kmer in kmers:
                     self.kmers['junction_kmers'][kmer] = kmers[kmer]
                     self.kmers['junction_kmers'][kmer]['count'] = 0
                     self.kmers['junction_kmers'][kmer]['total'] = 0
-            else:
-                self.not_tracks[track.id] = track
 
     def load_inner_kmer_tracks(self):
         print('selecting inner kmers...')
         self.kmers['inner_kmers'] = {}
         job = CgcInnerKmersIntegerProgrammingJob()
         tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
-        n = []
-        m = []
-        l = len(self.tracks)
+        self.junction_tracks = Set()
         for track in tracks:
             if float(track.lp_value) > 0.25:
                 kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
-                if not track.id in self.tracks: # no junction kmers
-                    n.append(track)
-                else: # both
-                    m.append(track)
-                    self.tracks.pop(track.id, None)
-                    l -= 1
+                self.tracks[track.id] = track
+                self.junction_tracks.add(track.id)
                 for kmer in kmers:
                     self.kmers['inner_kmers'][kmer] = kmers[kmer]
                     self.kmers['inner_kmers'][kmer]['count'] = 0
                     self.kmers['inner_kmers'][kmer]['total'] = 0
-                self.not_tracks.pop(track.id, None)
-            else:
-                self.not_tracks[track.id] = track
-        print('selected', l, 'events to genotype with junction kmers only')
-        print('selected', len(n), 'events to genotype with inner kmers only')
-        print('selected', len(m), 'events to genotype with both inner and junction kmers')
-        print('not genotyping', len(self.not_tracks), 'events')
+
+    def export_kmers(self):
+        self._previous_job = CgcCounterJob
+        with open(os.path.join(self.get_previous_job_directory(), 'kmers.json'), 'r') as json_file:
+            kmers = json.load(json_file)
+        self.kmers['gc_kmers'] = kmers['gc_kmers']
+        self.kmers['depth_kmers'] = kmers['depth_kmers']
+        for kmer in self.kmers['gc_kmers']:
+            self.kmers['gc_kmers'][kmer]['count'] = 0
+        for kmer in self.kmers['depth_kmers']:
+            self.kmers['depth_kmers'][kmer]['count'] = 0
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump(self.kmers, json_file, indent = 4)
+
+    def export_tracks(self):
+        with open(os.path.join(self.get_current_job_directory(), 'all.bed'), 'w') as bed_file:
+            for track in self.tracks:
+                bed_file.write(track.serialize())
         with open(os.path.join(self.get_current_job_directory(), 'both.bed'), 'w') as bed_file:
-            for track in m:
+            for track in self.inner_tracks.intersection(self.junction_tracks):
                 bed_file.write(track.serialize())
         with open(os.path.join(self.get_current_job_directory(), 'inner.bed'), 'w') as bed_file:
-            for track in n:
+            for track in self.inner_tracks.difference(self.junction_tracks):
                 bed_file.write(track.serialize())
         with open(os.path.join(self.get_current_job_directory(), 'junction.bed'), 'w') as bed_file:
-            for track in self.tracks:
+            for track in self.junction_tracks.difference(self.inner_tracks):
                 bed_file.write(self.tracks[track].serialize())
 

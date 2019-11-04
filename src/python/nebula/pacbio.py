@@ -56,64 +56,98 @@ class PacBioVerificationJob(map_reduce.Job):
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         self.round_robin(self.tracks)
 
+    #def transform(self, track, track_name):
+    #    c = config.Configuration()
+    #    slack = 120
+    #    t = c.tracks[track_name]
+    #    reads = self.alignments.fetch(track.chrom, track.begin - slack, track.end + slack)
+    #    bases = []
+    #    if track.chrom != 'chr1' or track.svtype != 'DEL' or not 'DEL' in track_name:
+    #        return None
+    #    ref = extract_chromosome(track.chrom)
+    #    for i in range (track.begin, track.end):
+    #        bases.append({'Del': 0, 'Ref': 0, 'Alt': 0})
+    #    for read in reads:
+    #        seq = read.query_sequence
+    #        base = read.reference_start
+    #        ref_index = 0
+    #        seq_index = 0
+    #        for ct in read.cigartuples:
+    #            o = ct[0]
+    #            l = ct[1]
+    #            for i in range(l):
+    #                if base + ref_index >= track.begin and base + ref_index < track.end:
+    #                    if o == 0 or o == 7 or o == 8: # aligend; match or missmatch
+    #                        a = 'Ref' if seq[seq_index] == ref[base + ref_index] else 'Alt'
+    #                    elif o == 2: # deleted from reference
+    #                        a = 'Del'
+    #                    elif o == 3: # Skipped (N)
+    #                        a = 'Alt'
+    #                    else:
+    #                        a = None
+    #                    j = base + ref_index - track.begin
+    #                    if a in bases[j]:
+    #                        bases[j][a] += 1
+    #                if o != 6 and o != 5 and o != 4 and o != 1: # no reference consumed
+    #                    ref_index += 1
+    #                if o != 6 and o != 5 and o != 3 and o != 2: # no query consumed
+    #                    seq_index += 1
+    #    consensus = {'Del': 0, 'Ref': 0, 'Alt': 0}
+    #    for i, base in enumerate(bases):
+    #        for k in consensus:
+    #            consensus[k] += base[k]
+    #        #bases[i] = bases[i].items()
+    #        #bases[i] = sorted(bases[i], key = lambda x: x[1], reverse = True)
+    #        #print(bases[i])
+    #    l = float(len(bases))
+    #    #consensus = {k: v / l for k, v in sorted(consensus.it, key = lambda x: x[1], reverse = True)}
+    #    print(consensus)
+    #    consensus = {k: int(round(math.log10(v))) if v != 0 else -1 for k, v in consensus.items()}
+    #    print(consensus)
+    #    if consensus['Del'] < consensus['Ref'] and consensus['Del'] < consensus['Alt']:
+    #        consensus['genotype'] = '0/0'
+    #    elif consensus['Del'] > consensus['Ref'] and consensus['Del'] > consensus['Alt']:
+    #        consensus['genotype'] = '1/1'
+    #    elif consensus['Del'] == consensus['Ref'] or consensus['Del'] == consensus['Alt']:
+    #        consensus['genotype'] = '1/0'
+    #    else:
+    #        consensus['genotype'] = '1/0'
+    #    if consensus['genotype'].replace('/', '') != t.lp_genotype:
+    #        system_print_error('Wrong')
+    #    return consensus
+
     def transform(self, track, track_name):
+        print(track_name)
         c = config.Configuration()
         slack = 120
         t = c.tracks[track_name]
         reads = self.alignments.fetch(track.chrom, track.begin - slack, track.end + slack)
-        bases = []
-        if track.chrom != 'chr1' or track.svtype != 'DEL' or not 'DEL' in track_name:
-            return None
-        ref = extract_chromosome(track.chrom)
-        for i in range (track.begin, track.end):
-            bases.append({'Del': 0, 'Ref': 0, 'Alt': 0})
+        consensus = {'INS': 0, 'REF': 0}
         for read in reads:
             seq = read.query_sequence
             base = read.reference_start
             ref_index = 0
             seq_index = 0
+            consensus['REF'] += 1
             for ct in read.cigartuples:
                 o = ct[0]
                 l = ct[1]
-                for i in range(l):
-                    if base + ref_index >= track.begin and base + ref_index < track.end:
-                        if o == 0 or o == 7 or o == 8: # aligend; match or missmatch
-                            a = 'Ref' if seq[seq_index] == ref[base + ref_index] else 'Alt'
-                        elif o == 2: # deleted from reference
-                            a = 'Del'
-                        elif o == 3: # Skipped (N)
-                            a = 'Alt'
-                        else:
-                            a = None
-                        j = base + ref_index - track.begin
-                        if a in bases[j]:
-                            bases[j][a] += 1
-                    if o != 6 and o != 5 and o != 4 and o != 1: # no reference consumed
-                        ref_index += 1
-                    if o != 6 and o != 5 and o != 3 and o != 2: # no query consumed
-                        seq_index += 1
-        consensus = {'Del': 0, 'Ref': 0, 'Alt': 0}
-        for i, base in enumerate(bases):
-            for k in consensus:
-                consensus[k] += base[k]
-            #bases[i] = bases[i].items()
-            #bases[i] = sorted(bases[i], key = lambda x: x[1], reverse = True)
-            #print(bases[i])
-        l = float(len(bases))
-        #consensus = {k: v / l for k, v in sorted(consensus.it, key = lambda x: x[1], reverse = True)}
+                if base + ref_index >= track.begin - slack and base + ref_index < track.end + slack:
+                    if o == 1:
+                        if l > 10:# 0.9 * abs(int(t.svlen)):
+                            consensus['INS'] += 1
+                            consensus['REF'] -= 1
+                            break
+                if o != 6 and o != 5 and o != 4 and o != 1: # no reference consumed
+                    ref_index += l
+                if o != 6 and o != 5 and o != 3 and o != 2: # no query consumed
+                    seq_index += l
         print(consensus)
-        consensus = {k: int(round(math.log10(v))) if v != 0 else -1 for k, v in consensus.items()}
-        print(consensus)
-        if consensus['Del'] < consensus['Ref'] and consensus['Del'] < consensus['Alt']:
-            consensus['genotype'] = '0/0'
-        elif consensus['Del'] > consensus['Ref'] and consensus['Del'] > consensus['Alt']:
+        consensus = {k: math.log10(v) if v != 0 else -1 for k, v in consensus.items()}
+        consensus['genotype'] = '0/0'
+        if abs(consensus['INS'] - consensus['REF']) < 0.5 or consensus['INS'] >= consensus['REF'] or consensus['INS'] > 1.0:
             consensus['genotype'] = '1/1'
-        elif consensus['Del'] == consensus['Ref'] or consensus['Del'] == consensus['Alt']:
-            consensus['genotype'] = '1/0'
-        else:
-            consensus['genotype'] = '1/0'
-        if consensus['genotype'].replace('/', '') != t.lp_genotype:
-            system_print_error('Wrong')
+        print(consensus)
         return consensus
 
     def reduce(self):

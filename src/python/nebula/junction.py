@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-import io
 import os
 import re
 import pwd
@@ -12,9 +11,6 @@ import time
 import argparse
 import operator
 import traceback
-import deepdiff
-
-
 import subprocess
 
 from itertools import chain
@@ -29,12 +25,13 @@ from nebula import (
     visualizer,
 )
 
-import pysam
-
 from nebula.debug import *
 from nebula.kmers import *
 from nebula.logger import *
 from nebula.chromosomes import *
+
+import pysam
+
 print = pretty_print
 
 # ============================================================================================================================ #
@@ -162,8 +159,6 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         except:
             return {}
         locus = 'junction_' + track.id
-        #print('range: ', track.begin - slack, 'to', track.begin + slack)
-        #print('range: ', track.end - slack, 'to', track.end + slack)
         for read in reads:
             # These MAPQ scores vary from aligner to aligner but < 5 should be bad enough anywhere
             if read.mapping_quality <= 5:
@@ -210,8 +205,6 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                             junction_kmers[kmer]['count'] += 1
                         index += 1
         incomplete_kmers = {kmer: junction_kmers[kmer] for kmer in junction_kmers if len(junction_kmers[kmer]['loci'][locus]['masks']) != 2}
-        #json_print(junction_kmers)
-        #debug_breakpoint()
         _junction_kmers = {}
         for kmer in junction_kmers:
             if junction_kmers[kmer]['count'] >= min(5, c.coverage / 4):# and junction_kmers[kmer]['loci'][locus]['masks']['right'] and junction_kmers[kmer]['loci'][locus]['masks']['left']:

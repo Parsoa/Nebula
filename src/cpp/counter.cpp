@@ -271,7 +271,7 @@ void output_counts(string path, int index) {
     string p = path + "/c_batch_" + std::to_string(index) + ".json" ;
     cout << path << endl ;
     std::ofstream o(p);
-    for (std::unordered_map<uint64_t, int*>::iterator i = counts->begin(); i != counts->end(); i++) {
+    for (auto i = counts->begin(); i != counts->end(); i++) {
         int* count = i->second ;
         auto total = totals->find(i->first) ;
         o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << "\n" ;
@@ -314,13 +314,14 @@ int process_bam(string bam, string path, int index, int threads) {
                 free(line) ;
             }
             len = l ;
-            line = (char*) malloc(len + 1) ;
+            line = (char*) malloc(len + 2) ;
         }
         uint8_t *q = bam_get_seq(alignment) ; //quality string
         for (int i = 0; i < len; i++){
             line[i] = seq_nt16_str[bam_seqi(q, i)]; //gets nucleotide id and converts them into IUPAC id.
         }
-        line[len] = '\0' ;
+        line[len] = '\n' ;
+        line[len + 1] = '\0' ;
         //cout << "#" << line << "#" << endl ;
         n += 1 ;
         u += 1 ;
@@ -336,10 +337,10 @@ int process_bam(string bam, string path, int index, int threads) {
                 cout << " reads per second: " << u / (s - t) << "\r" ;
             }
         }
-        if (u == 200000000) {
-            cout << "midlife drop\n" << endl ;
-            output_counts(path, index) ;
-        }
+        //if (u == 200000000) {
+        //    cout << "midlife drop\n" << endl ;
+        //    output_counts(path, index) ;
+        //}
     }
     bam_destroy1(alignment) ;
     sam_close(bam_file) ;

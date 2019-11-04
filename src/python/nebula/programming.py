@@ -85,6 +85,10 @@ class IntegerProgrammingJob(map_reduce.Job):
                     for track in kmers[kmer]['tracks']:
                         if not track in self.tracks:
                             self.tracks[track] = {}
+                            if kmers[kmer]['type'] == 'inner':
+                                self.tracks[track]['confidence'] = 'LOW'
+                            else:
+                                self.tracks[track]['confidence'] = 'HIGH'
         return self.lp_kmers
 
     def index_tracks(self):
@@ -188,11 +192,11 @@ class IntegerProgrammingJob(map_reduce.Job):
         name = 'merge.bed' if not c.cgc else 'genotypes_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.bed'
         path = os.path.join(os.getcwd() if c.cgc else self.get_current_job_directory(), name)
         with open(path, 'w') as bed_file:
-            bed_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\n')
+            bed_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\tCONFIDENCE\tSVLEN\n')
             for track in self.tracks:
                 t = c.tracks[track]
                 index = self.tracks[track]['index']
-                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, self.tracks[track]['lp_genotype'], self.tracks[track]['lp_value'], t.id]]) + '\n')
+                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, self.tracks[track]['lp_genotype'], self.tracks[track]['lp_value'], t.id, self.tracks[track]['confidence'], t.svlen]]) + '\n')
 
     def export_kmers(self):
         c = config.Configuration()

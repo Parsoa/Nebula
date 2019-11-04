@@ -1,61 +1,57 @@
 from __future__ import print_function
 
 from nebula import (
+    cgc,
+    misc,
     config,
     pacbio,
+    junction,
+    reduction,
+    simulator,
     map_reduce,
+    programming,
+    preprocessor,
 )
 
-from cgc import *
-from misc import *
-from junction import *
-from reduction import *
-from simulator import *
-from clustering import *
-from programming import *
-from preprocessor import *
-
-from debug import *
-from kmers import *
-from logger import *
-from chromosomes import *
-
-print = pretty_print
+from nebula.debug import *
+from nebula.kmers import *
+from nebula.logger import *
+from nebula.chromosomes import *
 
 # ============================================================================================================================ #
 
 def load_tracks(filter_overlap = True):
-    job = TrackPreprocessorJob(filter_overlap = filter_overlap)
+    job = preprocessor.TrackPreprocessorJob(filter_overlap = filter_overlap)
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
 
 def misc():
-    job = GcContentKmerSelectionJob()
+    job = preprocessor.GcContentKmerSelectionJob()
     job.execute()
 
 def preprocess():
 
     def supply_inner_kmers():
-        #job = ExtractInnerKmersJob()
-        #tracks = job.execute()
-        job = ExtractLociIndicatorKmersJob()
+        job = reduction.ExtractInnerKmersJob()
         tracks = job.execute()
-        job = FilterLociIndicatorKmersJob(tracks = tracks)
+        job = reduction.ExtractLociIndicatorKmersJob()
+        tracks = job.execute()
+        job = reduction.FilterLociIndicatorKmersJob(tracks = tracks)
         job.execute()
 
     def supply_junction_kmers():
         tracks = {}
         job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
         job.execute()
-        job = JunctionKmersScoringJob(resume_from_reduce = False)
+        job = junction.JunctionKmersScoringJob(resume_from_reduce = False)
         tracks = job.execute()
-        job = FilterJunctionKmersJob(tracks = tracks)
+        job = junction.FilterJunctionKmersJob(tracks = tracks)
         job.execute()
 
     load_tracks()
     #supply_inner_kmers()
-    supply_junction_kmers()
-    job = MixKmersJob()
+    #supply_junction_kmers()
+    job = preprocessor.MixKmersJob()
     job.execute()
 
 # ============================================================================================================================ #
@@ -63,10 +59,10 @@ def preprocess():
 def cgc_genotype():
     c = config.Configuration()
     load_tracks()
-    job = CgcCounterJob(resume_from_reduce = c.reduce)
+    job = cgc.CgcCounterJob(resume_from_reduce = c.reduce)
     stats = job.execute()
     config.Configuration.update(stats)
-    job = CgcIntegerProgrammingJob()
+    job = cgc.CgcIntegerProgrammingJob()
     job.execute()
 
 def genotype():
@@ -75,35 +71,22 @@ def genotype():
         cgc_genotype()
     else:
         load_tracks(filter_overlap = False)
-        job = CgcCounterJob(resume_from_reduce = c.reduce)
+        job = cgc.CgcCounterJob(resume_from_reduce = c.reduce)
         if c.reduce:
             tracks, stats = job.execute()
         else:
             tracks, stats = job.execute()
         config.Configuration.update(stats)
-        job = CgcIntegerProgrammingJob(tracks = tracks)
+        job = cgc.CgcIntegerProgrammingJob(tracks = tracks)
         job.execute()
-        job = CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
-        job.execute()
-        job = CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
-        job.execute()
-        if c.select:
-            job = ExportGenotypingKmersJob()
+        if not c.cgc:
+            job = cgc.CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
             job.execute()
-
-def cluster():
-    c = config.Configuration()
-    load_tracks()
-    #job = CgcClusteringJob(begin = 1000, end = 1005)
-    #job = UnifiedGenotypingJob(begin = 1000, end = 1050, genotyping_batch = 0)
-    #job = UnifiedGenotypingOrchestrator()
-    job = UnifiedGenotypingJob(begin = 0, end = 5, genotyping_batch = 'for-august-presentation')
-    job.execute()
-    exit()
-    for i in range(1, 10):
-        job = UnifiedGenotypingJob(begin = i * 5, end = (i + 1) * 5, genotyping_batch = i)
-        job.execute()
-        exit()
+            job = cgc.CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
+            job.execute()
+        if c.select:
+            job = cgc.ExportGenotypingKmersJob()
+            job.execute()
 
 def verify():
     c = config.Configuration()
@@ -122,7 +105,7 @@ def simulate():
     if c.seed == 0:
         print(red('Argument error. Must provide --seed'))
     load_tracks()
-    job = Simulation()
+    job = simulator.Simulation()
     job.execute()
 
 # ============================================================================================================================ #
