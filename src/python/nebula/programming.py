@@ -102,25 +102,6 @@ class IntegerProgrammingJob(map_reduce.Job):
                 self.tracks[track]['kmers'].append(index)
         return self.tracks
 
-    def add_error_absolute_value_constraints(self, problem, index):
-        globals()['cplex'] = __import__('cplex')
-        problem.linear_constraints.add(
-            lin_expr = [cplex.SparsePair(
-                ind = [len(self.tracks) + len(self.lp_kmers) + index, len(self.tracks) + index],
-                val = [1.0, 1.0],
-            )],
-            rhs = [0],
-            senses = ['G']
-        )
-        problem.linear_constraints.add(
-            lin_expr = [cplex.SparsePair(
-                ind = [len(self.tracks) + len(self.lp_kmers) + index, len(self.tracks) + index],
-                val = [1.0, -1.0],
-            )],
-            rhs = [0],
-            senses = ['G']
-        )
-
     def add_mps_error_absolute_value_constraints(self, problem, variables, index):
         expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], 1.0)])
         problem += LpConstraint(expr, LpConstraintGE, 'abs_1_' + str(index), 0) 
@@ -129,22 +110,14 @@ class IntegerProgrammingJob(map_reduce.Job):
 
     def solve(self):
         c = config.Configuration()
-        if c.solver == 'coin':
-            problem, variables = self.generate_mps_linear_program()
-            problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin.lp'))
-            problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin.mps'))
-            command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution.mps')
-            output = subprocess.call(command, shell = True)
-            self.import_lp_values()
-            with open(os.path.join(self.get_current_job_directory(), 'solution_coin.json'), 'w') as json_file:
-                json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
-        if c.solver == 'cplex':
-            problem = self.generate_linear_program()
-            problem.solve()
-            problem.write(os.path.join(self.get_current_job_directory(), 'program_cplex.lp'))
-            self.solution = problem.solution.get_values()
-            with open(os.path.join(self.get_current_job_directory(), 'solution_cplex.json'), 'w') as json_file:
-                json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
+        problem, variables = self.generate_mps_linear_program()
+        problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin.lp'))
+        problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin.mps'))
+        command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution.mps')
+        output = subprocess.call(command, shell = True)
+        self.import_lp_values()
+        with open(os.path.join(self.get_current_job_directory(), 'solution_coin.json'), 'w') as json_file:
+            json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
         self.round_lp()
         self.export_solution()
         self.export_kmers()
@@ -211,14 +184,6 @@ class IntegerProgrammingJob(map_reduce.Job):
             path = os.path.join(self.get_current_job_directory(), track + '.json')
             with open(path, 'w') as json_file:
                 json.dump(tracks[track], json_file, indent = 4)
-
-    def round_genotype(self, c, svtype):
-        if c > 0.75:
-            return (1.0, '1/1')
-        elif c > 0.25:# or svtype == 'INS' and c > 0.15:
-            return (0.5, '1/0')
-        else:
-            return (0.0, '0/0')
 
     def verify_genotypes(self):
         c = config.Configuration()

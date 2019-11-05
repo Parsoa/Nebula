@@ -12,7 +12,7 @@ import argparse
 import operator
 import traceback
 
-from sets import Set
+#from sets import Set
 
 from nebula import (
     bed,
@@ -80,11 +80,6 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         self.depth_kmers = self.kmers['depth_kmers']
         self.inner_kmers = self.kmers['inner_kmers']
         self.junction_kmers = self.kmers['junction_kmers']
-        user_print('Counting:')
-        user_print('Junction kmers:', blue(len(self.junction_kmers)))
-        user_print('Inner kmers:', blue(len(self.inner_kmers)))
-        user_print('Depth kmers:', blue(len(self.depth_kmers)))
-        user_print('GC kmers:', blue(len(self.gc_kmers)))
         for path in c.kmers[1:]:
             with open(path, 'r') as json_file:
                 kmers = json.load(json_file)
@@ -501,12 +496,12 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         self.kmers['junction_kmers'] = {}
         job = CgcJunctionKmersIntegerProgrammingJob()
         tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
-        self.inner_tracks = Set()
+        self.junction_tracks = set()
         for track in tracks:
             if float(track.lp_value) > 0.25 or track.svtype == 'INS' and float(track.lp_value) > 0.15:
                 kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
                 self.tracks[track.id] = track
-                self.inner_tracks.add(track.id)
+                self.junction_tracks.add(track.id)
                 for kmer in kmers:
                     self.kmers['junction_kmers'][kmer] = kmers[kmer]
                     self.kmers['junction_kmers'][kmer]['count'] = 0
@@ -517,12 +512,12 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         self.kmers['inner_kmers'] = {}
         job = CgcInnerKmersIntegerProgrammingJob()
         tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
-        self.junction_tracks = Set()
+        self.inner_tracks = set()
         for track in tracks:
             if float(track.lp_value) > 0.25:
                 kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
                 self.tracks[track.id] = track
-                self.junction_tracks.add(track.id)
+                self.inner_tracks.add(track.id)
                 for kmer in kmers:
                     self.kmers['inner_kmers'][kmer] = kmers[kmer]
                     self.kmers['inner_kmers'][kmer]['count'] = 0
@@ -544,13 +539,13 @@ class ExportGenotypingKmersJob(map_reduce.Job):
     def export_tracks(self):
         with open(os.path.join(self.get_current_job_directory(), 'all.bed'), 'w') as bed_file:
             for track in self.tracks:
-                bed_file.write(track.serialize())
+                bed_file.write(self.tracks[track].serialize())
         with open(os.path.join(self.get_current_job_directory(), 'both.bed'), 'w') as bed_file:
             for track in self.inner_tracks.intersection(self.junction_tracks):
-                bed_file.write(track.serialize())
+                bed_file.write(self.tracks[track].serialize())
         with open(os.path.join(self.get_current_job_directory(), 'inner.bed'), 'w') as bed_file:
             for track in self.inner_tracks.difference(self.junction_tracks):
-                bed_file.write(track.serialize())
+                bed_file.write(self.tracks[track].serialize())
         with open(os.path.join(self.get_current_job_directory(), 'junction.bed'), 'w') as bed_file:
             for track in self.junction_tracks.difference(self.inner_tracks):
                 bed_file.write(self.tracks[track].serialize())

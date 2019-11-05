@@ -12,7 +12,7 @@ class Configuration:
     class __impl:
         def __init__(self, args):
             for arg in args:
-                for attr, value in arg.__dict__.iteritems():
+                for attr, value in arg.__dict__.items():
                     print(attr, value)
                     setattr(self, attr, value)
             setattr(self, 'hsize', self.ksize / 2)

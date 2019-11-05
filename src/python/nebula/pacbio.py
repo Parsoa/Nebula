@@ -13,8 +13,6 @@ import time
 import argparse
 import operator
 import traceback
-import deepdiff
-
 
 import subprocess
 

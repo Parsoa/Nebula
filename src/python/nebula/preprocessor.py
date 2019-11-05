@@ -71,7 +71,7 @@ class TrackPreprocessorJob(map_reduce.Job):
                         sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
                     )
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
-        user_print('Removed overlapping tracks.', len(tracks), ' non-overlapping tracks.')
+        user_print('Removed overlapping tracks.', len(tracks), 'non-overlapping tracks.')
         return tracks
 
     def filter_overlapping_tracks(self, tracks):

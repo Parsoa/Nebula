@@ -2,7 +2,6 @@ from __future__ import print_function
 
 from nebula import (
     cgc,
-    misc,
     config,
     pacbio,
     junction,
@@ -24,10 +23,6 @@ def load_tracks(filter_overlap = True):
     job = preprocessor.TrackPreprocessorJob(filter_overlap = filter_overlap)
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
-
-def misc():
-    job = preprocessor.GcContentKmerSelectionJob()
-    job.execute()
 
 def preprocess():
 
@@ -103,7 +98,7 @@ def export():
 def simulate():
     c = config.Configuration()
     if c.seed == 0:
-        print(red('Argument error. Must provide --seed'))
+        user_print_warning('Default randomness seed of 0 is used.')
     load_tracks()
     job = simulator.Simulation()
     job.execute()
@@ -117,14 +112,12 @@ def simulate():
 # ============================================================================================================================ #
 
 def print_banner():
-    print('Nebula, ultra-efficient mapping-free structural variation genotyper')
+    print('Nebula, ultra-efficient mapping-free structural variation genotyper.')
 
 if __name__ == '__main__':
     config.init()
     print_banner()
     c = config.Configuration()
-    if c.command == 'misc':
-        misc()
     if c.command == 'export':
         export()
     if c.command == 'verify':
