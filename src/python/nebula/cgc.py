@@ -200,7 +200,7 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         kmers['junction_kmers'] = self.junction_kmers
         if c.cgc:
             name = 'kmers_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
-            path = os.path.join(os.getcwd(), name)
+            path = os.path.join(c.workdir, name)
         else:
             name = 'kmers.json'
             path = os.path.join(self.get_current_job_directory(), name)

@@ -163,7 +163,7 @@ class IntegerProgrammingJob(map_reduce.Job):
     def export_solution(self):
         c = config.Configuration()
         name = 'merge.bed' if not c.cgc else 'genotypes_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.bed'
-        path = os.path.join(os.getcwd() if c.cgc else self.get_current_job_directory(), name)
+        path = os.path.join(c.workdir if c.cgc else self.get_current_job_directory(), name)
         with open(path, 'w') as bed_file:
             bed_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\tCONFIDENCE\tSVLEN\n')
             for track in self.tracks:
