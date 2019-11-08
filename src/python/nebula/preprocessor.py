@@ -68,8 +68,9 @@ class TrackPreprocessorJob(map_reduce.Job):
         user_print('Loaded', len(tracks), 'tracks.')
         if self.filter_overlap:
             tracks = self.filter_overlapping_tracks(\
-                        sorted(sorted(tracks, key = lambda x: x.begin), key = lambda y: y.chrom)\
-                    )
+                    sorted(tracks, key = lambda x: (x.chrom, x.begin, x.end))
+                    #sorted(sorted(sorted(tracks, key = lambda x: x.chrom), key = lambda y: y.begin), key = lambda z: z.end)\
+                )
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
         user_print('Removed overlapping tracks.', len(tracks), 'non-overlapping tracks.')
         return tracks
@@ -79,6 +80,7 @@ class TrackPreprocessorJob(map_reduce.Job):
         i = 0
         while i < len(tracks):
             for j in range(i + 1, len(tracks)):
+                print(str(tracks[j]))
                 # j is contained inside i
                 if tracks[j].chrom != tracks[i].chrom:
                     i = j

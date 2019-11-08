@@ -55,9 +55,9 @@ def cgc_genotype():
     c = config.Configuration()
     load_tracks()
     job = cgc.CgcCounterJob(resume_from_reduce = c.reduce)
-    stats = job.execute()
+    tracks, stats = job.execute()
     config.Configuration.update(stats)
-    job = cgc.CgcIntegerProgrammingJob()
+    job = cgc.CgcIntegerProgrammingJob(tracks = tracks)
     job.execute()
 
 def genotype():
@@ -74,11 +74,10 @@ def genotype():
         config.Configuration.update(stats)
         job = cgc.CgcIntegerProgrammingJob(tracks = tracks)
         job.execute()
-        if not c.cgc:
-            job = cgc.CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
-            job.execute()
-            job = cgc.CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
-            job.execute()
+        job = cgc.CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
+        job.execute()
+        job = cgc.CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
+        job.execute()
         if c.select:
             job = cgc.ExportGenotypingKmersJob()
             job.execute()
