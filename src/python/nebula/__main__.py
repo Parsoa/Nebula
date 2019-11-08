@@ -53,11 +53,11 @@ def preprocess():
 
 def cgc_genotype():
     c = config.Configuration()
-    load_tracks()
+    load_tracks(filter_overlap = False)
     job = cgc.CgcCounterJob(resume_from_reduce = c.reduce)
-    stats = job.execute()
+    tracks, stats = job.execute()
     config.Configuration.update(stats)
-    job = cgc.CgcIntegerProgrammingJob()
+    job = cgc.CgcIntegerProgrammingJob(tracks = tracks)
     job.execute()
 
 def genotype():
