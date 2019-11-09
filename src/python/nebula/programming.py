@@ -163,7 +163,7 @@ class IntegerProgrammingJob(map_reduce.Job):
     def export_solution(self):
         c = config.Configuration()
         name = 'merge.bed' if not c.cgc else 'genotypes_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.bed'
-        path = os.path.join(os.getcwd() if c.cgc else self.get_current_job_directory(), name)
+        path = os.path.join(c.workdir if c.cgc else self.get_current_job_directory(), name)
         with open(path, 'w') as bed_file:
             bed_file.write('#CHROM\tBEGIN\tEND\tLP_GENOTYPE\tLP_VALUE\tID\tCONFIDENCE\tSVLEN\n')
             for track in self.tracks:
@@ -184,6 +184,10 @@ class IntegerProgrammingJob(map_reduce.Job):
             path = os.path.join(self.get_current_job_directory(), track + '.json')
             with open(path, 'w') as json_file:
                 json.dump(tracks[track], json_file, indent = 4)
+        if c.cgc:
+            name = 'lp_kmer_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
+            with open(os.path.join(c.workdir, name), 'w') as json_file:
+                json.dump({kmer['kmer']: kmer for kmer in self.lp_kmers}, json_file, indent = 4, sort_keys = True)
 
     def verify_genotypes(self):
         c = config.Configuration()

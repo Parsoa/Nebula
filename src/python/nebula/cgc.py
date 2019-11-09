@@ -83,18 +83,18 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         for path in c.kmers[1:]:
             with open(path, 'r') as json_file:
                 kmers = json.load(json_file)
-                for kmer in kmers['junction_kmers']:
-                    if not kmer in self.junction_kmers:
-                        self.junction_kmers[kmer] = kmers['junction_kmers'][kmer]
-                    else:
-                        self.junction_kmers[kmer]['loci'].update(kmers['junction_kmers'][kmer]['loci'])
-                        self.junction_kmers[kmer]['tracks'].update(kmers['junction_kmers'][kmer]['tracks'])
-                for kmer in kmers['inner_kmers']:
-                    if not kmer in self.inner_kmers:
-                        self.inner_kmers[kmer] = kmers['inner_kmers'][kmer]
-                    else:
-                        self.inner_kmers[kmer]['loci'].update(kmers['inner_kmers'][kmer]['loci'])
-                        self.inner_kmers[kmer]['tracks'].update(kmers['inner_kmers'][kmer]['tracks'])
+                for kmer_type in ['junction_kmers', 'inner_kmers']:
+                    x = getattr(self, kmer_type)
+                    for kmer in kmers[kmer_type]:
+                        if not kmer in x:
+                            x[kmer] = kmers[kmer_type][kmer]
+                        else:
+                            for locus in kmers[kmer_type][kmer]['loci']:
+                                if not locus in x[kmer]['loci']:
+                                    x[kmer]['loci'][locus] = kmers[kmer_type][kmer]['loci']
+                                else:
+                                    x[kmer]['loci'][locus]['masks'].update(kmers[kmer_type][kmer]['loci'][locus]['masks'])
+                            x[kmer]['tracks'].update(kmers[kmer_type][kmer]['tracks'])
         user_print('Counting:')
         user_print('Junction kmers:', blue(len(self.junction_kmers)))
         user_print('Inner kmers:', blue(len(self.inner_kmers)))
@@ -200,7 +200,7 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         kmers['junction_kmers'] = self.junction_kmers
         if c.cgc:
             name = 'kmers_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
-            path = os.path.join(os.getcwd(), name)
+            path = os.path.join(c.workdir, name)
         else:
             name = 'kmers.json'
             path = os.path.join(self.get_current_job_directory(), name)
@@ -218,7 +218,7 @@ class CgcCounterJob(counter.BaseExactCountingJob):
                 self.tracks[track]['inner_kmers'][kmer] = self.inner_kmers[kmer]
                 self.tracks[track]['inner_kmers'][kmer]['type'] = 'inner'
         for kmer in self.junction_kmers:
-            self.junction_kmers[kmer]['gc_coverage'] = c.coverage
+            self.junction_kmers[kmer]['gc_coverage'] = self.stats['coverage']
             if 'inverse' in self.junction_kmers[kmer]:
                 self.junction_kmers[kmer]['count'] = self.junction_kmers[kmer]['total'] - self.junction_kmers[kmer]['count']
             for track in self.junction_kmers[kmer]['tracks']:
@@ -506,6 +506,7 @@ class ExportGenotypingKmersJob(map_reduce.Job):
                     self.kmers['junction_kmers'][kmer] = kmers[kmer]
                     self.kmers['junction_kmers'][kmer]['count'] = 0
                     self.kmers['junction_kmers'][kmer]['total'] = 0
+                    self.kmers['junction_kmers'][kmer].pop('lp_count')
 
     def load_inner_kmer_tracks(self):
         print('selecting inner kmers...')
@@ -522,6 +523,7 @@ class ExportGenotypingKmersJob(map_reduce.Job):
                     self.kmers['inner_kmers'][kmer] = kmers[kmer]
                     self.kmers['inner_kmers'][kmer]['count'] = 0
                     self.kmers['inner_kmers'][kmer]['total'] = 0
+                    self.kmers['inner_kmers'][kmer].pop('lp_count')
 
     def export_kmers(self):
         self._previous_job = CgcCounterJob

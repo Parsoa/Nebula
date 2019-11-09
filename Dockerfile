@@ -6,9 +6,7 @@ WORKDIR /share/hormozdiarilab/Codes/NebulousSerendipity/
 
 COPY . /share/hormozdiarilab/Codes/NebulousSerendipity/
 
-RUN apt-get update && apt-get install -y gcc make g++ gfortran zlib1g-dev pkg-config python2.7 python-pip git wget tmux vim
-
-RUN pip2 install -r requirements.txt
+RUN apt-get update && apt-get install -y gcc make g++ autoconf gfortran git wget tmux vim libbz2-dev zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev python3 python3-pip
 
 RUN ./htslib.sh
 
