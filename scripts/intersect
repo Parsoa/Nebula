@@ -56,12 +56,34 @@ def index_file(path, get_header = False):
 def overlap(a, b):
     return max(0, min(a[1], b[1]) - max(a[0], b[0]))
 
+def binary_search(x, a, begin, end, side):
+    m = (end + begin) // 2
+    l = end - begin
+    #print(begin, end)
+    if a[m][side] == x:
+        return m
+    elif a[m][side] > x:
+        if a[m - 1][side] <= x:
+            return m - 1 if side == 1 else m
+        return binary_search(x, a, begin, m, side)
+    elif a[m][side] < x:
+        if a[m + 1][side] > x:
+            return m if side == 1 else m + 1
+        return binary_search(x, a, begin, m - 1, side)
+
 def match_overlap(a, tracks):
     m = 1 if intersect_only else match
     l = 1 if intersect_only else a[2] - a[1]
+    #print('searching for', a)
+    #p = binary_search(a[2], tracks, 0, len(tracks) - 1, 1)
+    #q = binary_search(a[1], tracks, 0, len(tracks) - 1, 2)
+    #print('Begin: ', tracks[p])
+    #print('End: ', tracks[p])
+    #exit()
     choice = (0, -1 if inverse else None)
     for i, b in enumerate(tracks):
         o = overlap((a[1], a[2]), (b[1], b[2])) / float(l)
+        # Insertions will have length 1 in reference
         if a[3] == 'INS':
             s_a = 0
             s_b = 0
@@ -83,6 +105,7 @@ def match_overlap(a, tracks):
 def intersect(a, b):
     i = []
     if exact:
+        n = 0
         for track in a:
             if inverse:
                 if track not in b:
@@ -90,6 +113,8 @@ def intersect(a, b):
             else:
                 if track in b:
                     yield a[track] if dest == '-a' else b[track]
+            n += 1
+            #print('Intersect', n, 'out of', len(a), 'tracks.')
     else:
         for chrom in a:
             if not chrom in b:

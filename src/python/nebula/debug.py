@@ -31,7 +31,7 @@ def debug_breakpoint():
         print(magenta('BEGIN DEBUG *********************************************************************************************'))
         print(magenta('Debug Breakpoint. Press Enter to continue...'))
         print(magenta('END DEBUG ***********************************************************************************************'))
-        s = raw_input()
+        s = input()
 
 def debug_log(*args):
     c = config.Configuration()

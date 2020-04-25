@@ -1,4 +1,4 @@
-grep DEL merge.bed > merge.DEL.bed
+grep -E 'CHROM|DEL' merge.bed > merge.DEL.bed
 
 intersect merge.DEL.bed svtyper.DEL.bed > merge.DEL.shared.bed
 intersect merge.DEL.bed svtyper.DEL.bed -b > svtyper.shared.bed

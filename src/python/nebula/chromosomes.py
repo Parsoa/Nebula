@@ -61,16 +61,16 @@ def extract_chromosomes(chromosomes):
     c = config.Configuration()
     m = 0
     ref = open(c.reference)
-    line = ref.readline().lower().strip()
+    line = ref.readline().strip()
     found = False
     sequence = ''
     while True:
         if line.startswith('>chr'):
-            chrom = line[line.find('>') + 1:].strip().lower()
+            chrom = line[line.find('>') + 1:].strip()
             if chrom in chromosomes:
                 print('extracting ' + chrom)
                 while True:
-                    line = ref.readline().lower().strip()
+                    line = ref.readline().strip()
                     if line.startswith('>') or len(line) == 0:
                         print(len(sequence), 'bases')
                         yield sequence, chrom
@@ -85,7 +85,7 @@ def extract_chromosomes(chromosomes):
         if found:
             found = False
             continue
-        line = ref.readline().lower().strip()
+        line = ref.readline().strip()
         if len(line) == 0:
             break
 
@@ -93,8 +93,8 @@ def extract_whole_genome():
     c = config.Configuration()
     if c.reduce:
         a = ['chr' + str(x) for x in range(1, 23)]
-        a.append('chrx')
-        a.append('chry')
+        a.append('chrX')
+        a.append('chrY')
         for chrom in a:
             chroms[chrom] = 'dummy'
         return chroms
@@ -104,10 +104,10 @@ def extract_whole_genome():
     system_print('Extracting whole genome...')
     if not c.chromosomes:
         a = ['chr' + str(x) for x in range(1, 23)]
-        a.append('chrx')
-        a.append('chry')
+        a.append('chrX')
+        a.append('chrY')
     else:
-        a = [d.lower() for d in c.chromosomes]
+        a = [d for d in c.chromosomes]
     for seq, chrom in extract_chromosomes(a):
         chroms[chrom] = seq
     whole_genome_extracted = True

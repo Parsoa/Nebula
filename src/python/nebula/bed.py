@@ -23,25 +23,19 @@ print = pretty_print
 # BED Tracks
 # ============================================================================================================================ #
 
-INTEGER_FIELDS = ['contig_start', 'contig_end']
-FP_FIELDS = ['lp_value']
-
 class BedTrack:
 
-    def __init__(self, chrom, begin, end, fields):
+    def __init__(self, chrom, begin, end, fields = []):
         self.chrom = chrom
         self.begin = begin
         self.end = end
+        self.fields = []
         for (k, v) in fields:
-            setattr(self, k, v)
+            self[k] = v
         if not hasattr(self, 'svtype'):
             self.svtype = 'DEL'
         if not hasattr(self, 'id'):
             self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
-        self.fields = fields
-
-    def __str__(self):
-        return self.id
 
     def lift(self):
         with open('liftover_tmp.bed', 'w') as b:
@@ -64,35 +58,78 @@ class BedTrack:
             d[k] = v
         return d
 
-    def add_field(self, key, value):
-        setattr(self, key, value)
-        self.fields.append((key, value))
-
     def serialize(self):
         s = ''
         s += str(self.chrom) + '\t' + str(self.begin) + '\t' + str(self.end)
-        for (k, v) in self.fields:
-            s += '\t' + v
+        for key in self.fields:
+            s += '\t' + str(self[key])
         s += '\n'
         return s
 
     def header(self):
         s = '#CHROM\tBEGIN\tEND'
-        for (key, value) in self.fields:
-            s += '\t' + key
+        for key in self.fields:
+            s += '\t' + key.upper()
         s += '\n'
         return s
 
+    def __str__(self):
+        return self.id
+
     def __getitem__(self, key):
         return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        key = key.lower()
+        setattr(self, key, value)
+        if not key in self.fields:
+            self.fields.append(key)
 
 # ============================================================================================================================ #
 # BED Tracks
 # ============================================================================================================================ #
 
-def track_from_name(name):
-    tokens = name.split('_')
-    return BedTrack(tokens[0], int(tokens[1]), int(tokens[2]))
+# sorts a dictionary of tracks into a list
+def sort_tracks(tracks):
+   _tracks = [tracks[track] for track in tracks]
+   return sorted(sorted(_tracks, key = lambda x: x.begin), key = lambda y: y.chrom)
+
+def filter_overlapping_tracks(tracks):
+    remove = []
+    i = 0
+    tracks = sort_tracks(tracks) 
+    while i < len(tracks):
+        for j in range(i + 1, len(tracks)):
+            print(str(tracks[j]))
+            # j is contained inside i
+            if tracks[j].chrom != tracks[i].chrom:
+                i = j
+                break
+            if tracks[j].begin <= tracks[i].end:
+                remove.append(j)
+                user_print_warning(str(tracks[j]), 'overlaps', blue(str(tracks[i])))
+                continue
+            if tracks[j].begin - tracks[i].end < 1000:
+                remove.append(j)
+                print(red(str(tracks[j])), 'is too close to', blue(str(tracks[i])))
+                continue
+            else:
+                i = j
+                break
+        if j == len(tracks) - 1:
+            break
+        if i == len(tracks) - 1:
+            break
+    n = 0
+    for index in sorted(remove):
+        tracks.pop(index - n)
+        n = n + 1
+    return tracks
+
+def track_from_id(name):
+    svtype, coords = name.split('@')
+    tokens = coords.split('_')
+    return BedTrack(tokens[0], int(tokens[1]), int(tokens[2]), [('SVTYPE', svtype)])
 
 # keywords is an array of tuples: (name, default, transformation)
 def load_tracks_from_file(path, parse_header = True, keywords = []):

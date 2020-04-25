@@ -263,7 +263,7 @@ void process_read(char* seq) {
 const int SEARCHING = 0 ;
 const int SKIPPING = 1 ;
 const int READING = 2 ;
-const unsigned long BLOCK_SIZE = 4096 * 2 ;
+const unsigned long BLOCK_SIZE = 4096 * 20 ;
 
 void output_counts(string path, int index) {
     nlohmann::json payload ;

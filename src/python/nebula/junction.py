@@ -71,8 +71,6 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         self.tracks = c.tracks
-        #t = 'DEL@chr11_27800676_27800872'
-        #self.tracks = {t : c.tracks[t]}
         if self.contigs:
             self.extract_kmers_with_contigs()
         else:
@@ -418,7 +416,7 @@ class FilterJunctionKmersJob(reduction.FilterLociIndicatorKmersJob):
             l_1 = len(self.kmers[kmer]['loci'])
             self.kmers[kmer]['filtered_loci'] = {}
             loci = copy.deepcopy(self.kmers[kmer]['loci'])
-            for locus in self.kmers[kmer]['loci'].keys():
+            for locus in list(self.kmers[kmer]['loci'].keys()):
                 l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
                 if l == 0:
                     self.kmers[kmer]['filtered_loci'][locus] = self.kmers[kmer]['loci'][locus]

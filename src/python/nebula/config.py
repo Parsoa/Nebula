@@ -125,6 +125,8 @@ def parse_args():
     parser.add_argument("--sequencing_error_rate", type = float, default = 0.001)
     # whether to do junction rounding or not 
     parser.add_argument("--rounding", action = 'store_true')
+    # The gender of the simulated sample
+    parser.add_argument("--gender", default = 'Female')
     #
     main = argparse.ArgumentParser(prog = 'nebula', add_help = False)
     subparsers = main.add_subparsers(dest = 'command')

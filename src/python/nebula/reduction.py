@@ -154,7 +154,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
                         'left': inner_seq[i - c.ksize: i],
                         'right': inner_seq[i + c.ksize: i + c.ksize + c.ksize]
                     },
-                    'gc': calculate_gc_content(seq[250 + i + c.ksize / 2 - 250: 250 + i + c.ksize / 2 + 250]) / 5
+                    'gc': calculate_gc_content(seq[250 + i + c.ksize // 2 - 250: 250 + i + c.ksize // 2 + 250]) // 5
                 }
                 if not track.id in inner_kmers[kmer]['tracks']:
                     inner_kmers[kmer]['tracks'][track.id] = 0
@@ -253,7 +253,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
                         'left': sequence[index - c.ksize: index],
                         'right': sequence[index + c.ksize: index + c.ksize + c.ksize]
                     },
-                    'gc': calculate_gc_content(sequence[index + c.ksize / 2 - 250: index + c.ksize / 2 + 250]) / 5
+                    'gc': calculate_gc_content(sequence[index + c.ksize // 2 - 250: index + c.ksize // 2 + 250]) // 5
                 }
             index += 1
             if index % 10000 == 0:
@@ -282,12 +282,12 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
             for track in self.inner_kmers[kmer]['tracks']:
                 self.tracks[track][kmer] = self.inner_kmers[kmer]
         json.dump(no_mask_kmers, open(os.path.join(self.get_current_job_directory(), 'no_mask_kmers.json'), 'w'), indent = 4)
-        return self.tracks
         #for track in self.tracks:
-        #    with open(os.path.join(self.get_current_job_directory(), 'indicator_kmers_' + track + '.json'), 'w') as track_file:
+        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as track_file:
         #        json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
         #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-        #    json.dump({track: 'indicator_kmers_' + track + '.json' for track in self.tracks}, json_file, indent = 4)
+        #    json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        return self.tracks
 
     def plot_kmer_reference_count(self):
         x = []
@@ -332,7 +332,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
 
     def transform(self, kmers, track_name):
         c = config.Configuration()
-        #with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
+        #with open(os.path.join(self.get_previous_job_directory(), kmers), 'r') as json_file:
         if track_name:
             #kmers = json.load(json_file)
             t = c.tracks[track_name]
@@ -374,7 +374,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
     def output_batch(self, batch):
         for kmer in self.kmers:
             self.kmers[kmer]['filtered_loci'] = {}
-            for locus in self.kmers[kmer]['loci'].keys():
+            for locus in list(self.kmers[kmer]['loci'].keys()):
                 l = self.get_shared_masks(self.kmers[kmer]['interest_masks'], self.kmers[kmer]['loci'][locus]['masks'])
                 if l == 0:
                     self.kmers[kmer]['filtered_loci'][locus] = self.kmers[kmer]['loci'][locus]

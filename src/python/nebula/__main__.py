@@ -24,9 +24,14 @@ def load_tracks(filter_overlap = True):
     tracks = job.execute()
     config.Configuration.update({'tracks': tracks})
 
+def misc():
+    job = cgc.PcaClusteringJob()
+    job.execute()
+
 def preprocess():
 
     def supply_inner_kmers():
+        tracks = {}
         job = reduction.ExtractInnerKmersJob()
         tracks = job.execute()
         job = reduction.ExtractLociIndicatorKmersJob()
@@ -44,8 +49,8 @@ def preprocess():
         job.execute()
 
     load_tracks()
-    #supply_inner_kmers()
-    #supply_junction_kmers()
+    supply_inner_kmers()
+    supply_junction_kmers()
     job = preprocessor.MixKmersJob()
     job.execute()
 
@@ -73,10 +78,6 @@ def genotype():
             tracks, stats = job.execute()
         config.Configuration.update(stats)
         job = cgc.CgcIntegerProgrammingJob(tracks = tracks)
-        job.execute()
-        job = cgc.CgcInnerKmersIntegerProgrammingJob(tracks = tracks)
-        job.execute()
-        job = cgc.CgcJunctionKmersIntegerProgrammingJob(tracks = tracks)
         job.execute()
         if c.select:
             job = cgc.ExportGenotypingKmersJob()
@@ -117,6 +118,8 @@ if __name__ == '__main__':
     config.init()
     print_banner()
     c = config.Configuration()
+    if c.command == 'misc':
+        misc()
     if c.command == 'export':
         export()
     if c.command == 'verify':

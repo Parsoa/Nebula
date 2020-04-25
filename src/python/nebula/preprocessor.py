@@ -64,40 +64,10 @@ class TrackPreprocessorJob(map_reduce.Job):
         tracks = {}
         for path in c.bed:
             tracks.update(bed.load_tracks_from_file_as_dict(path, parse_header = True))
-        tracks = [tracks[track] for track in tracks]
         user_print('Loaded', len(tracks), 'tracks.')
-        if self.filter_overlap:
-            tracks = self.filter_overlapping_tracks(\
-                    sorted(tracks, key = lambda x: (x.chrom, x.begin, x.end))
-                    #sorted(sorted(sorted(tracks, key = lambda x: x.chrom), key = lambda y: y.begin), key = lambda z: z.end)\
-                )
+        tracks = bed.filter_overlapping_tracks(tracks)
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
         user_print('Removed overlapping tracks.', len(tracks), 'non-overlapping tracks.')
-        return tracks
-
-    def filter_overlapping_tracks(self, tracks):
-        remove = []
-        i = 0
-        while i < len(tracks):
-            for j in range(i + 1, len(tracks)):
-                print(str(tracks[j]))
-                # j is contained inside i
-                if tracks[j].chrom != tracks[i].chrom:
-                    i = j
-                    break
-                if tracks[j].begin <= tracks[i].end:
-                    remove.append(j)
-                    user_print_warning(str(tracks[j]), 'overlaps', blue(str(tracks[i])))
-                    continue
-                else:
-                    i = j
-                    break
-            if i == len(tracks) - 1:
-                break
-        n = 0
-        for index in sorted(remove):
-            tracks.pop(index - n)
-            n = n + 1
         return tracks
 
 # ============================================================================================================================ #
@@ -131,7 +101,7 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
         c = config.Configuration()
         self.gc = {}
         self.window_size = 500
-        self.bin_size = self.window_size / 100
+        self.bin_size = self.window_size // 100
         for i in range(0, 100 + 1):
             self.gc[i] = {}
         self.chromosomes = {'chr1': extract_chromosome('chr1')}
@@ -197,14 +167,14 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
         sequence = sequence[telomere_length: -telomere_length]
         t = time.time()
         l = len(sequence)
-        i = self.window_size/2
-        while i < l - self.window_size/2:
-            kmer = canonicalize(sequence[i - c.ksize/2: i + c.ksize/2])
+        i = self.window_size // 2
+        while i < l - self.window_size // 2:
+            kmer = canonicalize(sequence[i - c.ksize // 2: i + c.ksize // 2])
             if self.reference_counts_provider.get_kmer_count(kmer) == 1:
-                gc = calculate_gc_content(sequence[i - self.window_size/2: i + self.window_size/2]) / self.bin_size
-                contig = chrom + ':' + str(telomere_length + i - self.window_size/2) + '-' + str(telomere_length + i + self.window_size/2)
+                gc = calculate_gc_content(sequence[i - self.window_size // 2: i + self.window_size // 2]) // self.bin_size
+                contig = chrom + ':' + str(telomere_length + i - self.window_size // 2) + '-' + str(telomere_length + i + self.window_size // 2)
                 self.gc[gc][kmer] = {'contig': contig, 'gc': gc, 'coverage': gc}
-                i += self.window_size/2 + c.ksize/2
+                i += self.window_size // 2 + c.ksize // 2
             else:
                 i += 1
                 continue
