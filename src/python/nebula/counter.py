@@ -74,10 +74,10 @@ class BaseExactCountingJob(map_reduce.Job):
                 paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.' + str(j) + '.json') for j, fastq_file in enumerate(c.fastq)]
             for path in paths:
                 with open (path, 'r') as json_file:
-                    print('adding counts from', path) 
+                    print('Adding counts from', path) 
                     line = json_file.readline()
                     while line:
                         tokens = line.split(':')
                         self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
                         line = json_file.readline()
-        print('done aggregating kmer counts')
+        print('Done aggregating kmer counts.')

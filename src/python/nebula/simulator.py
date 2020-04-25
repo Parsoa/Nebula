@@ -135,18 +135,21 @@ class Simulation(map_reduce.Job):
                 bed_file.write(track.serialize()) 
 
     def transform(self, seq, chrom):
-        print('simulating', chrom)
+        print('Simulating', chrom)
         c = config.Configuration()
         if chrom.lower() != 'chrx' and chrom.lower() != 'chry':
             strand_1 = self.apply_events_to_chromosome(chrom, self.present)
             strand_2 = self.apply_events_to_chromosome(chrom, self.homozygous)
-        if chrom.lower() == 'chrx':
+        elif chrom.lower() == 'chrx':
             if c.gender == 'Male':
                 strand_1 = self.apply_events_to_chromosome('chrX', self.present)
                 strand_2 = self.apply_events_to_chromosome('chrY', self.homozygous)
             else:
                 strand_1 = self.apply_events_to_chromosome('chrX', self.present)
                 strand_2 = self.apply_events_to_chromosome('chrX', self.homozygous)
+        else:
+            # chrY
+            return None
         self.export_diploid_chromosome_fasta(chrom, [strand_1, strand_2])
         self.export_fastq(seq, chrom + '_diploid')
         return None

@@ -84,7 +84,7 @@ class IntegerProgrammingJob(map_reduce.Job):
                     self.lp_kmers[len(self.lp_kmers) - 1]['kmer'] = kmer
                     for track in kmers[kmer]['tracks']:
                         if not track in self.tracks:
-                            self.tracks[track] = {}
+                            self.tracks[track] = bed.track_from_id(track)
                             if kmers[kmer]['type'] == 'inner':
                                 self.tracks[track]['confidence'] = 'LOW'
                             else:
@@ -95,7 +95,8 @@ class IntegerProgrammingJob(map_reduce.Job):
         n = 0
         tmp = sorted([t for t in self.tracks])
         for track in tmp:
-            self.tracks[track].update({'index': n, 'kmers': []})
+            self.tracks[track]['index'] = n
+            self.tracks[track]['kmers'] = []
             n += 1
         for index, kmer in enumerate(self.lp_kmers):
             for track in kmer['tracks']:
@@ -155,10 +156,9 @@ class IntegerProgrammingJob(map_reduce.Job):
         print('Rounding', len(self.tracks), 'tracks')
         for track in self.tracks:
             index = self.tracks[track]['index']
-            t = bed.track_from_id(track)
-            self.tracks[track]['lp_value'] = self.solution[index]
-            self.tracks[track]['lp_genotype'] = self.round_genotype(self.solution[index], t.svtype)[1]
             self.tracks[track]['lp_kmers'] = []
+            self.tracks[track]['lp_value'] = self.solution[index]
+            self.tracks[track]['lp_genotype'] = self.round_genotype(self.solution[index], self.tracks[track]['svtype'])[1]
 
     def export_solution(self):
         c = config.Configuration()
@@ -166,9 +166,8 @@ class IntegerProgrammingJob(map_reduce.Job):
         path = os.path.join(c.workdir if c.cgc else self.get_current_job_directory(), name)
         with open(path, 'w') as bed_file:
             bed_file.write('#CHROM\tBEGIN\tEND\tID\tSVTYPE\tLP\tCONFIDENCE\tGENOTYPE\n')
-            for track in bed.sort_tracks(self.tracks):
-                t = bed.track_from_id(track.id)
-                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, t.id, t.svtype, track['lp_value'], track['confidence'], track['lp_genotype']]]) + '\n')
+            for t in bed.sort_tracks(self.tracks):
+                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, t.id, t.svtype, t['lp_value'], t['confidence'], t['lp_genotype']]]) + '\n')
 
     def export_kmers(self):
         c = config.Configuration()
@@ -187,25 +186,3 @@ class IntegerProgrammingJob(map_reduce.Job):
             name = 'lp_kmer_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.json'
             with open(os.path.join(c.workdir, name), 'w') as json_file:
                 json.dump({kmer['kmer']: kmer for kmer in self.lp_kmers}, json_file, indent = 4, sort_keys = True)
-
-    #def verify_genotypes(self):
-    #    c = config.Configuration()
-    #    FNULL = open(os.devnull, 'w')
-    #    output = subprocess.call('verify_genotypes', shell = True, stderr = subprocess.STDOUT, cwd = self.get_current_job_directory())
-    #    for r in ['00', '10', '11']:
-    #        for p in ['00', '10', '11']:
-    #            for track in bed.load_tracks_from_file(os.path.join(self.get_current_job_directory(), r + '_as_' + p + '.bed'), [('lp_genotype', None, str), ('lp_value', None, float)]):
-    #                g = self.round_genotype(track.lp_value)
-    #                self.tracks[str(track)]['lp_value'] = track.lp_value
-    #                self.tracks[str(track)]['lp_rounding'] = g[0]
-    #                self.tracks[str(track)]['lp_genotype'] = g[1]
-    #                self.tracks[str(track)]['actual_genotype'] = r
-    #    with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
-    #        json.dump(self.tracks, json_file, indent = 4)
-
-    #def plot_lp_values(self):
-    #    print(len(self.tracks))
-    #    x = []
-    #    for track in self.tracks:
-    #        x.append(self.tracks[track]['lp_value'])
-    #    visualizer.histogram(x, 'lp_value_distribution', self.get_current_job_directory(), 'Value', 'Frequency', 0.05)

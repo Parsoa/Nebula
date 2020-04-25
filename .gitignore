@@ -29,7 +29,7 @@ data/
 misc/
 output/
 binaries/
-jellyfish/
+Jellyfish/
 programming/
 
 .vscode/

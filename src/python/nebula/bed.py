@@ -51,9 +51,9 @@ class BedTrack:
     @staticmethod
     def json_serialize(self):
         d = {}
-        d['chrom'] = self.chrom
-        d['begin'] = self.begin
         d['end'] = self.end
+        d['begin'] = self.begin
+        d['chrom'] = self.chrom
         for (k, v) in self.fields:
             d[k] = v
         return d
@@ -95,13 +95,11 @@ def sort_tracks(tracks):
    return sorted(sorted(_tracks, key = lambda x: x.begin), key = lambda y: y.chrom)
 
 def filter_overlapping_tracks(tracks):
-    remove = []
     i = 0
-    tracks = sort_tracks(tracks) 
+    remove = []
+    tracks = sort_tracks(tracks)
     while i < len(tracks):
         for j in range(i + 1, len(tracks)):
-            print(str(tracks[j]))
-            # j is contained inside i
             if tracks[j].chrom != tracks[i].chrom:
                 i = j
                 break
@@ -111,14 +109,12 @@ def filter_overlapping_tracks(tracks):
                 continue
             if tracks[j].begin - tracks[i].end < 1000:
                 remove.append(j)
-                print(red(str(tracks[j])), 'is too close to', blue(str(tracks[i])))
+                user_print_warning(str(tracks[j]), 'is too close to', blue(str(tracks[i])))
                 continue
             else:
                 i = j
                 break
         if j == len(tracks) - 1:
-            break
-        if i == len(tracks) - 1:
             break
     n = 0
     for index in sorted(remove):

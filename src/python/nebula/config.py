@@ -13,7 +13,6 @@ class Configuration:
         def __init__(self, args):
             for arg in args:
                 for attr, value in arg.__dict__.items():
-                    print(attr, value)
                     setattr(self, attr, value)
             setattr(self, 'hsize', self.ksize / 2)
             if hasattr(self, 'simulation'):
