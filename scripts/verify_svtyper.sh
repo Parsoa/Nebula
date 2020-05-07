@@ -1,19 +1,22 @@
-grep SVTYPE=DEL svtyper.vcf > svtyper.DEL.vcf
+grep -E 'CHROM|DEL' merge.bed > merge.DEL.bed
 
-parse_svtyper_ouput.py svtyper.DEL.vcf
+intersect merge.DEL.bed ./SVtyper/DEL/genotypes.bed > merge.DEL.shared.bed
+intersect ./SVtyper/DEL/genotypes.bed merge.DEL.bed -v > svtyper.DEL.not.bed
+intersect ./SVtyper/DEL/genotypes.bed merge.DEL.bed > svtyper.DEL.shared.bed
 
-grep DEL merge.bed > merge.DEL.bed
+echo "######################## Deletions ############################"
 
-echo 'Intersecting..'
-intersect merge.DEL.bed svtyper.DEL.bed > merge.DEL.shared.bed
-intersect merge.DEL.bed svtyper.DEL.bed -b > svtyper.DEL.shared.bed
-
-echo "SVtyper results: =========================================="
-tabulate_svtyper.sh svtyper.DEL.shared.bed
+echo "========================= SVtyper ============================="
+tabulate.sh svtyper.DEL.shared.bed
 verify.sh $1
-wc -l *.bed
+wc -l *_as_*.bed
 
-echo "Nebula results: =========================================="
+echo "========================== Nebula ============================="
 tabulate.sh merge.DEL.shared.bed 
 verify.sh $1
-wc -l *.bed
+wc -l *_as_*.bed
+
+echo "======================= Only SVTyper =========================="
+tabulate.sh svtyper.DEL.not.bed
+verify.sh $1
+wc -l *_as_*.bed

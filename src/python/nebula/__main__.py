@@ -25,7 +25,9 @@ def load_tracks(filter_overlap = True):
     config.Configuration.update({'tracks': tracks})
 
 def misc():
-    job = cgc.PcaClusteringJob()
+    #job = cgc.PcaClusteringJob()
+    #job.execute()
+    job = preprocessor.EventSetUnificationJob()
     job.execute()
 
 def preprocess():

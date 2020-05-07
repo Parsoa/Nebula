@@ -13,31 +13,31 @@ echo "######################## Deletions ############################"
 echo "======================== Paragraph ============================"
 tabulate.sh paragraph.DEL.shared.bed
 verify_sim.sh ../Simulation
-wc -l *.bed
+wc -l *_as_*.bed
 
 echo "========================== Nebula =============================="
 tabulate.sh merge.DEL.shared.bed 
 verify_sim.sh ../Simulation
-wc -l *.bed
+wc -l *_as_*.bed
 
 echo "====================== Only Paragraph =========================="
 tabulate.sh paragraph.DEL.not.bed
 verify_sim.sh ../Simulation
-wc -l *.bed
+wc -l *_as_*.bed
 
 echo "######################## Insertions ############################"
 
 echo "========================= Paragraph ============================"
 tabulate.sh paragraph.INS.shared.bed
 verify_sim.sh ../Simulation
-wc -l *.bed
+wc -l *_as_*.bed
 
 echo "========================== Nebula =============================="
 tabulate.sh merge.INS.shared.bed 
 verify_sim.sh ../Simulation
-wc -l *.bed
+wc -l *_as_*.bed
 
 echo "====================== Only Paragraph =========================="
 tabulate.sh paragraph.INS.not.bed
 verify_sim.sh ../Simulation
-wc -l *.bed
+wc -l *_as_*.bed

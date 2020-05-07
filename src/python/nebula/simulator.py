@@ -77,9 +77,34 @@ class Simulation(map_reduce.Job):
 
     def load_structural_variations(self):
         c = config.Configuration()
-        #tracks = [c.tracks[track] for track in c.tracks]
-        return bed.filter_overlapping_tracks(c.tracks)
+        return self.filter_overlapping_tracks(c.tracks)
 
+    def filter_overlapping_tracks(self, tracks):
+        i = 0
+        remove = []
+        tracks = bed.sort_tracks(tracks)
+        while i < len(tracks):
+            for j in range(i + 1, len(tracks)):
+                if tracks[j].chrom != tracks[i].chrom:
+                    i = j
+                    break
+                if tracks[j].begin <= tracks[i].end:
+                    remove.append(j)
+                    user_print_warning(str(tracks[j]), 'overlaps', blue(str(tracks[i])))
+                    continue
+                if tracks[j].begin - tracks[i].end < 1000:
+                    remove.append(j)
+                    user_print_warning(str(tracks[j]), 'is too close to', blue(str(tracks[i])))
+                    continue
+                i = j
+            if j == len(tracks) - 1:
+                break
+        n = 0
+        for index in sorted(remove):
+            tracks.pop(index - n)
+            n = n + 1
+        return tracks
+    
     def assign_event_zygosities(self):
         c = config.Configuration()
         self.absent = []

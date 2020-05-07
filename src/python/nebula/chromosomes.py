@@ -27,36 +27,6 @@ from nebula.logger import *
 chroms = {}
 whole_genome_extracted = False
 
-def extract_chromosome(chromosome):
-    chromosome = chromosome.lower()
-    if chromosome in chroms:
-        system_print('Loading', chromosome, 'from cache.')
-        return chroms[chromosome]
-    elif chroms:
-        system_print_error('Chromosome not found', chromosome)
-        if whole_genome_extracted:
-            return None
-    c = config.Configuration()
-    sequence = ''
-    ref = open(c.reference)
-    line = ref.readline().lower().strip()
-    found = False
-    while True:
-        if line.startswith('>chr'):
-            chrom = line[line.find('>') + 1:]
-            if chrom == chromosome:
-                print('extracting ' + chrom)
-                while True:
-                    line = ref.readline().lower().strip()
-                    if line.startswith('>') or len(line) == 0:
-                        print(line)
-                        chroms[chromosome] = sequence
-                        return sequence
-                    sequence += line.upper()
-        line = ref.readline().lower().strip()
-        if len(line) == 0:
-            break
-
 def extract_chromosomes(chromosomes):
     c = config.Configuration()
     m = 0
@@ -81,7 +51,6 @@ def extract_chromosomes(chromosomes):
                             return
                         break
                     sequence += line.upper()
-        # this is to avoid skipping the last line we read for the previous chromosome (header of next)
         if found:
             found = False
             continue
@@ -96,7 +65,7 @@ def extract_whole_genome():
         a.append('chrX')
         a.append('chrY')
         for chrom in a:
-            chroms[chrom] = 'dummy'
+            chroms[chrom] = 'ATCG'
         return chroms
     global whole_genome_extracted
     if whole_genome_extracted:

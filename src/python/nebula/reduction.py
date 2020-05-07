@@ -67,7 +67,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
     def load_inputs(self):
         c = config.Configuration()
-        extract_whole_genome()
+        self.chroms = extract_whole_genome()
         self.tracks = c.tracks
         self.load_reference_counts_provider()
         self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
@@ -117,7 +117,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
 
     def extract_inner_kmers(self, track, assembly):
         c = config.Configuration()
-        chrom = extract_chromosome(track.chrom.lower())
+        chrom = self.chroms[track.chrom]
         if not chrom:
             system_print_warning('Chromosome', track.chrom.lower(), 'not found.')
             return None
@@ -282,11 +282,11 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
             for track in self.inner_kmers[kmer]['tracks']:
                 self.tracks[track][kmer] = self.inner_kmers[kmer]
         json.dump(no_mask_kmers, open(os.path.join(self.get_current_job_directory(), 'no_mask_kmers.json'), 'w'), indent = 4)
-        #for track in self.tracks:
-        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as track_file:
-        #        json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
-        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-        #    json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        for track in self.tracks:
+            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as track_file:
+                json.dump(self.tracks[track], track_file, indent = 4, sort_keys = True)
+        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         return self.tracks
 
     def plot_kmer_reference_count(self):
@@ -327,15 +327,14 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
     def load_inputs(self):
         c = config.Configuration()
         self.kmers = {}
-        #self.tracks = self.load_previous_job_results()
+        self.tracks = self.load_previous_job_results()
         self.round_robin(self.tracks)
 
     def transform(self, kmers, track_name):
         c = config.Configuration()
-        #with open(os.path.join(self.get_previous_job_directory(), kmers), 'r') as json_file:
-        if track_name:
-            #kmers = json.load(json_file)
-            t = c.tracks[track_name]
+        with open(os.path.join(self.get_previous_job_directory(), kmers), 'r') as json_file:
+        #if track_name:
+            kmers = json.load(json_file)
             for kmer in kmers:
                 if kmer.find('N') != -1:
                     continue
@@ -353,8 +352,14 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                         self.kmers[kmer]['loci'][locus]['masks'] = {self.kmers[kmer]['loci'][locus]['seq']['left']: True, self.kmers[kmer]['loci'][locus]['seq']['right']: True}
                 for locus in self.kmers[kmer]['loci']:
                     tokens = locus.split('_')
-                    if 'inside' in locus or (tokens[0].lower() == t.chrom.lower() and int(tokens[1]) >= t.begin - c.ksize and int(tokens[1]) < t.end):
+                    if 'inside_' in locus:
                         self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
+                        continue
+                    for track in self.kmers[kmer]['tracks']:
+                        t = c.tracks[track]
+                        if tokens[0].lower() == t.chrom.lower() and int(tokens[1]) >= t.begin - c.ksize and int(tokens[1]) < t.end:
+                            self.kmers[kmer]['interest_masks'].update(self.kmers[kmer]['loci'][locus]['masks'])
+                            continue
         return None
 
     def is_kmer_returning(self, kmer):
@@ -396,27 +401,37 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         return len(l)
 
     def reduce(self):
+        c = config.Configuration()
         self.kmers = {}
         for batch in self.load_output():
             for kmer in batch:
                 self.kmers[kmer] = batch[kmer]
-        #
+        # make sure everything is valid
+        for kmer in self.kmers:
+            print(kmer, self.kmers[kmer]['tracks'])
+            ts = [c.tracks[track] for track in self.kmers[kmer]['tracks']]
+            for loci in self.kmers[kmer]['filtered_loci']:
+                tokens = loci.split('_')
+                begin = int(tokens[1])
+                for t in ts:
+                    assert tokens[0] != t.chrom or begin < t.begin - c.ksize or begin >= t.end
+        # filter returning kmers
         system_print_high(len(self.kmers), 'kmers before filtering.')
         returning_kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if self.is_kmer_returning(self.kmers[kmer])}
         with open(os.path.join(self.get_current_job_directory(), 'returning.json'), 'w') as json_file:
             json.dump(returning_kmers, json_file, indent = 4)
         self.kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if not self.is_kmer_returning(self.kmers[kmer])}
         system_print_high(len(self.kmers), 'kmers after filtering returning kmers.')
-        #
+        # dump all inner kmers
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
+        # dump kmers for each track
         self.tracks = {}
         for kmer in self.kmers:
             for track in self.kmers[kmer]['tracks']:
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
-        #
         system_print_high(len(self.tracks), 'tracks with eligible inner kmers.')
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
