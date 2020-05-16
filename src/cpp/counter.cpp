@@ -36,11 +36,6 @@ using namespace std ;
 
 #define MASK 6
 
-const int HEADER_LINE = 0 ;
-const int SEQUENCE_LINE = 1 ;
-const int THIRD_LINE = 2 ;
-const int QUALITY_LINE = 3 ;
-
 std::unordered_map<uint64_t, int*> *counts = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, int*> *totals = new std::unordered_map<uint64_t, int*> ;
 std::unordered_map<uint64_t, std::vector<uint64_t>*> *masks = new std::unordered_map<uint64_t, std::vector<uint64_t>*> ;
@@ -79,15 +74,6 @@ uint64_t encode_kmer(const char* c) {
     for (uint64_t i = 0 ; i < 32 ; i++) {
         uint64_t d = (uint64_t)((c[i] & MASK) >> 1) ;
         kmer += (d << (62 - (i * 2))) ;
-    }
-    return kmer ;
-}
-
-uint32_t encode_half_mer(const char* c) {
-    uint32_t kmer = 0 ;
-    for (uint32_t i = 0 ; i < 16 ; i++) {
-        uint32_t d = (uint32_t)((c[i] & MASK) >> 1) ;
-        kmer += (d << (30 - (i * 2))) ;
     }
     return kmer ;
 }
@@ -182,9 +168,14 @@ bool is_subsequence(uint64_t x, uint64_t y) {
     return res ;
 }
 
-void process_read(char* seq) {
-    int l = strlen(seq) ;
-    l -- ; //newline skip
+// ============================================================================= \\
+// ============================================================================= \\
+// ============================================================================= \\
+
+#define BAM 0
+#define FASTQ 1
+
+void process_read(const char* seq, int l, unordered_map<uint64_t, int>& _counts) {
     char c ;
     uint64_t k = 0 ;
     uint64_t left = 0 ;
@@ -207,47 +198,32 @@ void process_read(char* seq) {
             right += (seq[i - 1] & MASK) >> 1 ;
         }
         auto kmer = counts->find(k) ;
-        /*
-        cout << i << " " << l << endl ;
-        string d_l = decode_kmer(left) ;
-        string d_r = decode_kmer(right) ;
-        string d_k = decode_kmer(k) ;
-        cout << "===================" << endl ;
-        cout << seq ;
-        cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
-        cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
-        */
         if (kmer != counts->end()) {
-            //cout << i << " " << l << endl ;
-            //string d_l = decode_kmer(left) ;
-            //string d_r = decode_kmer(right) ;
-            //string d_k = decode_kmer(k) ;
-            //cout << "===================" << endl ;
-            //cout << seq ;
-            //cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
-            //cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
             int* total = totals->at(kmer->first) ;
             *total += 1 ;
             if (masks->find(k) == masks->end()) {
-                int* count = counts->at(kmer->first) ;
-                *count += 1 ;
+                if (_counts.find(k) != _counts.end()) {
+                    _counts[k] = 0 ;
+                }
+                _counts[k] += 1 ;
             } else {
                 std::vector<uint64_t>* m = masks->at(k) ;
                 for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
-                    //cout << decode_kmer(*it) << endl ;
                     if (i + 32 + 31 < l) {
                         if (is_subsequence(*it, left)) {
-                            int* count = counts->at(kmer->first) ;
-                            *count += 1 ;
-                            //cout << "found" << endl ;
+                            if (_counts.find(k) != _counts.end()) {
+                                _counts[k] = 0 ;
+                            }
+                            _counts[k] += 1 ;
                             break ;
                         }
                     }
                     if (i >= 32) {
                         if (is_subsequence(*it, right)) {
-                            int* count = counts->at(kmer->first) ;
-                            *count += 1 ;
-                            //cout << "found" << endl ;
+                            if (_counts.find(k) != _counts.end()) {
+                                _counts[k] = 0 ;
+                            }
+                            _counts[k] += 1 ;
                             break ;
                         }
                     }
@@ -257,42 +233,34 @@ void process_read(char* seq) {
     }
 }
 
-const int SEARCHING = 0 ;
-const int SKIPPING = 1 ;
-const int READING = 2 ;
-const unsigned long BLOCK_SIZE = 4096 * 20 ;
+// ============================================================================= \\
+// ================================= BAM Files ================================== \\
+// ============================================================================= \\
 
-void output_counts(string path, int index) {
-    nlohmann::json payload ;
-    cout << "dumping kmer counts..." << endl ;
-    string p = path + "/count.json" ;
-    cout << path << endl ;
-    std::ofstream o(p);
-    for (auto i = counts->begin(); i != counts->end(); i++) {
-        int* count = i->second ;
-        auto total = totals->find(i->first) ;
-        o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << "\n" ;
+samFile *bam_file ;
+bam_hdr_t *bam_header ;
+bam1_t *bam_iterator ;
+vector<vector<vector<bam1_t*>>> bam_entries ;
+
+bool load_batch_bam(int threads, int batch_size, int p) {
+    for (int i = 0; i < threads; i++) {
+        bam_entries[p][i].clear() ;
     }
-    cout << "done" << endl ;
-}
-
-int get_number_of_alignments(samFile* bam_file, bam_hdr_t* bam_header, bam1_t* alignment) {
-    cout << "Estimating number of reads" << endl ;
     int n = 0 ;
-    time_t t ;
-    time(&t) ;
-    while (sam_read1(bam_file, bam_header, alignment) > 0) {
-        n++ ;
+    while (sam_read1(bam_file, bam_header, bam_iterator) > 0){
+        bam_entries[p][n % threads].push_back(bam_iterator) ;
+        n += 1 ;
+        if (n == batch_size) {
+            return true ;
+        }
     }
-    time_t s ;
-    time(&s) ;
-    cout << "Found " << n << " reads in " << s - t << " seconds." << endl ;
-    return n ;
+    if(bam_entries[p].empty()) {
+        return false ;
+    }
+    return true ;
 }
 
-// ================================ FASTQ Files ================================= \\
-
-unordered_map<uint64_t, int> process_reads_bam(vector<bam1_t*> alignments) {
+unordered_map<uint64_t, int> process_batch_bam(vector<bam1_t*> alignments) {
     char* seq ; //= (char*) malloc(200) ;
     uint32_t len = 0 ;
     unordered_map<uint64_t, int> _counts ;
@@ -310,228 +278,20 @@ unordered_map<uint64_t, int> process_reads_bam(vector<bam1_t*> alignments) {
             seq[i] = seq_nt16_str[bam_seqi(q, i)]; //gets nucleotide id and converts them into IUPAC id.
         }
         seq[l] = '\0' ; // null terminate
-        char c ;
-        uint64_t k = 0 ;
-        uint64_t left = 0 ;
-        uint64_t right = 0 ;
-        for (int i = 0 ; i <= l - 32 ; i++) {
-            if (i == 0) {
-                k = encode_kmer(seq) ;
-                left = encode_substring(seq, 32, 32) ;
-                right = k ;
-            } else {
-                k = k << 2 ;
-                k += (seq[i + 31] & MASK) >> 1 ;
-            }
-            if (i + 32 + 31 < l) {
-                left = left << 2 ;
-                left += (seq[i + 32 + 31] & MASK) >> 1 ;
-            }
-            if (i > 32) {
-                right = right << 2 ;
-                right += (seq[i - 1] & MASK) >> 1 ;
-            }
-            auto kmer = counts->find(k) ;
-            /*
-            cout << i << " " << l << endl ;
-            string d_l = decode_kmer(left) ;
-            string d_r = decode_kmer(right) ;
-            string d_k = decode_kmer(k) ;
-            cout << "===================" << endl ;
-            cout << seq ;
-            cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
-            cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
-            */
-            if (kmer != counts->end()) {
-                //cout << i << " " << l << endl ;
-                //string d_l = decode_kmer(left) ;
-                //string d_r = decode_kmer(right) ;
-                //string d_k = decode_kmer(k) ;
-                //cout << "===================" << endl ;
-                //cout << seq ;
-                //cout << std::setw(i) << std::right << std::setfill(' ') << std::setw(i) << (i < 32 ? "" : d_r) ;
-                //cout << d_k << (i + 32 + 31 < l ? d_l : "") << endl ;
-                int* total = totals->at(kmer->first) ;
-                *total += 1 ;
-                if (masks->find(k) == masks->end()) {
-                    if (_counts.find(k) != _counts.end()) {
-                        _counts[k] = 0 ;
-                    }
-                    _counts[k] += 1 ;
-                    //int* count = counts->at(kmer->first) ;
-                    //*count += 1 ;
-                } else {
-                    std::vector<uint64_t>* m = masks->at(k) ;
-                    for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
-                        //cout << decode_kmer(*it) << endl ;
-                        if (i + 32 + 31 < l) {
-                            if (is_subsequence(*it, left)) {
-                                if (_counts.find(k) != _counts.end()) {
-                                    _counts[k] = 0 ;
-                                }
-                                _counts[k] += 1 ;
-                                //int* count = counts->at(kmer->first) ;
-                                //*count += 1 ;
-                                //cout << "found" << endl ;
-                                break ;
-                            }
-                        }
-                        if (i >= 32) {
-                            if (is_subsequence(*it, right)) {
-                                if (_counts.find(k) != _counts.end()) {
-                                    _counts[k] = 0 ;
-                                }
-                                _counts[k] += 1 ;
-                                //int* count = counts->at(kmer->first) ;
-                                //*count += 1 ;
-                                //cout << "found" << endl ;
-                                break ;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        process_read(seq, l, _counts) ;
     }
     return _counts ;
 }
 
-vector<unordered_map<uint64_t, int>> p_process_bam(const vector<vector<bam1_t*>> &entries, int threads) {
-    vector<unordered_map<uint64_t, int>> batches (threads) ;
-    #pragma omp parallel for num_threads(threads)
-    for(int i = 0; i <= threads; i++) {
-        if (i == 0) {
-            
-        } else {
-            unordered_map<uint64_t, int> _counts = process_reads_bam(entries[i]) ;
-            batches[i] = _counts ;
-        }
-    }
-    return batches ;
-}
-
-int process_bam(string bam, string path, int index, int threads) {
-    samFile *bam_file = hts_open(bam.c_str(), "r") ;
-    bam_hdr_t *bam_header = sam_hdr_read(bam_file) ; //read header
-    bam1_t *alignment = bam_init1() ; //initialize an alignment
-    // Timing
-    time_t t ;
-    time(&t) ;
-    int batch_size = 1000000 ;
-    int b = 0 ;
-    int n = 0 ;
-    uint64_t u = 0 ;
-    vector<vector<bam1_t*>> entries (threads) ;
-    while (sam_read1(bam_file, bam_header, alignment) > 0){
-        entries[n % threads].push_back(alignment) ;
-        n += 1 ;
-        u += 1 ;
-        if (n == batch_size) {
-            n = 0 ;
-            vector<unordered_map<uint64_t, int>> output = p_process_bam(entries, threads);
-            for (const auto &batch : output) {
-                for (const auto kmer : batch) {
-                    *counts->at(kmer.first) += kmer.second ;
-                }
-            }
-            b += 1 ;
-            for (int i = 0 ; i < threads ; i++) {
-                entries[i].clear() ;
-            }
-            time_t s ;
-            time(&s) ;
-            cerr << "Processed batch " << std::left << std::setw(10) << b << ". Reads so far " << std::right << std::setw(12) << b * batch_size << ". Reads per second: " <<  u / (s - t) << ". Time: " << std::setw(8) << std::fixed << s - t << endl ;
-        }
-    }
-    if(!entries.empty()) {
-        vector<unordered_map<uint64_t, int>> output = p_process_bam(entries, threads);
-        for (const auto &batch : output) {
-            for (const auto kmer : batch) {
-                *counts->at(kmer.first) += kmer.second ;
-            }
-        }
-    }
-    bam_destroy1(alignment) ;
-    sam_close(bam_file) ;
-    output_counts(path, index) ;
-    return u ;
-}
-
+// ============================================================================= \\
 // ================================ FASTQ Files ================================= \\
-
-unordered_map<uint64_t, int> process_reads_fastq(vector<string> fastq_entries) {
-    int l ;
-    const char* seq ;
-    unordered_map<uint64_t, int> _counts ;
-    for (const auto fastq_entry : fastq_entries) {
-        //TODO check these bounds
-        seq = fastq_entry.c_str() ; 
-        l = strlen(seq) ;
-        char c ;
-        uint64_t k = 0 ;
-        uint64_t left = 0 ;
-        uint64_t right = 0 ;
-        for (int i = 0 ; i <= l - 32 ; i++) {
-            if (i == 0) {
-                k = encode_kmer(seq) ;
-                left = encode_substring(seq, 32, 32) ;
-                right = k ;
-            } else {
-                k = k << 2 ;
-                k += (seq[i + 31] & MASK) >> 1 ;
-            }
-            if (i + 32 + 31 < l) {
-                left = left << 2 ;
-                left += (seq[i + 32 + 31] & MASK) >> 1 ;
-            }
-            if (i > 32) {
-                right = right << 2 ;
-                right += (seq[i - 1] & MASK) >> 1 ;
-            }
-            auto kmer = counts->find(k) ;
-            if (kmer != counts->end()) {
-                //int* total = totals->at(kmer->first) ;
-                //*total += 1 ;
-                if (masks->find(k) == masks->end()) {
-                    if (_counts.find(k) != _counts.end()) {
-                        _counts[k] = 0 ;
-                    }
-                    _counts[k] += 1 ;
-                } else {
-                    std::vector<uint64_t>* m = masks->at(k) ;
-                    for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
-                        if (i + 32 + 31 < l) {
-                            if (is_subsequence(*it, left)) {
-                                if (_counts.find(k) != _counts.end()) {
-                                    _counts[k] = 0 ;
-                                }
-                                _counts[k] += 1 ;
-                                break ;
-                            }
-                        }
-                        if (i >= 32) {
-                            if (is_subsequence(*it, right)) {
-                                if (_counts.find(k) != _counts.end()) {
-                                    _counts[k] = 0 ;
-                                }
-                                _counts[k] += 1 ;
-                                break ;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return _counts ;
-}
+// ============================================================================= \\
 
 gzFile fastq_file ;
 kseq_t* fastq_iterator ;
 vector<vector<vector<string>>> fastq_entries ;
 
-bool load_next_batch(int threads, int batch_size, int p) {
-    //cout << "Loading into block " << p << endl ;
+bool load_batch_fastq(int threads, int batch_size, int p) {
     for (int i = 0; i < threads; i++) {
         fastq_entries[p][i].clear() ;
     }
@@ -550,16 +310,36 @@ bool load_next_batch(int threads, int batch_size, int p) {
     return true ;
 }
 
-//vector<unordered_map<uint64_t, int>> p_process_fastq(const vector<vector<string>> &entries, int threads) {
-int p_process_fastq(int threads) {
-    // initialize fastq_entries
+unordered_map<uint64_t, int> process_batch_fastq(vector<string> fastq_entries) {
+    int l ;
+    const char* seq ;
+    unordered_map<uint64_t, int> _counts ;
+    for (const auto fastq_entry : fastq_entries) {
+        seq = fastq_entry.c_str() ; 
+        l = strlen(seq) ;
+        process_read(seq, l, _counts) ;
+    }
+    return _counts ;
+}
+
+// ============================================================================= \\
+// ============================================================================= \\
+// ============================================================================= \\
+
+int process_reads(int threads, int mode) {
+    // initialize bam_entries
     for(int i = 0; i < 2; i++) {
+        bam_entries.push_back(vector<vector<bam1_t*>>(threads)) ;
         fastq_entries.push_back(vector<vector<string>>(threads)) ;
     }
     int p = 0 ;
     int batch_size = 2000000 ;
     vector<unordered_map<uint64_t, int>> batches(threads) ;
-    load_next_batch(threads, batch_size, p) ;
+    if (mode == BAM) {
+        load_batch_bam(threads, batch_size, p) ;
+    } else {
+        load_batch_fastq(threads, batch_size, p) ;
+    }
     time_t t ;
     time(&t) ;
     int b = 0 ;
@@ -567,14 +347,27 @@ int p_process_fastq(int threads) {
     while (true) {
         // Load the next batch while processing the current one
         for (int i = 0 ; i < threads ; i++) {
-            u += fastq_entries[p][i].size() ;
+            if (mode == BAM) {
+                u += bam_entries[p][i].size() ;
+            } else {
+                u += fastq_entries[p][i].size() ;
+            }
         }
         #pragma omp parallel for num_threads(threads + 1)
         for(int i = 0; i <= threads; i++) {
             if (i == 0) {
-                load_next_batch(threads, batch_size, (p + 1) % 2) ;
+                if (mode == BAM) {
+                    load_batch_bam(threads, batch_size, (p + 1) % 2) ;
+                } else {
+                    load_batch_fastq(threads, batch_size, (p + 1) % 2) ;
+                }
             } else {
-                unordered_map<uint64_t, int> _counts = process_reads_fastq(fastq_entries[p][i - 1]) ;
+                unordered_map<uint64_t, int> _counts ;
+                if (mode == BAM) {
+                    _counts = process_batch_bam(bam_entries[p][i - 1]) ;
+                } else {
+                    _counts = process_batch_fastq(fastq_entries[p][i - 1]) ;
+                }
                 batches[i - 1] = _counts ;
             }
         }
@@ -593,52 +386,25 @@ int p_process_fastq(int threads) {
     return u ;
 }
 
-int process_fastq(string fastq, string path, int index, int threads) {
-    p_process_fastq(threads) ;
-    //
-    //time_t t ;
-    //time(&t) ;
-    //int batch_size = 2000000 ;
-    //int b = 0 ;
-    //int l = 0 ;
-    //int n = 0 ;
-    //uint64_t u = 0 ;
-    //while ((l = kseq_read(seq)) >= 0) {
-    //    entries[n % threads].push_back(seq->seq.s) ;
-    //    n += 1 ;
-    //    u += 1 ;
-    //    if (n == batch_size) {
-    //        n = 0 ;
-    //        vector<unordered_map<uint64_t, int>> output = p_process_fastq(entries, threads) ;
-    //        for (const auto &batch : output) {
-    //            for (const auto kmer : batch) {
-    //                *counts->at(kmer.first) += kmer.second ;
-    //            }
-    //        }
-    //        b += 1 ;
-    //        for (int i = 0 ; i < threads ; i++) {
-    //            entries[i].clear() ;
-    //        }
-    //        time_t s ;
-    //        time(&s) ;
-    //        cerr << "Processed batch " << std::left << std::setw(10) << b << ". Reads so far " << std::right << std::setw(12) << b * batch_size << ". Reads per second: " <<  u / (s - t) << ". Time: " << std::setw(8) << std::fixed << s - t << endl ;
-    //    }
-    //}
-    //if(!entries.empty()) {
-    //    vector<unordered_map<uint64_t, int>> output = p_process_fastq(entries, threads);
-    //    for (const auto &batch : output) {
-    //        for (const auto kmer : batch) {
-    //            *counts->at(kmer.first) += kmer.second ;
-    //        }
-    //    }
-    //}
-    output_counts(path, index) ;
-    return 0 ;
+// ============================================================================= \\
+// ============================================================================= \\
+// ============================================================================= \\
+
+void output_counts(string path) {
+    nlohmann::json payload ;
+    cout << "dumping kmer counts..." << endl ;
+    string p = path + "/count.json" ;
+    cout << path << endl ;
+    std::ofstream o(p);
+    for (auto i = counts->begin(); i != counts->end(); i++) {
+        int* count = i->second ;
+        auto total = totals->find(i->first) ;
+        o << decode_kmer(i->first) << ":" << *count << ":" << *total->second << "\n" ;
+    }
+    cout << "done" << endl ;
 }
 
-
-int load_kmers(int index, string path) {
-    // load json file
+int load_kmers(string path) {
     cout << "Loading kmers from " << path << ".." << endl ;
     ifstream json_file(path + "/pre_inner_kmers.json") ;
     nlohmann::json kmers_json ;
@@ -673,26 +439,33 @@ int load_kmers(int index, string path) {
     return 0 ;
 }
 
+// ============================================================================= \\
+// ============================================================================= \\
+// ============================================================================= \\
+
 int main(int argc, char** argv) {
-    string path(argv[2]) ;
-    string fastq(argv[3]) ;
-    int index = std::stoi(string(argv[1]), nullptr, 10) ;
-    int threads = std::stoi(string(argv[4]), nullptr, 10) ;
+    string path(argv[1]) ;
+    string input_file(argv[2]) ;
+    int threads = std::stoi(string(argv[3]), nullptr, 10) ;
     time_t t ;
     time(&t) ;
-    load_kmers(index, path) ;
+    load_kmers(path) ;
     int u = 0;
-    if (fastq.compare(fastq.size() - 4, 4, ".bam") == 0) {
+    if (input_file.compare(input_file.size() - 4, 4, ".bam") == 0) {
         cout << "Input is BAM." << endl ;
-        u = process_bam(fastq, path, index, threads) ;
+        bam_file = hts_open(input_file.c_str(), "r") ;
+        bam_header = sam_hdr_read(bam_file) ; //read header
+        bam_iterator = bam_init1() ; //initialize an alignment
+        u = process_reads(threads, BAM) ;
     } else {
         cout << "Input is FASTQ." << endl ;
-        fastq_file = gzopen(fastq.c_str(), "r") ;
+        fastq_file = gzopen(input_file.c_str(), "r") ;
         fastq_iterator = kseq_init(fastq_file) ;
-        u = process_fastq(fastq, path, index, threads) ;
+        u = process_reads(threads, FASTQ) ;
     }
     time_t s ;
     time(&s) ;
     auto d = s - t ;
+    output_counts(path) ;
     cout << "Processed " << u << " reads in " << (s - t) << " seconds. average " << u / d << " reads per second." << endl ;
 }
