@@ -232,6 +232,8 @@ class CgcCounterJob(counter.BaseExactCountingJob):
                 self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
+            json.dump(self.tracks, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -288,8 +290,9 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        with open(path, 'w') as json_file:
-            json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4)
+        # TODO: this is redundant
+        #with open(path, 'w') as json_file:
+        #    json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4)
         return path
 
     def calculate_residual_coverage(self):
@@ -501,12 +504,13 @@ class ExportGenotypingKmersJob(map_reduce.Job):
                 self.tracks[track.id] = track
                 if track.confidence == 'HIGH':
                     self.junction_tracks.add(track.id)
-                    kmer_type = 'junction_kmers'
                 else:
                     self.inner_tracks.add(track.id)
-                    kmer_type = 'inner_kmers'
                 kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
                 for kmer in kmers:
+                    # BUG 0000
+                    # TODO: this should assign correct type to the kmer
+                    kmer_type = kmers[kmer]['type'] + '_kmers'
                     self.kmers[kmer_type][kmer] = kmers[kmer]
                     self.kmers[kmer_type][kmer]['count'] = 0
                     self.kmers[kmer_type][kmer]['total'] = 0

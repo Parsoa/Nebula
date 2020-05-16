@@ -38,7 +38,7 @@ class BaseExactCountingJob(map_reduce.Job):
 
     def find_thread_count(self):
         c = config.Configuration()
-        self.num_threads = 1 if c.bam else min(4, c.threads)
+        self.num_threads = 1
 
     def round_robin(self):
         for i in range(0, self.num_threads):
@@ -50,34 +50,25 @@ class BaseExactCountingJob(map_reduce.Job):
 
     def transform(self):
         c = config.Configuration()
+        self.create_output_directories()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
         if c.bam:
-            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.bam + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
-            output = subprocess.call(command, shell = True)
+            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.bam + " " + str(self.num_threads)
         else:
-            for i, fastq_file in enumerate(c.fastq):
-                command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + fastq_file + " " + str(self.num_threads) + " " + str(self._counter_mode) + " " + ("1" if c.debug else "0") + " " + ("1" if c.simulation else "0")
-                output = subprocess.call(command, shell = True)
-                command = "mv " + os.path.join(self.get_current_job_directory(), 'c_batch_' + str(self.index) + '.json') + " " + os.path.join(self.get_current_job_directory(), 'c_batch_' + str(self.index) + '.' + str(i) + '.json')
-                output = subprocess.call(command, shell = True)
-        exit()
+            command = os.path.join(cpp_dir, "counter.out") + " " + str(self.index) + " " + self.get_current_job_directory() +  " " + c.fastq + " " + str(self.num_threads)
+        print(command)
+        output = subprocess.call(command, shell = True)
 
     def merge_count(self, kmer, tokens):
         pass
 
     def merge_counts(self):
         c = config.Configuration()
-        for i in range(0, self.num_threads):
-            if c.bam:
-                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.json')]
-            else:
-                paths = [os.path.join(self.get_current_job_directory(), 'c_batch_' + str(i) + '.' + str(j) + '.json') for j, fastq_file in enumerate(c.fastq)]
-            for path in paths:
-                with open (path, 'r') as json_file:
-                    print('Adding counts from', path) 
-                    line = json_file.readline()
-                    while line:
-                        tokens = line.split(':')
-                        self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
-                        line = json_file.readline()
+        with open (os.path.join(self.get_current_job_directory(), 'counts.json'), 'r') as json_file:
+            line = json_file.readline()
+            while line:
+                tokens = line.split(':')
+                self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
+                line = json_file.readline()
         print('Done aggregating kmer counts.')
+

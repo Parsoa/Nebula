@@ -169,10 +169,24 @@ class IntegerProgrammingJob(map_reduce.Job):
             for t in bed.sort_tracks(self.tracks):
                 bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, t.id, t.svtype, t['lp_value'], t['confidence'], t['lp_genotype']]]) + '\n')
 
+    # BUG 0000
+    # This is problematic
+    # Assume an event was genotyped with inner kmers and one of these kmers also belongs to an event that
+    # was genotyped with junction kmers alone. Although it won't appear in the second event's kmer set, the
+    # first event will add it here. kmer will be mistakenly categorized as junction by Export later as Export
+    # assumes all kmers of an event have the same type..
+    # Fix: 1. Only add kmer to other event if it matches type
+    #      2. Filter kmer entirely
     def export_kmers(self):
         c = config.Configuration()
         tracks = {}
         for index, kmer in enumerate(self.lp_kmers):
+            j = all(self.tracks[track]['confidence'] == 'LOW' for track in kmer['tracks'])
+            i = all(self.tracks[track]['confidence'] == 'HIGH' for track in kmer['tracks'])
+            if not i and not j:
+                # ignore kmer
+                # or keep it but force the LP to use it
+                continue
             for track in kmer['tracks']:
                 if not track in tracks:
                     tracks[track] = {}
