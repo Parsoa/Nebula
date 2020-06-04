@@ -11,7 +11,7 @@ colorama.init()
 # STDIO Wrappers/Helpers
 # ============================================================================================================================ #
 
-LOG_LEVEL = 0
+LOG_LEVEL = 1
 
 def colorize(*vargs):
     s = ''.join(functools.reduce(lambda x, y: x + str(y) + ' ', vargs))
@@ -54,11 +54,11 @@ def user_print_warning(*args):
 
 def system_print(*args):
     if 0 >= LOG_LEVEL:
-        print(blue(*args))
+        print(white(*args))
 
 def system_print_high(*args):
     if 1 >= LOG_LEVEL:
-        print(cyan(*args))
+        print(white(*args))
 
 def system_print_warning(*args):
     if 2 >= LOG_LEVEL:
@@ -66,7 +66,7 @@ def system_print_warning(*args):
 
 def system_print_error(*args):
     if 3 >= LOG_LEVEL:
-        print(magenta(*args))
+        print(red(*args))
 
 def json_print(d):
     print(json.dumps(d, sort_keys = True, indent = 4, separators = (',', ': ')))

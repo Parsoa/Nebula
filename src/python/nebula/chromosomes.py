@@ -38,11 +38,10 @@ def extract_chromosomes(chromosomes):
         if line.startswith('>chr'):
             chrom = line[line.find('>') + 1:].strip()
             if chrom in chromosomes:
-                print('extracting ' + chrom)
                 while True:
                     line = ref.readline().strip()
                     if line.startswith('>') or len(line) == 0:
-                        print(len(sequence), 'bases')
+                        print('Extracted ' + chrom + ' with', len(sequence), 'bases.')
                         yield sequence, chrom
                         sequence = ''
                         found = True
@@ -70,7 +69,7 @@ def extract_whole_genome():
     global whole_genome_extracted
     if whole_genome_extracted:
         return chroms
-    system_print('Extracting whole genome...')
+    system_print('Loading reference assembly..')
     if not c.chromosomes:
         a = ['chr' + str(x) for x in range(1, 23)]
         a.append('chrX')

@@ -95,8 +95,6 @@ class CgcCounterJob(counter.BaseExactCountingJob):
                                 else:
                                     x[kmer]['loci'][locus]['masks'].update(kmers[kmer_type][kmer]['loci'][locus]['masks'])
                             x[kmer]['tracks'].update(kmers[kmer_type][kmer]['tracks'])
-            #user_print('Inner kmers:', blue(len(self.inner_kmers)))
-            #user_print('Junction kmers:', blue(len(self.junction_kmers)))
         user_print('GC kmers:', blue(len(self.gc_kmers)))
         user_print('Depth kmers:', blue(len(self.depth_kmers)))
         user_print('Inner kmers:', blue(len(self.inner_kmers)))
@@ -132,15 +130,15 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         total = tokens[1] 
         canon = canonicalize(kmer)
         if canon in self.gc_kmers:
-            self.gc_kmers[canon]['count'] += count // 2
+            self.gc_kmers[canon]['count'] += count
         if canon in self.depth_kmers:
-            self.depth_kmers[canon]['count'] += count // 2
+            self.depth_kmers[canon]['count'] += count
         if canon in self.inner_kmers:
-            self.inner_kmers[canon]['count'] += count // 2
-            self.inner_kmers[canon]['total'] += total // 2
+            self.inner_kmers[canon]['count'] += count
+            self.inner_kmers[canon]['total'] += total
         if canon in self.junction_kmers:
-            self.junction_kmers[canon]['count'] += count // 2
-            self.junction_kmers[canon]['total'] += total // 2
+            self.junction_kmers[canon]['count'] += count
+            self.junction_kmers[canon]['total'] += total
 
     def estimate_depth_of_coverage(self):
         c = config.Configuration()
@@ -271,6 +269,9 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
                 continue
             if is_kmer_low_entropy(kmer):
                 continue
+            if c.select:
+                if kmers['junction_kmers'][kmer]['count'] < 5:
+                    continue
             lp_kmers[kmer] = True
             self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
             self.lp_kmers[kmer]['reduction'] = kmers['junction_kmers'][kmer]['reference']

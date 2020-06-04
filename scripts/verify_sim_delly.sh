@@ -1,12 +1,13 @@
 grep -E 'CHROM|DEL' merge.bed > merge.DEL.bed
 grep -E 'CHROM|INS' merge.bed > merge.INS.bed
 
-intersect merge.DEL.bed ./Delly/DEL/delly.bed > merge.DEL.shared.bed
-#intersect merge.INS.bed ./Delly/INS/delly.bed > merge.INS.shared.bed
-intersect ./Delly/DEL/delly.bed merge.DEL.bed -v > delly.DEL.not.bed
-#intersect ./Delly/INS/delly.bed merge.INS.bed -v > delly.INS.not.bed
-intersect merge.DEL.bed ./Delly/DEL/delly.bed -b > delly.DEL.shared.bed
-#intersect merge.INS.bed ./Delly/INS/delly.bed -b > delly.INS.shared.bed
+intersect merge.DEL.bed consensus.DEL.bed > merge.DEL.shared.bed
+intersect ./Delly/DEL/delly.bed consensus.DEL.bed > delly.DEL.shared.bed
+intersect delly.DEL.shared.bed merge.DEL.bed -v > delly.DEL.not.bed
+
+#intersect merge.DEL.bed ./Delly/DEL/delly.bed > merge.DEL.shared.bed
+#intersect ./Delly/DEL/delly.bed merge.DEL.bed -v > delly.DEL.not.bed
+#intersect merge.DEL.bed ./Delly/DEL/delly.bed -b > delly.DEL.shared.bed
 
 echo "######################## Deletions ############################"
 

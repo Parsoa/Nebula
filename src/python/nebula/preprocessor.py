@@ -408,10 +408,10 @@ class MixKmersJob(map_reduce.Job):
         self.load_junction_kmers()
         self.load_gc_content_kmers()
         self.load_depth_of_coverage_kmers()
-        print('Counting', green(len(self.inner_kmers)), 'inner kmers')
-        print('Counting', green(len(self.junction_kmers)), 'junction kmers')
-        print('Counting', green(len(self.depth_kmers)), 'depth-of-coverage kmers')
-        print('Counting', green(len(self.gc_kmers)), 'GC-content kmers')
+        system_print_high('Counting', green(len(self.inner_kmers)), 'inner kmers')
+        system_print_high('Counting', green(len(self.junction_kmers)), 'junction kmers')
+        system_print_high('Counting', green(len(self.depth_kmers)), 'depth-of-coverage kmers')
+        system_print_high('Counting', green(len(self.gc_kmers)), 'GC-content kmers')
 
     def merge_kmers(self):
         kmers = {}
@@ -424,7 +424,7 @@ class MixKmersJob(map_reduce.Job):
 
     def load_inner_kmers(self):
         self.inner_kmers = {}
-        job = reduction.FilterLociIndicatorKmersJob()
+        job = reduction.FilterInnerKmersJob()
         with open(os.path.join(job.get_current_job_directory(), 'kmers.json'), 'r') as json_file:
             self.inner_kmers.update(json.load(json_file))
 
@@ -480,12 +480,7 @@ class MixKmersJob(map_reduce.Job):
                     self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['junction_kmers'][kmer] = self.junction_kmers[kmer]
                 self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
-        print('Kmers exported for', len(self.tracks), 'tracks')
+        system_print_high('Kmers exported for', len(self.tracks), 'tracks.')
         with open(os.path.join(self.get_current_job_directory(), 'tracks.bed'), 'w') as bed_file:
             for track in self.tracks:
                 bed_file.write(c.tracks[track].serialize())
-        #for track in self.tracks:
-        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
-        #        json.dump(self.tracks[track], json_file, indent = 4)
-        #with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
-        #    json.dump(self.tracks, json_file, indent = 4)

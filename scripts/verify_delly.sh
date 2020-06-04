@@ -1,8 +1,11 @@
 grep -E 'CHROM|DEL' merge.bed > merge.DEL.bed
 
-intersect merge.DEL.bed ./Delly/DEL/genotypes.bed > merge.DEL.shared.bed
-intersect ./Delly/DEL/genotypes.bed merge.DEL.bed -v > delly.DEL.not.bed
-intersect ./Delly/DEL/genotypes.bed merge.DEL.bed > delly.DEL.shared.bed
+intersect merge.DEL.bed consensus.DEL.bed > merge.DEL.shared.bed
+intersect ./Delly/DEL/genotypes.bed consensus.DEL.bed > delly.DEL.shared.bed
+
+#intersect merge.DEL.bed ./Delly/DEL/genotypes.bed > merge.DEL.shared.bed
+#intersect ./Delly/DEL/genotypes.bed merge.DEL.bed -v > delly.DEL.not.bed
+#intersect ./Delly/DEL/genotypes.bed merge.DEL.bed > delly.DEL.shared.bed
 
 echo "######################## Deletions ############################"
 

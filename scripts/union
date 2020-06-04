@@ -1,0 +1,78 @@
+#!/usr/bin/python
+
+import sys
+
+dest = '-a'
+exact = True
+inverse = '-v' in sys.argv
+intersect_only = False
+
+if '-b' in sys.argv:
+    dest = '-b'
+
+if '-ab' in sys.argv:
+    dest = '-ab'
+
+if '-i' in sys.argv:
+    intersect_only = True
+    exact = False
+
+if '-f' in sys.argv:
+    i = sys.argv.index('-f')
+    match = float(sys.argv[i + 1])
+    exact = False
+
+header = None
+
+def index_file(path, get_header = False):
+    index = {} 
+    with open(path) as f:
+        line = f.readline()
+        tokens = line.split()
+        has_header = 'chrom' in tokens[0].lower()
+        if has_header:
+            if get_header:
+                global header
+                header = line.strip()
+                tokens = header.split()
+            line = f.readline()
+        while line:
+            svtype = 'DEL' if 'DEL' in line else 'INS' if 'INS' in line else 'SV'
+            tokens = line.split()
+            chrom = tokens[0].lower().strip()
+            s = chrom + '_' + tokens[1] + '_' + tokens[2]
+            if exact:
+                index[s] = (line, chrom, int(tokens[1]), int(tokens[2]), svtype)
+            else:
+                if chrom not in index:
+                    index[chrom] = []
+                index[chrom].append((line, int(tokens[1]), int(tokens[2]), svtype))
+            line = f.readline()
+    if not exact:
+        for chrom in index:
+            index[chrom] = sorted(index[chrom], key = lambda x: x[1])
+    return index
+
+def union(a, b):
+    u = {}
+    if exact:
+        for track in a:
+            if not track in u:
+                u[track] = True
+        for track in b:
+            if not track in u:
+                u[track] = True
+    l = [track for track in u]
+
+def print_intersection(i):
+    if header:
+        print(header)
+    for line in i:
+        print(line[0].strip())
+
+a_index = index_file(sys.argv[1], True)
+b_index = index_file(sys.argv[2])
+if header:
+    print(header)
+for track in intersect(a_index, b_index):
+    print(track[0].strip())

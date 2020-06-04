@@ -29,9 +29,12 @@ class JellyfishCountsProvider(KmerCountsProvider):
         self.import_counts()
 
     def import_counts(self):
-        print('importing jellyfish table', self.path)
-        self.qf = jellyfish.QueryMerFile(self.path)
-        print('table loaded')
+        system_print('Importing jellyfish table {}..'.format(self.path))
+        try:
+            self.qf = jellyfish.QueryMerFile(self.path)
+            system_print('Done.')
+        except:
+            system_print_error('Error loading Jellyfish table. Aborting..')
 
     def get_kmer_count(self, kmer):
         canon = jellyfish.MerDNA(str(kmer))

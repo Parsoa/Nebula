@@ -59,77 +59,41 @@ class ExtractInnerKmersJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def execute(self):
-        c = config.Configuration()
-        self.create_output_directories()
-        self.find_thread_count()
-        self.load_inputs()
-
     def load_inputs(self):
         c = config.Configuration()
         self.chroms = extract_whole_genome()
         self.tracks = c.tracks
         self.load_reference_counts_provider()
-        self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
-        if self.contigs:
-            self.extract_kmers()
-        else:
-            system_print_high('No assembly contigs provided, extracting from reference')
-            self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
-            self.distribute_workload()
-            self.wait_for_children()
-            self.reduce()
-
-    def extract_kmers(self):
-        c = config.Configuration()
-        contig_index = {}
-        output = {}
-        for track in self.tracks:
-            contig_index[self.tracks[track].contig] = self.tracks[track]
-        n = 0
-        print(len(contig_index), 'total tracks')
-        for read in self.contigs.fetch():
-            if read.query_name in contig_index:
-                track = contig_index[read.query_name]
-                inner_kmers = self.extract_inner_kmers(track, read.query_sequence[int(track.contig_start) - c.ksize: int(track.contig_end) + c.ksize])
-                if inner_kmers:
-                    path = os.path.join(self.get_current_job_directory(), track.id + '.json')
-                    with open(path, 'w') as json_file:
-                        json.dump(inner_kmers, json_file, indent = 4)
-                    output[track.id] = path
-                n += 1
-                if n % 1000 == 0:
-                    print(n)
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump(output, json_file, indent = 4)
+        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
 
     def transform(self, track, track_name):
         debug_breakpoint()
         c = config.Configuration()
-        inner_kmers = self.extract_inner_kmers(track, None)
+        # No inner kmers for INV, MEI or ALU
+        if track.svtype == 'INV':
+            system_print_warning('Skipping inner kmer extraction for inversion ' + track_name + '.')
+            return None
+        inner_kmers = self.extract_inner_kmers(track)
         if len(inner_kmers) == 0:
-            system_print_warning('Skipping ' + track_name + ', no inner kmers found.')
+            system_print_warning('No inner kmers found for ' + track_name + '.')
             return None
         name = track_name  + '.json'
         with open(os.path.join(self.get_current_job_directory(), name), 'w') as json_file:
             json.dump(inner_kmers, json_file, sort_keys = True, indent = 4)
         return name
 
-    def extract_inner_kmers(self, track, assembly):
+    def extract_inner_kmers(self, track):
         c = config.Configuration()
         chrom = self.chroms[track.chrom]
         if not chrom:
-            system_print_warning('Chromosome', track.chrom.lower(), 'not found.')
-            return None
+            system_print_error('Chromosome', track.chrom.lower(), 'not found. Skipping track.')
+            return {}
         inner_kmers = {}
         if track.svtype == 'INS':
-            if assembly:
-                inner_kmers = self.extract_insertion_kmers(track, assembly, chrom)
-            elif hasattr(track, 'seq'):
+            if hasattr(track, 'seq'):
                 inner_kmers = self.extract_insertion_kmers(track, track.seq.upper(), chrom)
         if track.svtype == 'DEL':
             inner_kmers = self.extract_deletion_kmers(track, chrom)
-        # No inner kmers for INV, MEI or ALU
         if len(inner_kmers) > 1000:
             items = sorted(inner_kmers.items(), key = lambda item: item[1]['reference'])[0 : 1000]
             return {item[0]: item[1] for item in items}
@@ -190,19 +154,19 @@ class ExtractInnerKmersJob(map_reduce.Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class ExtractLociIndicatorKmersJob(map_reduce.Job):
+class ScoreInnerKmersJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
-    _name = 'ExtractLociIndicatorKmersJob'
+    _name = 'ScoreInnerKmersJob'
     _category = 'preprocessing'
     _previous_job = ExtractInnerKmersJob
 
     @staticmethod
     def launch(**kwargs):
-        job = ExtractLociIndicatorKmersJob(**kwargs)
+        job = ScoreInnerKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -242,6 +206,8 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
 
     def transform(self, sequence, chrom):
         c = config.Configuration()
+        if len(self.inner_kmers) == 0:
+            return None
         index = 0
         t = time.time()
         for kmer in stream_kmers(c.ksize, True, True, sequence):
@@ -256,7 +222,7 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
                     'gc': calculate_gc_content(sequence[index + c.ksize // 2 - 250: index + c.ksize // 2 + 250]) // 5
                 }
             index += 1
-            if index % 10000 == 0:
+            if index % 1000000 == 0:
                 s = time.time()
                 p = index / float(len(sequence))
                 e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
@@ -289,35 +255,25 @@ class ExtractLociIndicatorKmersJob(map_reduce.Job):
             json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         return self.tracks
 
-    def plot_kmer_reference_count(self):
-        x = []
-        for track in self.tracks:
-            print(track)
-            with open(os.path.join(self.get_current_job_directory(), self.tracks[track]), 'r') as json_file:
-                kmers = json.load(json_file)['inner_kmers']
-                for kmer in kmers:
-                    x.append(kmers[kmer]['reference'])
-        visualizer.histogram(x = x, name = 'reference_count', path = self.get_current_job_directory(), x_label = 'kmer count in reference', y_label = 'number of kmers', step = 0.1)
-
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class FilterLociIndicatorKmersJob(map_reduce.Job):
+class FilterInnerKmersJob(map_reduce.Job):
 
     # ============================================================================================================================ #
     # Launcher
     # ============================================================================================================================ #
 
-    _name = 'FilterLociIndicatorKmersJob'
+    _name = 'FilterInnerKmersJob'
     _category = 'preprocessing'
-    _previous_job = ExtractLociIndicatorKmersJob
+    _previous_job = ScoreInnerKmersJob
 
     @staticmethod
     def launch(**kwargs):
-        job = FilterLociIndicatorKmersJob(**kwargs)
+        job = FilterInnerKmersJob(**kwargs)
         job.execute()
 
     # ============================================================================================================================ #
@@ -330,15 +286,13 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         self.tracks = self.load_previous_job_results()
         self.round_robin(self.tracks)
 
-    def transform(self, kmers, track_name):
+    def transform(self, track, track_name):
         c = config.Configuration()
-        with open(os.path.join(self.get_previous_job_directory(), kmers), 'r') as json_file:
-        #if track_name:
+        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
             kmers = json.load(json_file)
             for kmer in kmers:
                 if kmer.find('N') != -1:
                     continue
-                seed = sum(list(map(lambda s: ord(s), kmer)))
                 if not kmer in self.kmers:
                     self.kmers[kmer] = {}
                     self.kmers[kmer]['loci'] = kmers[kmer]['loci']
@@ -362,6 +316,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                             continue
         return None
 
+    # Why only doing this for insertions?
     def is_kmer_returning(self, kmer):
         c = config.Configuration()
         for track in kmer['tracks']:
@@ -376,7 +331,17 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                             return True
         return False
 
+    def get_shared_masks(self, interest_kmers, kmers):
+        l = []
+        for x in kmers:
+            for y in interest_kmers:
+                if is_canonical_subsequence(x[4:-4], y):
+                    l.append(x)
+                    break
+        return len(l)
+
     def output_batch(self, batch):
+        # different batches may output the same kmer. Results will be the same.
         for kmer in self.kmers:
             self.kmers[kmer]['filtered_loci'] = {}
             for locus in list(self.kmers[kmer]['loci'].keys()):
@@ -391,15 +356,6 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
         json.dump(self.kmers, json_file, sort_keys = True, indent = 4)
         json_file.close()
 
-    def get_shared_masks(self, interest_kmers, kmers):
-        l = []
-        for x in kmers:
-            for y in interest_kmers:
-                if is_canonical_subsequence(x[4:-4], y):
-                    l.append(x)
-                    break
-        return len(l)
-
     def reduce(self):
         c = config.Configuration()
         self.kmers = {}
@@ -408,7 +364,6 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                 self.kmers[kmer] = batch[kmer]
         # make sure everything is valid
         for kmer in self.kmers:
-            print(kmer, self.kmers[kmer]['tracks'])
             ts = [c.tracks[track] for track in self.kmers[kmer]['tracks']]
             for loci in self.kmers[kmer]['filtered_loci']:
                 tokens = loci.split('_')
@@ -416,12 +371,12 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                 for t in ts:
                     assert tokens[0] != t.chrom or begin < t.begin - c.ksize or begin >= t.end
         # filter returning kmers
-        system_print_high(len(self.kmers), 'kmers before filtering.')
+        system_print_high('Extracted', len(self.kmers), 'kmers.')
         returning_kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if self.is_kmer_returning(self.kmers[kmer])}
         with open(os.path.join(self.get_current_job_directory(), 'returning.json'), 'w') as json_file:
             json.dump(returning_kmers, json_file, indent = 4)
         self.kmers = {kmer: self.kmers[kmer] for kmer in self.kmers if not self.is_kmer_returning(self.kmers[kmer])}
-        system_print_high(len(self.kmers), 'kmers after filtering returning kmers.')
+        system_print_high(len(self.kmers), 'kmers remaining after filtering returning kmers.')
         # dump all inner kmers
         with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
             json.dump(self.kmers, json_file, indent = 4, sort_keys = True)
@@ -432,7 +387,7 @@ class FilterLociIndicatorKmersJob(map_reduce.Job):
                 if not track in self.tracks:
                     self.tracks[track] = {}
                 self.tracks[track][kmer] = self.kmers[kmer]
-        system_print_high(len(self.tracks), 'tracks with eligible inner kmers.')
+        system_print_high('Exported', len(self.tracks), 'tracks with eligible inner kmers.')
         for track in self.tracks:
             with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
                 json.dump(self.tracks[track], json_file, indent = 4)

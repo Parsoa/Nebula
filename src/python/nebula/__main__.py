@@ -36,16 +36,16 @@ def preprocess():
         tracks = {}
         job = reduction.ExtractInnerKmersJob()
         tracks = job.execute()
-        job = reduction.ExtractLociIndicatorKmersJob()
+        job = reduction.ScoreInnerKmersJob()
         tracks = job.execute()
-        job = reduction.FilterLociIndicatorKmersJob(tracks = tracks)
+        job = reduction.FilterInnerKmersJob(tracks = tracks)
         job.execute()
 
     def supply_junction_kmers():
         tracks = {}
         job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
         job.execute()
-        job = junction.JunctionKmersScoringJob(resume_from_reduce = False)
+        job = junction.ScoreJunctionKmersJob(resume_from_reduce = False)
         tracks = job.execute()
         job = junction.FilterJunctionKmersJob(tracks = tracks)
         job.execute()
