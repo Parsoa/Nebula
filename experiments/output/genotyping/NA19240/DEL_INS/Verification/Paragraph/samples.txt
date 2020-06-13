@@ -1,0 +1,2 @@
+#id,path,depth,read length
+NA19240,NA19240.alt_bwamem_GRCh38DH.20150715.YRI.high_coverage.bam,40,100

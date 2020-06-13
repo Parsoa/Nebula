@@ -1,0 +1,3 @@
+BayesTyperTools convertAllele -v HG00514_HG00733.merged_nonredundant.unified.paragraph.sorted.vcf -g bayestyper_GRCh38_bundle_v1.3/GRCh38.fa --keep-imprecise -o HG00514_HG00733.merged_nonredundant.unified.paragraph.sorted.bayestyper.vcf
+bayesTyper_v1.5_linux_x86_64/bin/bayesTyper cluster -v HG00514_HG00733.merged_nonredundant.unified.paragraph.sorted.bayestyper.vcf -s samples.tsv -g bayestyper_GRCh38_bundle_v1.3/GRCh38_canon.fa -d bayestyper_GRCh38_bundle_v1.3/GRCh38_decoy.fa -p 16
+bayesTyper genotype -v bayestyper_unit_1/variant_clusters.bin -c bayestyper_cluster_data -s samples.tsv -g bayestyper_GRCh38_bundle_v1.3/GRCh38_canon.fa -d bayestyper_GRCh38_bundle_v1.3/GRCh38_decoy.fa -o bayestyper_unit_1/bayestyper -z -p 4 --disable-observed-kmers --noise-genotyping

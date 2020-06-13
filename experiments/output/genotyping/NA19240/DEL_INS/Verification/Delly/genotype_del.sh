@@ -1,0 +1,1 @@
+delly call -g GRCh38_full_analysis_set_plus_decoy_hla.fa -v HG00514_HG00733.merged_nonredundant.unified.paragraph.sorted.DEL.vcf -x human.hg38.excl -o ./DEL/genotypes.bcf NA19240.alt_bwamem_GRCh38DH.20150715.YRI.high_coverage.bam

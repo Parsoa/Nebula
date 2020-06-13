@@ -1,0 +1,2 @@
+#id,path,depth,read length
+HG00514,HG00514.alt_bwamem_GRCh38DH.20150715.CHS.high_coverage.bam,40,100

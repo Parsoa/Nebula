@@ -29,7 +29,7 @@ lib/
 coin/
 data/
 misc/
-output/
+/output/
 binaries/
 Jellyfish/
 programming/
