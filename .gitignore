@@ -34,4 +34,8 @@ binaries/
 Jellyfish/
 programming/
 
+scripts/submit.sh
+scripts/syrupy.py
+scripts/syrupy-peak.py
+
 .vscode/
