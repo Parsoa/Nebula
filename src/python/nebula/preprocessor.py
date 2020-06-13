@@ -65,7 +65,7 @@ class EventSetUnificationJob(map_reduce.Job):
         self.create_output_directories()
         tracks = {}
         all_tracks = {}
-        for path in c.bed:
+        for path in c.vcf:
             tracks[path] = {}
             tracks[path].update(vcf.load_tracks_from_file_as_dict(path, parse_header = True))
             for track in tracks[path]:
@@ -99,7 +99,7 @@ class EventSetUnificationJob(map_reduce.Job):
         # merge all svtypes back together
         merged_tracks = bed.sort_tracks(merged_tracks)
         files = {}
-        for path in c.bed:
+        for path in c.vcf:
             name = path.split('/')[-1]
             name = name[0: name.rfind('.')]
             #name = name + '.unified.all.vcf'

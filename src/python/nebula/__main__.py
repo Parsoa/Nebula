@@ -25,8 +25,10 @@ def load_tracks(filter_overlap = True):
     config.Configuration.update({'tracks': tracks})
 
 def misc():
-    #job = cgc.PcaClusteringJob()
-    #job.execute()
+    job = cgc.PcaClusteringJob()
+    job.execute()
+
+def unify():
     job = preprocessor.EventSetUnificationJob()
     job.execute()
 
@@ -85,18 +87,6 @@ def genotype():
             job = cgc.ExportGenotypingKmersJob()
             job.execute()
 
-def verify():
-    c = config.Configuration()
-    load_tracks()
-    job = pacbio.PacBioVerificationJob() 
-    job.execute()
-
-def export():
-    c = config.Configuration()
-    load_tracks()
-    job = cgc.ExportGenotypingKmersJob()
-    job.execute()
-
 def simulate():
     c = config.Configuration()
     if c.seed == 0:
@@ -120,14 +110,12 @@ if __name__ == '__main__':
     config.init()
     print_banner()
     c = config.Configuration()
+    if c.command == 'gc':
+        gc()
     if c.command == 'misc':
         misc()
-    if c.command == 'export':
-        export()
-    if c.command == 'verify':
-        verify()
-    if c.command == 'cluster':
-        cluster()
+    if c.command == 'unify':
+        unify()
     if c.command == 'simulate':
         simulate()
     if c.command == 'genotype':

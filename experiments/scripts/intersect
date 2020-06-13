@@ -1,0 +1,138 @@
+#!/usr/bin/python
+
+import sys
+
+dest = '-a'
+exact = True
+inverse = '-v' in sys.argv
+intersect_only = False
+
+if '-b' in sys.argv:
+    dest = '-b'
+
+if '-ab' in sys.argv:
+    dest = '-ab'
+
+if '-i' in sys.argv:
+    intersect_only = True
+    exact = False
+
+if '-f' in sys.argv:
+    i = sys.argv.index('-f')
+    match = float(sys.argv[i + 1])
+    exact = False
+
+header = None
+
+def index_file(path, get_header = False):
+    index = {} 
+    with open(path) as f:
+        line = f.readline()
+        tokens = line.split()
+        has_header = 'chrom' in tokens[0].lower()
+        if has_header:
+            if get_header:
+                global header
+                header = line.strip()
+                tokens = header.split()
+            line = f.readline()
+        while line:
+            svtype = 'DEL' if 'DEL' in line else 'INS' if 'INS' in line else 'SV'
+            tokens = line.split()
+            chrom = tokens[0].lower().strip()
+            s = chrom + '_' + tokens[1] + '_' + tokens[2]
+            if exact:
+                index[s] = (line, chrom, int(tokens[1]), int(tokens[2]), svtype)
+            else:
+                if chrom not in index:
+                    index[chrom] = []
+                index[chrom].append((line, int(tokens[1]), int(tokens[2]), svtype))
+            line = f.readline()
+    if not exact:
+        for chrom in index:
+            index[chrom] = sorted(index[chrom], key = lambda x: x[1])
+    return index
+
+def overlap(a, b):
+    return max(0, min(a[1], b[1]) - max(a[0], b[0]))
+
+def binary_search(x, a, begin, end, side):
+    m = (end + begin) // 2
+    l = end - begin
+    #print(begin, end)
+    if a[m][side] == x:
+        return m
+    elif a[m][side] > x:
+        if a[m - 1][side] <= x:
+            return m - 1 if side == 1 else m
+        return binary_search(x, a, begin, m, side)
+    elif a[m][side] < x:
+        if a[m + 1][side] > x:
+            return m if side == 1 else m + 1
+        return binary_search(x, a, begin, m - 1, side)
+
+def match_overlap(a, tracks):
+    m = 1 if intersect_only else match
+    l = 1 if intersect_only else a[2] - a[1]
+    #print('searching for', a)
+    #p = binary_search(a[2], tracks, 0, len(tracks) - 1, 1)
+    #q = binary_search(a[1], tracks, 0, len(tracks) - 1, 2)
+    #print('Begin: ', tracks[p])
+    #print('End: ', tracks[p])
+    #exit()
+    choice = (0, -1 if inverse else None)
+    for i, b in enumerate(tracks):
+        o = overlap((a[1], a[2]), (b[1], b[2])) / float(l)
+        # Insertions will have length 1 in reference
+        if a[3] == 'INS':
+            s_a = 0
+            s_b = 0
+            if l == 1:
+                s_a = 50
+            if b[2] - b[1] == 1:
+                s_b = 50
+            if s_a or s_b:
+                m = 1
+                o = overlap((a[1] - s_a, a[2] + s_a), (b[1] - s_b, b[2] + s_b))
+        if o >= m:
+            if inverse:
+                return None, i
+            else:
+                if o > choice[0]:
+                    choice = (o, b)
+    return choice[1], i
+
+def intersect(a, b):
+    i = []
+    if exact:
+        n = 0
+        for track in a:
+            if inverse:
+                if track not in b:
+                    yield a[track] if dest == '-a' else b[track]
+            else:
+                if track in b:
+                    yield a[track] if dest == '-a' else b[track]
+            n += 1
+            #print('Intersect', n, 'out of', len(a), 'tracks.')
+    else:
+        for chrom in a:
+            if not chrom in b:
+                continue
+            for i, track in enumerate(a[chrom]):
+                match, j = match_overlap(track, b[chrom])
+                if match:
+                    yield track if dest == '-a' else [track[0] + '\t' + match[0]] if dest == '-ab' else match
+
+def print_intersection(i):
+    if header:
+        print(header)
+    for line in i:
+        print(line[0].strip())
+
+a_index = index_file(sys.argv[1], True)
+b_index = index_file(sys.argv[2])
+if header:
+    print(header)
+for track in intersect(a_index, b_index):
+    print(track[0].strip())

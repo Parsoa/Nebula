@@ -53,6 +53,8 @@ def parse_args():
     ################## General arguments
     # path to a BED files, for jobs that need one as input
     parser.add_argument("--bed", nargs = '+', default = None)
+    # path to a VCF files, for jobs that need one as input
+    parser.add_argument("--vcf", nargs = '+', default = None)
     # path to a BAM files, for jobs that need one as input
     parser.add_argument("--bam", default = None)
     # whether we are running on CGC or not 
@@ -130,19 +132,11 @@ def parse_args():
     main = argparse.ArgumentParser(prog = 'nebula', add_help = False)
     subparsers = main.add_subparsers(dest = 'command')
     ################## Preprocessing arguments
-    extract_parser = subparsers.add_parser('preprocess', parents = [parser])
-    ################## Genotyping arguments
+    gc_parser = subparsers.add_parser('misc', parents = [parser])
+    unify_parser = subparsers.add_parser('unify', parents = [parser])
     genotype_parser = subparsers.add_parser('genotype', parents = [parser])
-    ################## Simulation arguments
     simulation_parser = subparsers.add_parser('simulate', parents = [parser])
-    ################## End of arguments
-    clustering_parser = subparsers.add_parser('cluster', parents = [parser])
-    ################## End of arguments
-    miscellaneous_parser = subparsers.add_parser('misc', parents = [parser])
-    ################## End of arguments
-    verification_parser = subparsers.add_parser('verify', parents = [parser])
-    ################## End of arguments
-    export_parser = subparsers.add_parser('export', parents = [parser])
+    preprocess_parser = subparsers.add_parser('preprocess', parents = [parser])
     ################## End of arguments
     args = main.parse_args()
     return args

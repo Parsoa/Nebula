@@ -571,13 +571,22 @@ class PcaClusteringJob(map_reduce.Job):
         for name in payload['data']:
             if name in regions:
                 print(name)
-                if regions[name] == 'Africa':
-                    continue
-                tracks = bed.load_tracks_from_file(os.path.join(c.workdir, name + '.bed' ))
+                #if regions[name] == 'Africa':
+                #    continue
+                tracks = bed.load_tracks_from_file(os.path.join(c.workdir, 'Genotypes', name + '.bed' ))
                 features.append([self.ordinalize_genotype(t.lp_genotype) for t in tracks])
                 populations.append(regions[name])
+
+        for i, f in enumerate(features):
+            print(len(f))
+            print(f[:100])
+        print(len(features))
+        print(len(populations))
+
         pca = PCA(n_components = 2)
         components = pca.fit_transform(features)
+
+
         print(sorted(set(populations)))
 
         fig = plt.figure(figsize = (8,8))
@@ -586,7 +595,7 @@ class PcaClusteringJob(map_reduce.Job):
         ax.set_ylabel('Principal Component 2', fontsize = 15)
         ax.set_title('2 component PCA', fontsize = 20)
         #colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-        colors = ['xkcd:' + a for a in ['blue', 'green', 'red', 'pink', 'brown', 'purple', 'yellow']][1:]
+        colors = ['xkcd:' + a for a in ['blue', 'green', 'red', 'pink', 'brown', 'purple', 'yellow']]
         for j, p in enumerate(sorted(set(populations))):
             print(p, colors[j])
             a = [f[0] for i, f in enumerate(components) if populations[i] == p]
@@ -596,7 +605,7 @@ class PcaClusteringJob(map_reduce.Job):
             print('====')
             ax.scatter(a, b, color = colors[j])
         ax.legend(sorted(set(populations)))
-        fig.savefig(os.path.join(c.workdir, 'pca.png'))
+        #fig.savefig(os.path.join(c.workdir, 'pca.png'))
         plt.close(fig)
         exit()
 

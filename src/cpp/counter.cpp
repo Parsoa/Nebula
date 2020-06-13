@@ -410,7 +410,7 @@ bool load_batch_bam(int threads, int batch_size, int p) {
         bam_entries[p][i].clear() ;
     }
     int n = 0 ;
-    while (__sam_read1(bam_file, bam_header, bam_iterator) > 0) {
+    while (sam_read1(bam_file, bam_header, bam_iterator) > 0) {
         //cout << bam_iterator << endl ;
         //uint8_t* data = (uint8_t*) malloc(sizeof(uint8_t) * bam_iterator->l_data) ;
         //memcpy(data, bam_iterator->data, bam_iterator->l_data) ;
@@ -426,6 +426,7 @@ bool load_batch_bam(int threads, int batch_size, int p) {
         if (n == batch_size) {
             return true ;
         }
+        bam_iterator = bam_init1() ; 
     }
     if(bam_entries[p].empty()) {
         return false ;
@@ -453,6 +454,7 @@ unordered_map<uint64_t, int> process_batch_bam(vector<bam1_t*> alignments) {
         seq[l] = '\0' ; // null terminate
         process_read(seq, l, _counts) ;
     }
+    
     return _counts ;
 }
 
@@ -576,7 +578,7 @@ int process_reads(int threads, int mode, string input_file) {
         for(int i = 0; i <= threads; i++) {
             if (i == 0) {
                 if (mode == BAM) {
-                    load_batch_bam(threads, batch_size, (p + 1) % 2) ;
+                    load_batch_bam(threads, batch_size, (p + 1) % 2, b) ;
                 } else {
                     load_batch_fastq(threads, batch_size, (p + 1) % 2) ;
                 }
