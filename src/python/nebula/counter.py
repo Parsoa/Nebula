@@ -51,7 +51,7 @@ class BaseExactCountingJob(map_reduce.Job):
     def transform(self):
         c = config.Configuration()
         self.create_output_directories()
-        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp')
+        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/counter')
         if c.bam:
             command = os.path.join(cpp_dir, "counter.out") + " " + self.get_current_job_directory() +  " " + c.bam + " " + str(16)
         else:

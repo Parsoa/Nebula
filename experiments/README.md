@@ -124,11 +124,14 @@ output/
 
 ## Nebula
 
-Nebula first needs to preprocess HG00514 and HG00733 for kmers. Before running the preprocessing stage one needs to extract kmers for GC content estimation for Nebula. This stage selects kmers from different regions of the reference genome with different GC content levels. These kmers will be counted in the genotyping sample to provide better estimates of coverage across the genome. This need only be done once as the kmers are only dependent on the reference.
+Before running the preprocessing stage, one needs to extract kmers for GC content estimation. This stage selects kmers from different regions of the reference genome with different GC content levels. These kmers will be counted in the genotyping sample to provide better estimates of coverage across the genome. This need only be done once as the kmers are only dependent on the reference.
 
 ```
 # Extract GC content esimtation kmers
 nebula.sh gc --workdir output/preprocessing/GC_Kmers --reference GRC38.fasta --jellyfish hg38_mer_counts_32k.jf
+```
+
+Now we can preprocess HG00514 nad HG00733:
 
 # For HG00514
 nebula.sh preprocess --bed HG00514.unified.bed --reference GRC38.fasta --bam HG00514.alt_bwamem_GRCh38DH.20150715.CHS.high_coverage.bam --workdir output/preprocessing/HG00514 --jellyfish hg38_mer_counts_32k.jf --gckmers gc_kmers.json
@@ -140,13 +143,13 @@ nebula.sh genotype --bed HG00733.unified.bed --reference GRC38.fasta --bam HG007
 
 This should take around 2 hours for each sample. We ran the inversion experiments during a later stage and separately, so we repeated the above steps for inversions. Alternatively, once can pass BED files for inversions along with the one for deletions and insertions and get the same results. This avoids the overhead of running the preprocessing for the same sample twice.
 
-Once completed, the third sample can be genotyped. First (optionally) convert the BAM file for NA19240 into FASTQ using `bedtools bamtofastq`, then run:
+Once completed, the third sample can be genotyped. First (optionally) convert the downloaded BAM file for NA19240 into FASTQ using `bedtools bamtofastq`, then run:
 
 ```
 nebula.sh genotype --bed HG00514.unified.bed HG00733.unified.bed --bam NA19240.alt_bwamem_GRCh38DH.20150715.YRI.high_coverage.fastq --workdir output/genotyping/NA19240/HG00514_HG00733 --kmers output/preprocessing/HG00514/ExportGenotypingKmersJob/kmers.json output/preprocessing/HG00733/ExportGenotypingKmersJob/kmers.json
 ```
 
-Although Nebula is meant for unmapped FASTQ files, BAM files are also accepted as input.
+Nebula is meant to be run on unmapped FASTQ files, however mapped BAM files are also accepted as input. Just use `--bam` instead of `--fastq`. Nebula will simply iterate over the BAM file and ignores all mapping information.
 
 ## BayesTyper
 

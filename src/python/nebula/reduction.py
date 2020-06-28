@@ -208,6 +208,7 @@ class ScoreInnerKmersJob(map_reduce.Job):
         c = config.Configuration()
         if len(self.inner_kmers) == 0:
             return None
+        l = float(len(sequence))
         index = 0
         t = time.time()
         for kmer in stream_kmers(c.ksize, True, True, sequence):
@@ -224,7 +225,7 @@ class ScoreInnerKmersJob(map_reduce.Job):
             index += 1
             if index % 1000000 == 0:
                 s = time.time()
-                p = index / float(len(sequence))
+                p = index / l
                 e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
                 print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
         return None

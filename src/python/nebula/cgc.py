@@ -206,8 +206,9 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         else:
             name = 'kmers.json'
             path = os.path.join(self.get_current_job_directory(), name)
-        with open(path, 'w') as json_file:
-            json.dump(kmers, json_file, indent = 4)
+        #TODO: is this necessary
+        #with open(path, 'w') as json_file:
+        #    json.dump(kmers, json_file, indent = 4)
 
     def export_genotyping_tracks(self):
         c = config.Configuration()
@@ -228,10 +229,10 @@ class CgcCounterJob(counter.BaseExactCountingJob):
                     self.tracks[track] = {'inner_kmers': {}, 'junction_kmers': {}}
                 self.tracks[track]['junction_kmers'][kmer] = self.junction_kmers[kmer]
                 self.tracks[track]['junction_kmers'][kmer]['type'] = 'junction'
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
-        with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
-            json.dump(self.tracks, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+        #    json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        #with open(os.path.join(self.get_current_job_directory(), 'tracks.json'), 'w') as json_file:
+        #    json.dump(self.tracks, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

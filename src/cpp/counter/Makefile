@@ -14,4 +14,4 @@ docker: counter.cpp
 	$(CC) $(DCFLAGS) $< -o counter.out $(DLDFLAGS)
 
 counter: counter.cpp
-	$(CC) $(CFLAGS) $< -o counter.out $(LDFLAGS)
+	$(CC) -g $(CFLAGS) $< -o counter.out $(LDFLAGS)

@@ -30,6 +30,8 @@ from nebula.chromosomes import *
 
 import pysam
 
+import numpy as np
+
 print = pretty_print
 
 # ============================================================================================================================ #
@@ -77,6 +79,9 @@ class ExtractJunctionKmersJob(map_reduce.Job):
             system_print_warning('No junction kmers found for ' + track_name + '.')
             return None
 
+    def calculate_average_read_quality(self, read):
+        q = read.query_qualities
+
     def extract_mapping_kmers(self, track):
         c = config.Configuration()
         junction_kmers = {}
@@ -91,64 +96,106 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                 reads = self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack)
         except:
             return {}
-        locus = 'junction_' + track.id
+        pair_map = {}
+        n = 0
         for read in reads:
+            n += 1
             # These MAPQ scores vary from aligner to aligner but < 5 should be bad enough anywhere
             # if read.mapping_quality <= 5:
             #    system_print_warning('Skipping read low mapping quality.')
             #    continue
-            seq = read.query_sequence
-            if read.query_alignment_length != len(read.query_sequence): # not everything was mapped
-                if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
-                    cigartuples = read.cigartuples
-                    clips = []
-                    offset = 0
-                    for cigar in cigartuples:
-                        if cigar[0] == 4: #soft clip
-                            clips.append((offset, offset + cigar[1]))
-                        offset += cigar[1]
-                    index = 0
-                    # Should try and correct for sequencing errors in masks by doing a consensus
-                    for kmer in stream_kmers(c.ksize, True, True, seq):
-                        if 'N' in kmer:
-                            index += 1
-                            continue
-                        if self.is_clipped((index, index + c.ksize), clips):
-                            if not kmer in junction_kmers:
-                                junction_kmers[kmer] = {
-                                    'count': 0,
-                                    'source': 'mapping',
-                                    'loci': {
-                                        locus: {
-                                            'masks': {}
-                                         }
-                                    },
-                                    'read': {
-                                        'end': read.reference_end,
-                                        'start': read.reference_start, 
-                                    },
-                                }
+            if read.query_alignment_length == len(read.query_sequence): # not everything was mapped
+                continue
+            #TODO: figure out why
+            #if not read.cigartuples:
+            #    print(read.query_sequence)
+            #    print(read.query_alignment_length, len(read.query_sequence))
+            if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
+                clips = []
+                offset = 0
+                deletions = []
+                insertions = []
+                for cigar in read.cigartuples:
+                    if cigar[0] == 4: #soft clip
+                        clips.append((offset, offset + cigar[1]))
+                    if cigar[0] == 2: #deletion
+                        if cigar[1] >= abs(int(track.svlen)) * 0.9 and cigar[1] <= abs(int(track.svlen)) * 1.1:
+                            deletions.append((offset, offset + cigar[1]))
+                    if cigar[0] == 1: #insertion
+                        if cigar[1] >= abs(int(track.svlen)) * 0.9 and cigar[1] <= abs(int(track.svlen)) * 1.1:
+                            insertions.append((offset, offset + cigar[1]))
+                    offset += cigar[1]
+                if c.filter_overlapping_pairs:
+                    # find pairs that are too close
+                    if read.qname not in pair_map:
+                        pair_map[read.qname] = read
+                    else:
+                        if read.reference_start - pair_map[read.qname].reference_end < 10 or \
+                                pair_map[read.qname].reference_end - pair_map[read.qname].reference_start < 10:
+                                    #print('Filtering read pair.')
+                                    continue
+                #TODO Should try and correct for sequencing errors in masks by doing a consensus
+                seq = read.query_sequence
+                index = 0
+                for kmer in stream_kmers(c.ksize, True, True, seq):
+                    if 'N' in kmer:
+                        index += 1
+                        continue
+                    b = self.is_clipped((index, index + c.ksize), clips, deletions, insertions) 
+                    if b:
+                        locus = 'junction_' + track.id
+                        if not kmer in junction_kmers:
+                            junction_kmers[kmer] = {
+                                'count': 0,
+                                'source': b,
+                                'loci': {
+                                    locus: {
+                                        'masks': {}
+                                        }
+                                },
+                                'read': {
+                                    'end': read.reference_end,
+                                    'start': read.reference_start,
+                                    'qname': read.qname
+                                },
+                            }
                             if len(seq[index - c.ksize: index]) == c.ksize:
                                 junction_kmers[kmer]['loci'][locus]['masks']['left'] = seq[index - c.ksize: index]
                             if len(seq[index + c.ksize: index + c.ksize + c.ksize]) == c.ksize:
                                 junction_kmers[kmer]['loci'][locus]['masks']['right'] = seq[index + c.ksize: index + c.ksize + c.ksize]
-                            junction_kmers[kmer]['count'] += 1
-                        index += 1
-        incomplete_kmers = {kmer: junction_kmers[kmer] for kmer in junction_kmers if len(junction_kmers[kmer]['loci'][locus]['masks']) != 2}
+                        junction_kmers[kmer]['count'] += 1
+                    index += 1
+        #print("Found", n, "reads.")
+        #incomplete_kmers = {kmer: junction_kmers[kmer] for kmer in junction_kmers if len(junction_kmers[kmer]['loci'][locus]['masks']) != 2}
         _junction_kmers = {}
         for kmer in junction_kmers:
-            #if junction_kmers[kmer]['count'] >= min(3, c.coverage / 4):
-            _junction_kmers[kmer] = junction_kmers[kmer]
+            if junction_kmers[kmer]['count'] >= min(3, c.coverage / 4):
+                _junction_kmers[kmer] = junction_kmers[kmer]
         return _junction_kmers
 
-    def is_clipped(self, kmer, clips):
+    #TODO: Is this a mistake?
+    def is_clipped(self, kmer, clips, deletions, insertions):
         for clip in clips:
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
-                return True
+                return 'junction'
+        for clip in deletions:
+            if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
+                return 'deletion'
+        for clip in insertions:
+            if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
+                return 'insertion'
         return False
 
     def overlap(self, a, b):
         return max(0, min(a[1], b[1]) - max(a[0], b[0]))
+
+    def reduce(self):
+        c = config.Configuration()
+        map_reduce.Job.reduce(self)
+        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/scanner')
+        command = os.path.join(cpp_dir, "scanner.out") + " " + c.reference + " " + self.get_output_directory() +  " " + str(24)
+        print(command)
+        output = subprocess.call(command, shell = True)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -179,8 +226,10 @@ class ScoreJunctionKmersJob(map_reduce.Job):
         c = config.Configuration()
         self.kmers = {}
         self.tracks = self.load_previous_job_results()
+        n = 0
         for track in self.tracks:
             kmers = json.load(open(self.tracks[track]))
+            n += 1
             for kmer in kmers:
                 k = canonicalize(kmer)
                 if not k in self.kmers:
@@ -189,10 +238,16 @@ class ScoreJunctionKmersJob(map_reduce.Job):
                     # keeps track of reference loci
                     self.kmers[k]['count'] = 0
                     self.kmers[k]['tracks'] = {}
+                    # legacy
                     self.kmers[k].pop('read', None)
                     self.kmers[k].pop('reads', None)
                 self.kmers[k]['loci'].update(kmers[kmer]['loci'])
                 self.kmers[k]['tracks'][track] = 1
+            if n % 100 == 0:
+                print('Loaded', n, 'out of', len(self.tracks), 'tracks')
+        system_print_high('Scanning for', len(self.kmers), 'kmers..')
+        #launch_scanner()
+        #exit()
         self.chroms = extract_whole_genome()
         self.round_robin(self.chroms)
 
@@ -223,9 +278,11 @@ class ScoreJunctionKmersJob(map_reduce.Job):
 
     def merge_counts(self):
         c = config.Configuration()
-        system_print('Merging reference counts..')
+        system_print_normal('Merging reference counts..')
         for batch in self.load_output():
             for kmer in batch:
+                if not kmer in self.kmers:
+                    continue
                 self.kmers[kmer]['count'] += batch[kmer]['count']
                 if 'loci' in batch[kmer]:
                     self.kmers[kmer]['loci'].update(batch[kmer]['loci'])
@@ -241,17 +298,20 @@ class ScoreJunctionKmersJob(map_reduce.Job):
                 self.tracks[track][kmer] = self.kmers[kmer]
             n += 1
             if n % 10000 == 0:
-                system_print('Processed', n, 'out of', len(self.kmers), 'kmers.\r')
-        system_print_high('Merged reference counts for', len(self.kmers), 'kmers.')
+                system_print_normal('Processed', n, 'out of', len(self.kmers), 'kmers.\r')
+        system_print_normal('Merged reference counts for', len(self.kmers), 'kmers.')
+        with open('counts.txt', 'w') as txt_file:
+            for kmer in self.kmers:
+                txt_file.write(kmer + ':' + str(self.kmers[kmer]['count']) + '\n')
         n = 0
-        for track in self.tracks:
-            with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
-                json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
-            n += 1
-            if n % 1000 == 0:
-                system_print('Exported', n, 'out of', len(self.tracks), 'tracks.\r')
-        with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
-            json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
+        #for track in self.tracks:
+        #    with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
+        #        json.dump(self.tracks[track], json_file, indent = 4, sort_keys = True)
+        #    n += 1
+        #    if n % 1000 == 0:
+        #        system_print('Exported', n, 'out of', len(self.tracks), 'tracks.\r')
+        #with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
+        #    json.dump({track: track + '.json' for track in self.tracks}, json_file, indent = 4)
         system_print_high('Exported junction kmers for', len(self.tracks), 'tracks.')
         return self.tracks
 
@@ -280,31 +340,31 @@ class FilterJunctionKmersJob(reduction.FilterInnerKmersJob):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    #def execute(self):
-    #    c = config.Configuration()
-    #    system_print_high('================== Stage ' + self._name + 'started..')
-    #    start = time.clock() 
-    #    self.create_output_directories()
-    #    self.kmers = {}
-    #    for track in self.tracks:
-    #        self.transform(self.tracks[track], track)
-    #    self.filter_loci()
-    #    self.export_kmers()
-    #    end = time.clock()
-    #    system_print_high('################## Stage ' + self._name + ' finished. Execution time', end - start)
-
-    def load_inputs(self):
+    def execute(self):
         c = config.Configuration()
+        system_print_high('================== Stage ' + self._name + 'started..')
+        start = time.clock() 
+        self.create_output_directories()
         self.kmers = {}
-        self.tracks = self.load_previous_job_results()
-        self.round_robin(self.tracks)
+        for track in self.tracks:
+            self.transform(self.tracks[track], track)
+        self.filter_loci()
+        self.export_kmers()
+        end = time.clock()
+        system_print_high('################## Stage ' + self._name + ' finished. Execution time', end - start)
+
+    #def load_inputs(self):
+    #    c = config.Configuration()
+    #    self.kmers = {}
+    #    self.tracks = self.load_previous_job_results()
+    #    self.round_robin(self.tracks)
 
     # only breakpoint loci may lack a mask, if has more than one loci in such cases check for overlap. If overlap found ignore kmer. If not found then ok.
     def transform(self, track, track_name):
-        #if track_name:
-        with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
-            kmers = json.load(json_file)
-            #kmers = track
+        if track_name:
+        #with open(os.path.join(self.get_previous_job_directory(), track), 'r') as json_file:
+            #kmers = json.load(json_file)
+            kmers = track
             for kmer in kmers:
                 if kmer.find('N') != -1:
                     continue

@@ -45,16 +45,17 @@ def preprocess():
 
     def supply_junction_kmers():
         tracks = {}
-        job = junction.ExtractJunctionKmersJob(resume_from_reduce = False)
+        job = junction.ExtractJunctionKmersJob()
         job.execute()
-        job = junction.ScoreJunctionKmersJob(resume_from_reduce = False)
+        exit()
+        job = junction.ScoreJunctionKmersJob()
         tracks = job.execute()
         job = junction.FilterJunctionKmersJob(tracks = tracks)
         job.execute()
 
     load_tracks()
-    supply_inner_kmers()
-    supply_junction_kmers()
+    #supply_inner_kmers()
+    #supply_junction_kmers()
     job = preprocessor.MixKmersJob()
     job.execute()
 

@@ -53,7 +53,7 @@ class Job(object):
     def execute(self):
         c = config.Configuration()
         system_print_high('================== Stage ' + self._name + ' started..')
-        start = time.clock() 
+        start = time.time() 
         self.find_thread_count()
         self.create_output_directories()
         self.load_inputs()
@@ -63,7 +63,7 @@ class Job(object):
         else:
             system_print_high('Resuming from reduce...')
         output = self.reduce()
-        end = time.clock()
+        end = time.time()
         system_print_high('################## Stage ' + self._name + ' finished. Execution time {}.'.format(end - start))
         return output
 

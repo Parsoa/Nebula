@@ -71,6 +71,8 @@ def parse_args():
     parser.add_argument("--seed", type = int, default = 0)
     # triggers the debug mode
     parser.add_argument("--debug", action = 'store_true')
+    # triggers the debug mode
+    parser.add_argument("--filter-overlapping-pairs", action = 'store_true')
     # set of exons for the current reference
     parser.add_argument("--exons", default = '/share/hormozdiarilab/Codes/NebulousSerendipity/data/Exons/hg38.exons.filtered.bed')
     # path to a FASTQ files, for jobs that need one as input

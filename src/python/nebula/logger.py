@@ -56,8 +56,16 @@ def system_print(*args):
     if 0 >= LOG_LEVEL:
         print(white(*args))
 
-def system_print_high(*args):
+def system_print_low(*args):
+    if 0 >= LOG_LEVEL:
+        print(white(*args))
+
+def system_print_normal(*args):
     if 1 >= LOG_LEVEL:
+        print(white(*args))
+
+def system_print_high(*args):
+    if 2 >= LOG_LEVEL:
         print(white(*args))
 
 def system_print_warning(*args):

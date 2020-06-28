@@ -4,9 +4,9 @@ import sys
 import subprocess
 
 # usage
-# lift.py <file.bed> <19|38>
+# lift.py <file.bed> <19|[38]>
 # or
-# lift.py chrom begin end
+# lift.py chrom begin end <19|[38]>
 
 # output
 # liftted coordinates, original coordinates, other fielda (if available)
@@ -29,12 +29,13 @@ if __name__ == '__main__':
         exit()
     name = bed[:bed.find('.bed')]
     FNULL = open(os.devnull, 'w')
-    with open(name + '.lift.bed', 'w') as c:
+    with open(name + '.lift_' + str(to) + '.bed', 'w') as c:
         with open(bed) as f:
             for line in f.readlines():
                 tokens = line.split()
                 if 'chrom' in tokens[0].lower():
-                    c.write('CHROM\tBEGIN\tEND\tCHROM_OLD\tBEGIN_OLD\tEND_OLD\t' + reduce(lambda x, y: x + '\t' + y, tokens[3:]) + '\n')
+                    #c.write('CHROM\tBEGIN\tEND\tCHROM_OLD\tBEGIN_OLD\tEND_OLD\t' + reduce(lambda x, y: x + '\t' + y, tokens[3:]) + '\n')
+                    c.write('CHROM\tBEGIN\tEND\t' + reduce(lambda x, y: x + '\t' + y, tokens[3:]) + '\n')
                     continue
                 name = tokens[0] + '_' + tokens[1] + '_' + tokens[2] + '.bed'
                 with open(name, 'w') as t:
