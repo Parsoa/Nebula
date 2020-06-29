@@ -64,9 +64,14 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         self.tracks = c.tracks
+        self.chroms = extract_whole_genome()
         self.round_robin(self.tracks)
 
     def transform(self, track, track_name):
+        if abs(int(track.svlen)) < 50:
+            return None
+        #if track_name != 'DEL@chr1_6858655_6858832':
+        #    return None
         c = config.Configuration()
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         kmers = self.extract_mapping_kmers(track)
@@ -85,38 +90,70 @@ class ExtractJunctionKmersJob(map_reduce.Job):
     def extract_mapping_kmers(self, track):
         c = config.Configuration()
         junction_kmers = {}
-        slack = 120
+        slack = c.read_length
         stride = c.ksize
         try:
             # Events that alter or remove a part of the reference
             if track.svtype == 'DEL' or track.svtype == 'INV':
-                reads = chain(self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack), self.alignments.fetch(track.chrom, track.end - slack, track.end + slack))
+                reads = chain(self.alignments.fetch(track.chrom, track.begin - 1 * slack, track.begin + 1 * slack), self.alignments.fetch(track.chrom, track.end - 1 * slack, track.end + 1 * slack))
             # Events that add sequence that wasn't there
             if track.svtype == 'INS' or track.svtype == 'ALU' or track.svtype == 'MEI':
-                reads = self.alignments.fetch(track.chrom, track.begin - slack, track.begin + slack)
+                reads = self.alignments.fetch(track.chrom, track.begin - 1 * slack, track.begin + 1 * slack)
         except:
             return {}
-        pair_map = {}
+        #_reads = []
+        #pair_map = {}
+        #if c.filter_overlapping_pairs:
+        #    for read in reads:
+        #        if read.qname not in pair_map:
+        #            if not read.is_paired or read.mate_is_unmapped or read.is_unmapped:
+        #                _reads.append(read)
+        #            else:
+        #                pair_map[read.qname] = read
+        #        else:
+        #            if abs(read.reference_start - pair_map[read.qname].reference_end) < 10 or \
+        #                abs(pair_map[read.qname].reference_start - read.reference_end) < 10:
+        #                    pair_map.pop(read.qname, None)
+        #                    continue
+        #            else:
+        #                _reads.append(read)
+        #                _reads.append(pair_map[read.qname])
+        #print('Remaining', len(pair_map))
+        #for qname in pair_map:
+        #    _reads.append(pair_map[qname])
+        #print('Processing ', len(_reads), 'reads..')
         n = 0
         for read in reads:
-            n += 1
+            #if read.qname != 'H2YHMBCXX:17:8:564672:0':
+            #if read.qname != 'H2YHMBCXX:32:10:2827708:0':
+            #    continue
+            #print('---------------------------------------------')
+            #print(read.qname)
             # These MAPQ scores vary from aligner to aligner but < 5 should be bad enough anywhere
             # if read.mapping_quality <= 5:
             #    system_print_warning('Skipping read low mapping quality.')
             #    continue
-            if read.query_alignment_length == len(read.query_sequence): # not everything was mapped
-                continue
             #TODO: figure out why
             #if not read.cigartuples:
             #    print(read.query_sequence)
             #    print(read.query_alignment_length, len(read.query_sequence))
+            if read.query_alignment_length == len(read.query_sequence): # not everything was mapped
+                continue
             if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
+                n += 1
                 clips = []
                 offset = 0
                 deletions = []
                 insertions = []
+                i = 0
+                left_clipped = False
+                right_clipped = False
                 for cigar in read.cigartuples:
                     if cigar[0] == 4: #soft clip
+                        if i == 0:
+                            left_clipped = True
+                        else:
+                            right_clipped = True
                         clips.append((offset, offset + cigar[1]))
                     if cigar[0] == 2: #deletion
                         if cigar[1] >= abs(int(track.svlen)) * 0.9 and cigar[1] <= abs(int(track.svlen)) * 1.1:
@@ -125,15 +162,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                         if cigar[1] >= abs(int(track.svlen)) * 0.9 and cigar[1] <= abs(int(track.svlen)) * 1.1:
                             insertions.append((offset, offset + cigar[1]))
                     offset += cigar[1]
-                if c.filter_overlapping_pairs:
-                    # find pairs that are too close
-                    if read.qname not in pair_map:
-                        pair_map[read.qname] = read
-                    else:
-                        if read.reference_start - pair_map[read.qname].reference_end < 10 or \
-                                pair_map[read.qname].reference_end - pair_map[read.qname].reference_start < 10:
-                                    #print('Filtering read pair.')
-                                    continue
+                    i += 1
                 #TODO Should try and correct for sequencing errors in masks by doing a consensus
                 seq = read.query_sequence
                 index = 0
@@ -141,8 +170,9 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                     if 'N' in kmer:
                         index += 1
                         continue
-                    b = self.is_clipped((index, index + c.ksize), clips, deletions, insertions) 
+                    b = self.is_clipped(track, (index, index + c.ksize), read, clips, deletions, insertions, right_clipped, left_clipped) 
                     if b:
+                        #print('Selecting', kmer)
                         locus = 'junction_' + track.id
                         if not kmer in junction_kmers:
                             junction_kmers[kmer] = {
@@ -174,9 +204,35 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         return _junction_kmers
 
     #TODO: Is this a mistake?
-    def is_clipped(self, kmer, clips, deletions, insertions):
-        for clip in clips:
+    def is_clipped(self, track, kmer, read, clips, deletions, insertions, right_clipped, left_clipped):
+        for i, clip in enumerate(clips):
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
+                if i == 0 and left_clipped:
+                    # kmer[0] < clip[1] always
+                    assert kmer[0] <= clip[1]
+                    ref_index = read.reference_start - (clip[1] - kmer[0])
+                    ref_sequence = chroms[track.chrom][ref_index: ref_index + 32]
+                    #print('Left', read.query_sequence[kmer[0]: kmer[0] + 32], ' = ', ref_sequence)
+                    if is_canonical_subsequence(read.query_sequence[kmer[0] + 1: kmer[0] + 31], ref_sequence):
+                        return None
+                elif i == 0 and right_clipped:
+                    # kmer[1] > clip[0] always
+                    assert kmer[1] >= clip[0]
+                    ref_index = read.reference_end + (kmer[1] - clip[0])
+                    ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
+                    #print('Left', read.query_sequence[kmer[0]: kmer[0] + 32], ' = ', ref_sequence)
+                    if is_canonical_subsequence(read.query_sequence[kmer[0] + 1: kmer[0] + 31], ref_sequence):
+                        return None
+                elif i == 1 and right_clipped:
+                    assert kmer[1] >= clip[0]
+                    ref_index = read.reference_end + (kmer[1] - clip[0])
+                    ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
+                    #print('Right', read.query_sequence[kmer[0]: kmer[0] + 32], ' = ', ref_sequence)
+                    if is_canonical_subsequence(read.query_sequence[kmer[0] + 1: kmer[0] + 31], ref_sequence):
+                        return None
+                else:
+                    #print(i, clips, right_clipped, left_clipped)
+                    assert False
                 return 'junction'
         for clip in deletions:
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
@@ -192,6 +248,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
     def reduce(self):
         c = config.Configuration()
         map_reduce.Job.reduce(self)
+        #return None
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/scanner')
         command = os.path.join(cpp_dir, "scanner.out") + " " + c.reference + " " + self.get_output_directory() +  " " + str(24)
         print(command)

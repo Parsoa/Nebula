@@ -55,8 +55,8 @@ def preprocess():
 
     load_tracks()
     #supply_inner_kmers()
-    #supply_junction_kmers()
-    job = preprocessor.MixKmersJob()
+    supply_junction_kmers()
+    #job = preprocessor.MixKmersJob()
     job.execute()
 
 # ============================================================================================================================ #

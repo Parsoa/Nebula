@@ -64,7 +64,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
         self.chroms = extract_whole_genome()
         self.tracks = c.tracks
         self.load_reference_counts_provider()
-        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000)
+        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000 and track.end - track.begin > 50)
 
     def transform(self, track, track_name):
         debug_breakpoint()

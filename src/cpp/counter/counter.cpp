@@ -50,177 +50,6 @@ std::unordered_map<uint64_t, std::vector<uint64_t>*> masks ;
 // ============================================================================= \\
 // ============================================================================= \\
 
-//void __bam_cigar2rqlens(int n_cigar, const uint32_t *cigar, int *rlen, int *qlen)
-//{
-//    int k;
-//    *rlen = *qlen = 0;
-//    for (k = 0; k < n_cigar; ++k) {
-//        int type = bam_cigar_type(bam_cigar_op(cigar[k]));
-//        int len = bam_cigar_oplen(cigar[k]);
-//        if (type & 1) *qlen += len;
-//        if (type & 2) *rlen += len;
-//    }
-//}
-//
-//static void __swap_data(const bam1_core_t *c, int l_data, uint8_t *data, int is_host)
-//{
-//    uint32_t *cigar = (uint32_t*)(data + c->l_qname);
-//    uint32_t i;
-//    for (i = 0; i < c->n_cigar; ++i) ed_swap_4p(&cigar[i]);
-//}
-//
-//static int __do_realloc_bam_data(bam1_t *b, size_t desired)
-//{
-//    uint32_t new_m_data;
-//    uint8_t *new_data;
-//    new_m_data = desired;
-//    kroundup32(new_m_data);
-//    if (new_m_data < desired) {
-//        errno = ENOMEM; // Not strictly true but we can't store the size
-//        return -1;
-//    }
-//    //new_data = (uint8_t*) realloc(b->data, new_m_data);
-//    //TODO: this has to be freed
-//    new_data = (uint8_t*) malloc(sizeof(uint8_t) * new_m_data);
-//    if (!new_data) return -1;
-//    b->data = new_data;
-//    b->m_data = new_m_data;
-//    return 0;
-//}
-//
-//static inline int __realloc_bam_data(bam1_t *b, size_t desired)
-//{
-//    //if (desired <= b->m_data) return 0;
-//    return __do_realloc_bam_data(b, desired);
-//}
-//
-//static inline int __possibly_expand_bam_data(bam1_t *b, size_t bytes) {
-//    uint32_t new_len = b->l_data + bytes;
-//
-//    if (new_len > INT32_MAX || new_len < b->l_data) {
-//        errno = ENOMEM;
-//        return -1;
-//    }
-//    if (new_len <= b->m_data) return 0;
-//    return __do_realloc_bam_data(b, new_len);
-//}
-//
-//static int bam_tag2cigar(bam1_t *b, int recal_bin, int give_warning) // return 0 if CIGAR is untouched; 1 if CIGAR is updated with CG
-//{
-//    bam1_core_t *c = &b->core;
-//    uint32_t cigar_st, n_cigar4, CG_st, CG_en, ori_len = b->l_data, *cigar0, CG_len, fake_bytes;
-//    uint8_t *CG;
-//
-//    // test where there is a real CIGAR in the CG tag to move
-//    if (c->n_cigar == 0 || c->tid < 0 || c->pos < 0) return 0;
-//    cigar0 = bam_get_cigar(b);
-//    if (bam_cigar_op(cigar0[0]) != BAM_CSOFT_CLIP || bam_cigar_oplen(cigar0[0]) != c->l_qseq) return 0;
-//    fake_bytes = c->n_cigar * 4;
-//    if ((CG = bam_aux_get(b, "CG")) == 0) return 0; // no CG tag
-//    if (CG[0] != 'B' || CG[1] != 'I') return 0; // not of type B,I
-//    CG_len = le_to_u32(CG + 2);
-//    if (CG_len < c->n_cigar || CG_len >= 1U<<29) return 0; // don't move if the real CIGAR length is shorter than the fake cigar length
-//
-//    // move from the CG tag to the right position
-//    cigar_st = (uint8_t*)cigar0 - b->data;
-//    c->n_cigar = CG_len;
-//    n_cigar4 = c->n_cigar * 4;
-//    CG_st = CG - b->data - 2;
-//    CG_en = CG_st + 8 + n_cigar4;
-//    if (__possibly_expand_bam_data(b, n_cigar4 - fake_bytes) < 0) return -1;
-//    b->l_data = b->l_data - fake_bytes + n_cigar4; // we need c->n_cigar-fake_bytes bytes to swap CIGAR to the right place
-//    memmove(b->data + cigar_st + n_cigar4, b->data + cigar_st + fake_bytes, ori_len - (cigar_st + fake_bytes)); // insert c->n_cigar-fake_bytes empty space to make room
-//    memcpy(b->data + cigar_st, b->data + (n_cigar4 - fake_bytes) + CG_st + 8, n_cigar4); // copy the real CIGAR to the right place; -fake_bytes for the fake CIGAR
-//    if (ori_len > CG_en) // move data after the CG tag
-//        memmove(b->data + CG_st + n_cigar4 - fake_bytes, b->data + CG_en + n_cigar4 - fake_bytes, ori_len - CG_en);
-//    b->l_data -= n_cigar4 + 8; // 8: CGBI (4 bytes) and CGBI length (4)
-//    if (recal_bin)
-//        b->core.bin = hts_reg2bin(b->core.pos, b->core.pos + bam_cigar2rlen(b->core.n_cigar, bam_get_cigar(b)), 14, 5);
-//    if (give_warning)
-//        hts_log_error("%s encodes a CIGAR with %d operators at the CG tag", bam_get_qname(b), c->n_cigar);
-//    return 1;
-//}
-//
-//
-//int __bam_read1(BGZF *fp, bam1_t *b)
-//{
-//    //bam1_core_t *c = &b->core;
-//    bam1_core_t d ;
-//    bam1_core_t *c = &d ; //new bam1_core_t() ;
-//    b = new bam1_t() ;
-//
-//    int32_t block_len, ret, i;
-//    uint32_t x[8], new_l_data;
-//    if ((ret = bgzf_read(fp, &block_len, 4)) != 4) {
-//        if (ret == 0) return -1; // normal end-of-file
-//        else return -2; // truncated
-//    }
-//    if (fp->is_be)
-//        ed_swap_4p(&block_len);
-//    if (block_len < 32) return -4;  // block_len includes core data
-//    if (bgzf_read(fp, x, 32) != 32) return -3;
-//    if (fp->is_be) {
-//        for (i = 0; i < 8; ++i) ed_swap_4p(x + i);
-//    }
-//    c->tid = x[0]; c->pos = x[1];
-//    c->bin = x[2]>>16; c->qual = x[2]>>8&0xff; c->l_qname = x[2]&0xff;
-//    c->l_extranul = (c->l_qname%4 != 0)? (4 - c->l_qname%4) : 0;
-//    if ((uint32_t) c->l_qname + c->l_extranul > 255) // l_qname would overflow
-//        return -4;
-//    c->flag = x[3]>>16; c->n_cigar = x[3]&0xffff;
-//    c->l_qseq = x[4];
-//    c->mtid = x[5]; c->mpos = x[6]; c->isize = x[7];
-//
-//    new_l_data = block_len - 32 + c->l_extranul;
-//    if (new_l_data > INT_MAX || c->l_qseq < 0 || c->l_qname < 1) return -4;
-//    if (((uint64_t) c->n_cigar << 2) + c->l_qname + c->l_extranul
-//        + (((uint64_t) c->l_qseq + 1) >> 1) + c->l_qseq > (uint64_t) new_l_data)
-//        return -4;
-//    //TODO reallocate for b
-//    if (__realloc_bam_data(b, new_l_data) < 0) return -4;
-//    b->l_data = new_l_data;
-//
-//    if (bgzf_read(fp, b->data, c->l_qname) != c->l_qname) return -4;
-//    for (i = 0; i < c->l_extranul; ++i) b->data[c->l_qname+i] = '\0';
-//    c->l_qname += c->l_extranul;
-//    if (b->l_data < c->l_qname ||
-//        bgzf_read(fp, b->data + c->l_qname, b->l_data - c->l_qname) != b->l_data - c->l_qname)
-//        return -4;
-//    if (fp->is_be) __swap_data(c, b->l_data, b->data, 0);
-//    if (bam_tag2cigar(b, 0, 0) < 0)
-//        return -4;
-//    
-//    b->core = d ;
-//    if (c->n_cigar > 0) { // recompute "bin" and check CIGAR-qlen consistency
-//        int rlen, qlen;
-//        __bam_cigar2rqlens(c->n_cigar, bam_get_cigar(b), &rlen, &qlen);
-//        if ((b->core.flag & BAM_FUNMAP)) rlen=1;
-//        b->core.bin = hts_reg2bin(b->core.pos, b->core.pos + rlen, 14, 5);
-//        // Sanity check for broken CIGAR alignments
-//        if (c->l_qseq > 0 && !(c->flag & BAM_FUNMAP) && qlen != c->l_qseq) {
-//            hts_log_error("CIGAR and query sequence lengths differ for %s",
-//                    bam_get_qname(b));
-//            return -4;
-//        }
-//    }
-//    return 4 + block_len;
-//}
-//
-//int __sam_read1(htsFile *fp, bam_hdr_t *h, bam1_t *b) {
-//    int r = __bam_read1(fp->fp.bgzf, b);
-//    if (h && r >= 0) {
-//        if (b->core.tid  >= h->n_targets || b->core.tid  < -1 ||
-//            b->core.mtid >= h->n_targets || b->core.mtid < -1) {
-//            return -3;
-//        }
-//    }
-//    return r;
-//}
-
-// ============================================================================= \\
-// ============================================================================= \\
-// ============================================================================= \\
-
 vector<vector<unordered_map<uint64_t, int>>> partial_counts ;
 vector<vector<unordered_map<uint64_t, int>>> partial_totals ;
 
@@ -292,16 +121,6 @@ bool load_batch_bam(int threads, int batch_size, int p) {
     int n = 0 ;
     bam_iterator = bam_init1() ; 
     while (sam_read1(bam_file, bam_header, bam_iterator) > 0) {
-        //cout << bam_iterator << endl ;
-        //uint8_t* data = (uint8_t*) malloc(sizeof(uint8_t) * bam_iterator->l_data) ;
-        //memcpy(data, bam_iterator->data, bam_iterator->l_data) ;
-        //bam1_t bam_entry ;
-        //bam_entry.core = bam_iterator->core ;
-        //bam_entry.id = bam_iterator->id ;
-        //bam_entry.data = data ;
-        //bam_entry.l_data = bam_iterator->l_data ;
-        //bam_entry.m_data = bam_iterator->m_data ;
-        //= {bam_iterator->core, bam_iterator->id, data, bam_iterator->l_data, bam_iterator->m_data} ;
         bam_entries[p][n % threads].push_back(bam_iterator) ;
         n += 1 ;
         if (n == batch_size) {
@@ -338,43 +157,7 @@ void process_batch_bam(vector<bam1_t*> alignments, int thread, int p) {
         process_read(seq, l, partial_counts[p][thread], partial_totals[p][thread]) ;
         bam_destroy1(alignment) ;
     }
-    //return _counts ;
 }
-
-//unordered_map<uint64_t, int> process_batch_bam(vector<bam1_t> alignments, int index, int threads, int batch_size) {
-//    char* seq ;
-//    uint32_t len = 0 ;
-//    unordered_map<uint64_t, int> _counts ;
-//    int n = 0 ;
-//    int m = 0 ;
-//    while (__sam_read1(bam_files[index], bam_headers[index], bam_iterators[index]) > 0) {
-//        if (n % threads == index) {
-//            //cout << n << endl ;
-//            //cout << alignment << endl ;
-//            uint32_t l = bam_iterators[index]->core.l_qseq ; //length of the read
-//            if (l > len) {
-//                if (len > 0) {
-//                    free(seq) ;
-//                }
-//                len = l ;
-//                seq = (char*) malloc(l + 1) ;
-//            }
-//            uint8_t *q = bam_get_seq(bam_iterators[index]) ; //quality string
-//            for (int i = 0; i < len; i++){
-//                seq[i] = seq_nt16_str[bam_seqi(q, i)] ; //gets nucleotide id and converts them into IUPAC id.
-//            }
-//            seq[l] = '\0' ; // null terminate
-//            process_read(seq, l + 1, _counts) ;
-//            //free(alignment.data) ;
-//            m += 1 ;
-//            if (m == batch_size / threads) {
-//                break ;
-//            }
-//        }
-//        n += 1 ;
-//    }
-//    return _counts ;
-//}
 
 // ============================================================================= \\
 // ================================ FASTQ Files ================================ \\
@@ -530,7 +313,7 @@ int load_kmers(string path) {
     for (nlohmann::json::iterator it = kmers_json.begin(); it != kmers_json.end(); ++it) {
         auto kmer = it.value() ;
         uint64_t k = encode_kmer(std::string(it.key()).c_str()) ;
-        uint64_t rc_k = encode_kmer(reverse_complement(std::string(it.key())).c_str()) ;
+        uint64_t rc_k = encoded_reverse_complement(k) ; 
         counts[k] = 0 ;
         counts[rc_k] = 0 ;
         totals[k] = 0 ;
@@ -541,11 +324,10 @@ int load_kmers(string path) {
             for (nlohmann::json::iterator locus = kmer["loci"].begin(); locus != kmer["loci"].end(); ++locus) {
                 for (nlohmann::json::iterator mask = locus.value()["masks"].begin(); mask != locus.value()["masks"].end(); ++mask) {
                     if (encode_kmer(mask.key()) != 0) {
-                        cout << encode_kmer(mask.key()) << endl ;
                         m->push_back(encode_kmer(mask.key().c_str())) ;
                         m->push_back(encode_kmer(reverse_complement(mask.key()).c_str())) ;
                     } else {
-                        cout << "Ignoring mask.." << endl ;
+                        //cout << "Ignoring mask.." << endl ;
                     }
                 }
             }

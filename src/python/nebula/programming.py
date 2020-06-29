@@ -97,17 +97,24 @@ class IntegerProgrammingJob(map_reduce.Job):
         for track in tmp:
             self.tracks[track]['index'] = n
             self.tracks[track]['kmers'] = []
+            self.tracks[track]['cluster'] = -1
             n += 1
         for index, kmer in enumerate(self.lp_kmers):
             for track in kmer['tracks']:
                 self.tracks[track]['kmers'].append(index)
         return self.tracks
 
-    def add_mps_error_absolute_value_constraints(self, problem, variables, index):
-        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], 1.0)])
-        problem += LpConstraint(expr, LpConstraintGE, 'abs_1_' + str(index), 0) 
-        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], -1.0)])
-        problem += LpConstraint(expr, LpConstraintGE, 'abs_2_' + str(index), 0) 
+    def cluster_events(self):
+        self.clusters = []
+        for track in self.tracks:
+            found = False
+            for i in self.tracks[track]['kmers']:
+                kmer = self.lp_kmers[i]
+                for track_name in kmer['tracks']:
+                    if len(kmer['tracks']) > 1: # more than one track
+                        found = True
+            if not found:
+                kmer = lp_kmers[self.tracks[track]['kmers'][0]]
 
     def solve(self):
         c = config.Configuration()
@@ -125,6 +132,12 @@ class IntegerProgrammingJob(map_reduce.Job):
         if c.rum:
             self.verify_genotypes()
         return self.tracks
+
+    def add_mps_error_absolute_value_constraints(self, problem, variables, index):
+        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], 1.0)])
+        problem += LpConstraint(expr, LpConstraintGE, 'abs_1_' + str(index), 0) 
+        expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], -1.0)])
+        problem += LpConstraint(expr, LpConstraintGE, 'abs_2_' + str(index), 0) 
 
     # COIN doesn't supply values for certain variables
     def import_lp_values(self, path = 'solution.mps'):

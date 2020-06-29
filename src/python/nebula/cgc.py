@@ -104,11 +104,12 @@ class CgcCounterJob(counter.BaseExactCountingJob):
     def export_counter_input(self):
         for kmer in self.gc_kmers:
             self.gc_kmers[kmer]['count'] = 0
-        if self.resume_from_reduce:
-            return
+        #if self.resume_from_reduce:
+        #    return
         _kmers = {}
         for kmers in [self.inner_kmers, self.junction_kmers]:
             for kmer in kmers:
+                kmers[kmer]['total'] = 0
                 _kmers[kmer] = {}
                 _kmers[kmer]['loci'] = {}
                 _kmers[kmer]['tracks'] = kmers[kmer]['tracks']
@@ -266,8 +267,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
         n = 0
         for kmer in kmers['junction_kmers']:
-            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
-                continue
             if is_kmer_low_entropy(kmer):
                 continue
             if c.select:
@@ -292,9 +291,6 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.lp_kmers[kmer]['reduction'] = kmers['inner_kmers'][kmer]['reference']
             self.lp_kmers[kmer]['reference'] = len(kmers['inner_kmers'][kmer]['loci'])
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        # TODO: this is redundant
-        #with open(path, 'w') as json_file:
-        #    json.dump({kmer: self.lp_kmers[kmer] for kmer in lp_kmers}, json_file, indent = 4)
         return path
 
     def calculate_residual_coverage(self):
@@ -397,8 +393,8 @@ class CgcJunctionKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
         c = config.Configuration()
         lp_kmers = {}
         for kmer in kmers['junction_kmers']:
-            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
-                continue
+            #if kmers['junction_kmers'][kmer]['source'] == 'assembly':
+            #    continue
             if is_kmer_low_entropy(kmer):
                 continue
             lp_kmers[kmer] = True
@@ -438,8 +434,8 @@ class CgcInnerKmersIntegerProgrammingJob(CgcIntegerProgrammingJob):
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
         n = 0
         for kmer in kmers['junction_kmers']:
-            if kmers['junction_kmers'][kmer]['source'] == 'assembly':
-                continue
+            #if kmers['junction_kmers'][kmer]['source'] == 'assembly':
+            #    continue
             if is_kmer_low_entropy(kmer):
                 continue
             n += 1

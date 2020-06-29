@@ -99,6 +99,8 @@ def parse_args():
     parser.add_argument("--previous", default = None)
     # expected depth of coverage for the FASTQ file
     parser.add_argument("--coverage", type = float, default = 50)
+    # mean read length for sample
+    parser.add_argument("--read-length", type = float, default = 100)
     # the path to a jellyfish generated kmer count index
     parser.add_argument("--jellyfish")
     # a reference genome assembly, used to extract sequences from a set of BED tracks etc
