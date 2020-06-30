@@ -284,10 +284,10 @@ void scan_reference(int threads) {
         }
     }
     cout << "Reference scan completed." << endl ;
-    std::ofstream o("counts_cpp.txt") ;
-    for (auto it = kmers.begin(); it != kmers.end(); it++) {
-        o << decode_kmer(it->first) << ":" << it->second.count << endl ;
-    }
+    //std::ofstream o("counts_cpp.txt") ;
+    //for (auto it = kmers.begin(); it != kmers.end(); it++) {
+    //    o << decode_kmer(it->first) << ":" << it->second.count << endl ;
+    //}
 }
 
 vector<uint64_t> find_interest_masks(Kmer& k) {
@@ -313,10 +313,10 @@ bool is_kmer_returning(Kmer& kmer) {
         //cout << t.chrom << "_" << t.begin << "_" << t.end << endl ;
         for(auto locus = kmer.loci.begin(); locus != kmer.loci.end(); locus++) {
             if (locus->type != LOCUS_TYPE_JUNCTION) {
-                if (abs(int(locus->position) - int(t.end)) < 64) {
+                if (abs(int(locus->position) - int(t.end)) < 250) {
                     return true ;
                 }
-                if (abs(int(locus->position) - int(t.begin)) < 64) {
+                if (abs(int(locus->position) - int(t.begin)) < 250) {
                     return true ;
                 }
             }

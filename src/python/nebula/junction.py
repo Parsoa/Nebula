@@ -11,6 +11,7 @@ import operator
 import traceback
 import subprocess
 
+from difflib import SequenceMatcher
 from itertools import chain
 
 from nebula import (
@@ -71,6 +72,8 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         if abs(int(track.svlen)) < 50:
             return None
         #if track_name != 'DEL@chr1_6858655_6858832':
+        #    return None
+        #if track_name != 'DEL@chr2_11065564_11065676':
         #    return None
         c = config.Configuration()
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
@@ -203,6 +206,10 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                 _junction_kmers[kmer] = junction_kmers[kmer]
         return _junction_kmers
 
+    def approx_equal(self, a, b):
+        required_edits = [code for code in (SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes()) if code[0] != 'equal']
+        return len(required_edits) <= 3
+
     #TODO: Is this a mistake?
     def is_clipped(self, track, kmer, read, clips, deletions, insertions, right_clipped, left_clipped):
         for i, clip in enumerate(clips):
@@ -212,23 +219,26 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                     assert kmer[0] <= clip[1]
                     ref_index = read.reference_start - (clip[1] - kmer[0])
                     ref_sequence = chroms[track.chrom][ref_index: ref_index + 32]
-                    #print('Left', read.query_sequence[kmer[0]: kmer[0] + 32], ' = ', ref_sequence)
-                    if is_canonical_subsequence(read.query_sequence[kmer[0] + 1: kmer[0] + 31], ref_sequence):
+                    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
+                    #print('Left', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
+                    if self.approx_equal(kmer_seq, ref_sequence):
                         return None
                 elif i == 0 and right_clipped:
                     # kmer[1] > clip[0] always
                     assert kmer[1] >= clip[0]
                     ref_index = read.reference_end + (kmer[1] - clip[0])
                     ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
-                    #print('Left', read.query_sequence[kmer[0]: kmer[0] + 32], ' = ', ref_sequence)
-                    if is_canonical_subsequence(read.query_sequence[kmer[0] + 1: kmer[0] + 31], ref_sequence):
+                    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
+                    #print('Left', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
+                    if self.approx_equal(kmer_seq, ref_sequence):
                         return None
                 elif i == 1 and right_clipped:
                     assert kmer[1] >= clip[0]
                     ref_index = read.reference_end + (kmer[1] - clip[0])
                     ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
-                    #print('Right', read.query_sequence[kmer[0]: kmer[0] + 32], ' = ', ref_sequence)
-                    if is_canonical_subsequence(read.query_sequence[kmer[0] + 1: kmer[0] + 31], ref_sequence):
+                    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
+                    #print('Right', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
+                    if self.approx_equal(kmer_seq, ref_sequence):
                         return None
                 else:
                     #print(i, clips, right_clipped, left_clipped)

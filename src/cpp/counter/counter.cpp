@@ -105,61 +105,6 @@ void process_read(const char* seq, int l, unordered_map<uint64_t, int>& _counts,
 }
 
 // ============================================================================= \\
-// ================================= BAM Files ================================= \\
-// ============================================================================= \\
-
-samFile *bam_file ;
-bam_hdr_t *bam_header ;
-bam1_t *bam_iterator ;
-
-vector<vector<vector<bam1_t*>>> bam_entries ;
-
-bool load_batch_bam(int threads, int batch_size, int p) {
-    for (int i = 0; i < threads; i++) {
-        bam_entries[p][i].clear() ;
-    }
-    int n = 0 ;
-    bam_iterator = bam_init1() ; 
-    while (sam_read1(bam_file, bam_header, bam_iterator) > 0) {
-        bam_entries[p][n % threads].push_back(bam_iterator) ;
-        n += 1 ;
-        if (n == batch_size) {
-            return true ;
-        }
-        bam_iterator = bam_init1() ; 
-    }
-    if(bam_entries[p].empty()) {
-        return false ;
-    }
-    return true ;
-}
-
-void process_batch_bam(vector<bam1_t*> alignments, int thread, int p) {
-    char* seq = (char*) malloc(200) ;
-    uint32_t len = 0 ;
-    //unordered_map<uint64_t, int> _counts ;
-    bam1_t* alignment ; 
-    for (int i = 0; i < alignments.size(); i++) {
-        alignment = alignments[i] ;
-        uint32_t l = alignment->core.l_qseq ; //length of the read
-        if (l > len) {
-            if (len > 0) {
-                free(seq) ;
-            }
-            len = l ;
-            seq = (char*) malloc(l + 1) ;
-        }
-        uint8_t *q = bam_get_seq(alignment) ; //quality string
-        for (int i = 0; i < len; i++){
-            seq[i] = seq_nt16_str[bam_seqi(q, i)]; //gets nucleotide id and converts them into IUPAC id.
-        }
-        seq[l] = '\0' ; // null terminate
-        process_read(seq, l, partial_counts[p][thread], partial_totals[p][thread]) ;
-        bam_destroy1(alignment) ;
-    }
-}
-
-// ============================================================================= \\
 // ================================ FASTQ Files ================================ \\
 // ============================================================================= \\
 
@@ -189,13 +134,62 @@ bool load_batch_fastq(int threads, int batch_size, int p) {
 void process_batch_fastq(vector<string> fastq_entries, int thread, int p) {
     int l ;
     const char* seq ;
-    //unordered_map<uint64_t, int> _counts ;
     for (const auto fastq_entry : fastq_entries) {
         seq = fastq_entry.c_str() ; 
         l = strlen(seq) ;
         process_read(seq, l, partial_counts[p][thread], partial_totals[p][thread]) ;
     }
-    //return _counts ;
+}
+
+// ============================================================================= \\
+// ================================= BAM Files ================================= \\
+// ============================================================================= \\
+
+samFile *bam_file ;
+bam_hdr_t *bam_header ;
+bam1_t *bam_iterator ;
+
+vector<vector<vector<bam1_t*>>> bam_entries ;
+
+bool load_batch_bam(int threads, int batch_size, int p) {
+    int i = 0 ;
+    int n = 0 ;
+    while (sam_read1(bam_file, bam_header, bam_entries[p][n % threads][i]) > 0) {
+        n += 1 ;
+        if (n % threads == threads - 1) {
+            i += 1 ;
+        }
+        if (n == batch_size) {
+            return true ;
+        }
+    }
+    if(bam_entries[p].empty()) {
+        return false ;
+    }
+    return true ;
+}
+
+void process_batch_bam(vector<bam1_t*> alignments, int thread, int p) {
+    char* seq = (char*) malloc(200) ;
+    uint32_t len = 0 ;
+    bam1_t* alignment ; 
+    for (int i = 0; i < alignments.size(); i++) {
+        alignment = alignments[i] ;
+        uint32_t l = alignment->core.l_qseq ; //length of the read
+        if (l > len) {
+            if (len > 0) {
+                free(seq) ;
+            }
+            len = l ;
+            seq = (char*) malloc(l + 1) ;
+        }
+        uint8_t *q = bam_get_seq(alignment) ; //quality string
+        for (int i = 0; i < l; i++){
+            seq[i] = seq_nt16_str[bam_seqi(q, i)]; //gets nucleotide id and converts them into IUPAC id.
+        }
+        seq[l] = '\0' ; // null terminate
+        process_read(seq, l, partial_counts[p][thread], partial_totals[p][thread]) ;
+    }
 }
 
 // ============================================================================= \\
@@ -206,22 +200,28 @@ void process_batch_fastq(vector<string> fastq_entries, int thread, int p) {
 #define FASTQ 1
 
 int process_reads(int threads, int mode, string input_file) {
-    //vector<unordered_map<uint64_t, int>> partial_counts(threads) ;
     for(int i = 0; i < 2; i++) {
         bam_entries.push_back(vector<vector<bam1_t*>>(threads)) ;
         fastq_entries.push_back(vector<vector<string>>(threads)) ;
-        //partial_counts.push_back(vector<unordered_map<uint64_t, int>>(threads) ;
         partial_counts.push_back(vector<unordered_map<uint64_t, int>>(threads)) ;
         partial_totals.push_back(vector<unordered_map<uint64_t, int>>(threads)) ;
     }
     int p = 0 ;
-    int batch_size = 2000000 ;
+    int batch_size = 1000000 ;
     if (mode == BAM) {
+        cout << "Allocating buffers.." << endl ;
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < threads; j++) {
+                for (int k = 0; k <= batch_size / threads; k++) {
+                    bam_entries[i][j].push_back(bam_init1()) ;
+                }
+            }
+        }
         load_batch_bam(threads, batch_size, p) ;
     } else {
         load_batch_fastq(threads, batch_size, p) ;
     }
-    cout << "Loaded batch" << endl ;
+    cout << "Loaded initial batch.." << endl ;
     time_t t ;
     time(&t) ;
     int b = 0 ;
@@ -247,6 +247,7 @@ int process_reads(int threads, int mode, string input_file) {
                 } else {
                     load_batch_fastq(threads, batch_size, (p + 1) % 2) ;
                 }
+                //cout << "Loaded." << endl ;
             } else if (i == 1) {
                 // merge previous patch
                 if (b >= 1) {
@@ -266,12 +267,11 @@ int process_reads(int threads, int mode, string input_file) {
             } else {
                 // process current one
                 if (mode == BAM) {
-                    //partial_counts[p][i - 2] = i
                     process_batch_bam(bam_entries[p][i - 2], i - 2, p) ;
                 } else {
-                    //partial_counts[p][i - 2] = 
                     process_batch_fastq(fastq_entries[p][i - 2], i - 2, p) ;
                 }
+                //cout << "Done." << endl ;
             }
         }
         p += 1 ;
@@ -281,12 +281,6 @@ int process_reads(int threads, int mode, string input_file) {
         time(&s) ;
         cerr << "Processed batch " << std::left << std::setw(10) << b << ". Reads so far " << std::right << std::setw(12) << u << ". Reads per second: " <<  u / (s - t) << ". Time: " << std::setw(8) << std::fixed << s - t << "\r" ;
     }
-    //for (const auto &batch : partial_counts[(p + 1) % 2]) { 
-    //    for (const auto kmer : batch) {
-    //        counts[kmer.first] += kmer.second ;
-    //    }
-    //    partial_counts[(p + 1) % 2].clear() ;
-    //}
     return u ;
 }
 
@@ -351,7 +345,7 @@ int main(int argc, char** argv) {
     int threads = std::stoi(string(argv[3]), nullptr, 10) ;
     time_t t ;
     time(&t) ;
-    load_kmers(path) ;
+    //load_kmers(path) ;
     int u = 0;
     if (input_file.compare(input_file.size() - 4, 4, ".bam") == 0) {
         cout << "Input is BAM." << endl ;
