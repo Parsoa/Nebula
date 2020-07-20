@@ -64,7 +64,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
         self.chroms = extract_whole_genome()
         self.tracks = c.tracks
         self.load_reference_counts_provider()
-        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000 and track.end - track.begin > 50)
+        self.round_robin(self.tracks, filter_func = lambda track: track.end - track.begin > 1000000 or track.end - track.begin < 50)
 
     def transform(self, track, track_name):
         debug_breakpoint()
@@ -78,9 +78,10 @@ class ExtractInnerKmersJob(map_reduce.Job):
             system_print_warning('No inner kmers found for ' + track_name + '.')
             return None
         name = track_name  + '.json'
-        with open(os.path.join(self.get_current_job_directory(), name), 'w') as json_file:
+        path = os.path.join(self.get_current_job_directory(), name)
+        with open(path, 'w') as json_file:
             json.dump(inner_kmers, json_file, sort_keys = True, indent = 4)
-        return name
+        return path
 
     def extract_inner_kmers(self, track):
         c = config.Configuration()
@@ -95,7 +96,7 @@ class ExtractInnerKmersJob(map_reduce.Job):
         if track.svtype == 'DEL':
             inner_kmers = self.extract_deletion_kmers(track, chrom)
         if len(inner_kmers) > 1000:
-            items = sorted(inner_kmers.items(), key = lambda item: item[1]['reference'])[0 : 1000]
+            items = sorted(inner_kmers.items(), key = lambda item: item[1]['reference'])[0: 1000]
             return {item[0]: item[1] for item in items}
         return inner_kmers
 
@@ -106,13 +107,15 @@ class ExtractInnerKmersJob(map_reduce.Job):
         if len(inner_seq) >= 3 * c.ksize:
             for i in range(c.ksize, len(inner_seq) - 2 * c.ksize + 1):
                 kmer = canonicalize(inner_seq[i: i + c.ksize])
+                if 'N' in kmer:
+                    continue
                 if not kmer in inner_kmers:
                     inner_kmers[kmer] = {
                         'loci': {},
                         'tracks': {},
                         'reference': self.reference_counts_provider.get_kmer_count(kmer),
                     }
-                inner_kmers[kmer]['loci']['inside_' + track.id + '@' + str(i)] = {
+                inner_kmers[kmer]['loci']['inside_' + track.id] = {
                     'seq': {
                         'all': inner_seq[i - c.ksize: i + c.ksize + c.ksize],
                         'left': inner_seq[i - c.ksize: i],
@@ -129,13 +132,19 @@ class ExtractInnerKmersJob(map_reduce.Job):
         c = config.Configuration()
         inner_kmers = {}
         returning_kmers = {}
+        # TODO: is this useful?
         new_seq = chrom[track.begin - c.ksize: track.begin] + chrom[track.end: track.end + c.ksize]
         for i in range(len(new_seq) - c.ksize + 1):
             kmer = canonicalize(new_seq[i: i + c.ksize])
+            if 'N' in kmer:
+                continue
             returning_kmers[kmer] = True
+        # TODO: consider kmers that cross the breakpoint if SV not present, complicates LP
         inner_seq = chrom[track.begin - c.ksize: track.end + c.ksize]
         for i in range(len(inner_seq) - c.ksize + 1):
             kmer = canonicalize(inner_seq[i: i + c.ksize])
+            if 'N' in kmer:
+                continue
             if not kmer in returning_kmers:
                 if not kmer in inner_kmers:
                     inner_kmers[kmer] = {
@@ -147,6 +156,15 @@ class ExtractInnerKmersJob(map_reduce.Job):
                     inner_kmers[kmer]['tracks'][track.id] = 0
                 inner_kmers[kmer]['tracks'][track.id] += 1
         return inner_kmers
+
+    def reduce(self):
+        c = config.Configuration()
+        map_reduce.Job.reduce(self)
+        if c.cpp:
+            cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/scanner')
+            command = " ".join([os.path.join(cpp_dir, "scanner.out"), c.reference, self.get_output_directory(), 'inner', str(c.threads)])
+            print(command)
+            output = subprocess.call(command, shell = True)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -178,21 +196,25 @@ class ScoreInnerKmersJob(map_reduce.Job):
         self.chroms = extract_whole_genome()
         self.tracks = self.load_previous_job_results()
         self.inner_kmers = {}
+        self.counts_file = open(os.path.join(self.get_current_job_directory(), 'num_py.txt'), 'w')
         for track in self.tracks:
             with open(os.path.join(self.get_previous_job_directory(), self.tracks[track]), 'r') as json_file:
                 kmers = json.load(json_file)
-                self.keep_best_kmers(kmers)
+                self.keep_best_kmers(kmers, track)
+        print('Scanning for', len(self.inner_kmers), 'kmers..')
         self.round_robin(self.chroms)
 
     # This will lose some shared kmers
-    def keep_best_kmers(self, kmers):
+    def keep_best_kmers(self, kmers, track):
         k = {}
         for i in range(0, 5 + 1):
             k[i] = []
+        m = 0
         for kmer in kmers:
             ref = kmers[kmer]['reference']
             if ref <= 5:
                 k[ref].append(kmer)
+                m += 1
         n = 0
         for i in range(0, 5 + 1):
             for kmer in k[i]:

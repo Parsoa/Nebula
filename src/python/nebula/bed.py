@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import io
 import os
 import pwd
@@ -12,10 +10,7 @@ from nebula import (
     config,
 )
 
-from nebula.kmers import *
-from nebula.debug import *
 from nebula.logger import *
-from nebula.chromosomes import *
 
 print = pretty_print
 
@@ -103,6 +98,9 @@ def sort_tracks(tracks):
     return sorted(_tracks, key = lambda x: (x.chrom, x.begin, x.end))
     #return sorted(sorted(_tracks, key = lambda x: x.begin), key = lambda y: y.chrom)
 
+def filter_short_tracks(tracks):
+    return [track for track in tracks if abs(int(track.svlen)) > 50]
+
 def filter_overlapping_tracks(tracks, svtype):
     i = 0
     remove = []
@@ -115,12 +113,12 @@ def filter_overlapping_tracks(tracks, svtype):
             if svtype == 'DEL':
                 if tracks[j].begin <= tracks[i].end:
                     remove.append(j)
-                    user_print_warning(str(tracks[j]), 'overlaps', blue(str(tracks[i])))
+                    user_print_warning(str(tracks[j]), white('overlaps'), blue(str(tracks[i])))
                     continue
             if svtype == 'INS':
                 if tracks[j].begin - tracks[i].end < 100:
                     remove.append(j)
-                    user_print_warning(str(tracks[j]), 'is too close to', blue(str(tracks[i])))
+                    user_print_warning(str(tracks[j]), white('is too close to'), blue(str(tracks[i])))
                     continue
             i = j
         if j == len(tracks) - 1:

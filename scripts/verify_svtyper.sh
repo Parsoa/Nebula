@@ -4,7 +4,7 @@ intersect merge.DEL.bed consensus.DEL.bed > merge.DEL.shared.bed
 intersect ./SVtyper/DEL/genotypes.bed consensus.DEL.bed > svtyper.DEL.shared.bed
 
 #intersect merge.DEL.bed ./SVtyper/DEL/genotypes.bed > merge.DEL.shared.bed
-intersect ./SVtyper/DEL/genotypes.bed merge.DEL.bed -v > svtyper.DEL.not.bed
+#intersect ./SVtyper/DEL/genotypes.bed merge.DEL.bed -v > svtyper.DEL.not.bed
 #intersect ./SVtyper/DEL/genotypes.bed merge.DEL.bed > svtyper.DEL.shared.bed
 
 echo "######################## Deletions ############################"
@@ -19,7 +19,7 @@ tabulate.sh merge.DEL.shared.bed
 verify.sh $1
 wc -l *_as_*.bed
 
-echo "======================= Only SVTyper =========================="
-tabulate.sh svtyper.DEL.not.bed
-verify.sh $1
-wc -l *_as_*.bed
+#echo "======================= Only SVTyper =========================="
+#tabulate.sh svtyper.DEL.not.bed
+#verify.sh $1
+#wc -l *_as_*.bed

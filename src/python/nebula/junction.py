@@ -65,16 +65,14 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         self.contigs = pysam.AlignmentFile(c.contigs, "rb") if c.contigs else None
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         self.tracks = c.tracks
-        self.chroms = extract_whole_genome()
         self.round_robin(self.tracks)
 
     def transform(self, track, track_name):
         if abs(int(track.svlen)) < 50:
             return None
-        #if track_name != 'DEL@chr1_6858655_6858832':
+        #if not '234805712' in track_name:
         #    return None
-        #if track_name != 'DEL@chr2_11065564_11065676':
-        #    return None
+        #print('Found')
         c = config.Configuration()
         self.alignments = pysam.AlignmentFile(c.bam, "rb")
         kmers = self.extract_mapping_kmers(track)
@@ -87,9 +85,6 @@ class ExtractJunctionKmersJob(map_reduce.Job):
             system_print_warning('No junction kmers found for ' + track_name + '.')
             return None
 
-    def calculate_average_read_quality(self, read):
-        q = read.query_qualities
-
     def extract_mapping_kmers(self, track):
         c = config.Configuration()
         junction_kmers = {}
@@ -97,39 +92,16 @@ class ExtractJunctionKmersJob(map_reduce.Job):
         stride = c.ksize
         try:
             # Events that alter or remove a part of the reference
-            if track.svtype == 'DEL' or track.svtype == 'INV':
-                reads = chain(self.alignments.fetch(track.chrom, track.begin - 1 * slack, track.begin + 1 * slack), self.alignments.fetch(track.chrom, track.end - 1 * slack, track.end + 1 * slack))
+            #reads = chain(self.alignments.fetch(track.chrom, track.begin - 1 * slack, track.begin + 1 * slack), self.alignments.fetch(track.chrom, track.end - 1 * slack, track.end + 1 * slack))
+            #if track.svtype == 'DEL' or track.svtype == 'INV':
             # Events that add sequence that wasn't there
-            if track.svtype == 'INS' or track.svtype == 'ALU' or track.svtype == 'MEI':
-                reads = self.alignments.fetch(track.chrom, track.begin - 1 * slack, track.begin + 1 * slack)
+            #if track.svtype == 'INS' or track.svtype == 'ALU' or track.svtype == 'MEI':
+            reads = self.alignments.fetch(track.chrom, track.begin - 1 * slack, track.end + 1 * slack)
         except:
             return {}
-        #_reads = []
-        #pair_map = {}
-        #if c.filter_overlapping_pairs:
-        #    for read in reads:
-        #        if read.qname not in pair_map:
-        #            if not read.is_paired or read.mate_is_unmapped or read.is_unmapped:
-        #                _reads.append(read)
-        #            else:
-        #                pair_map[read.qname] = read
-        #        else:
-        #            if abs(read.reference_start - pair_map[read.qname].reference_end) < 10 or \
-        #                abs(pair_map[read.qname].reference_start - read.reference_end) < 10:
-        #                    pair_map.pop(read.qname, None)
-        #                    continue
-        #            else:
-        #                _reads.append(read)
-        #                _reads.append(pair_map[read.qname])
-        #print('Remaining', len(pair_map))
-        #for qname in pair_map:
-        #    _reads.append(pair_map[qname])
-        #print('Processing ', len(_reads), 'reads..')
         n = 0
         for read in reads:
-            #if read.qname != 'H2YHMBCXX:17:8:564672:0':
-            #if read.qname != 'H2YHMBCXX:32:10:2827708:0':
-            #    continue
+            n += 1
             #print('---------------------------------------------')
             #print(read.qname)
             # These MAPQ scores vary from aligner to aligner but < 5 should be bad enough anywhere
@@ -143,7 +115,6 @@ class ExtractJunctionKmersJob(map_reduce.Job):
             if read.query_alignment_length == len(read.query_sequence): # not everything was mapped
                 continue
             if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
-                n += 1
                 clips = []
                 offset = 0
                 deletions = []
@@ -166,6 +137,9 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                             insertions.append((offset, offset + cigar[1]))
                     offset += cigar[1]
                     i += 1
+                #TODO shouldn't be clipped on both sides
+                if right_clipped and left_clipped:
+                    continue
                 #TODO Should try and correct for sequencing errors in masks by doing a consensus
                 seq = read.query_sequence
                 index = 0
@@ -173,7 +147,7 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                     if 'N' in kmer:
                         index += 1
                         continue
-                    b = self.is_clipped(track, (index, index + c.ksize), read, clips, deletions, insertions, right_clipped, left_clipped) 
+                    b = self.is_clipped(track, (index, index + c.ksize), read, clips, deletions, insertions, right_clipped, left_clipped)
                     if b:
                         #print('Selecting', kmer)
                         locus = 'junction_' + track.id
@@ -198,51 +172,51 @@ class ExtractJunctionKmersJob(map_reduce.Job):
                                 junction_kmers[kmer]['loci'][locus]['masks']['right'] = seq[index + c.ksize: index + c.ksize + c.ksize]
                         junction_kmers[kmer]['count'] += 1
                     index += 1
+        return junction_kmers
         #print("Found", n, "reads.")
-        #incomplete_kmers = {kmer: junction_kmers[kmer] for kmer in junction_kmers if len(junction_kmers[kmer]['loci'][locus]['masks']) != 2}
-        _junction_kmers = {}
-        for kmer in junction_kmers:
-            if junction_kmers[kmer]['count'] >= min(3, c.coverage / 4):
-                _junction_kmers[kmer] = junction_kmers[kmer]
-        return _junction_kmers
+        #print(len(junction_kmers), 'junction kmer candidates..')
+        #_junction_kmers = {}
+        #for kmer in junction_kmers:
+        #    if junction_kmers[kmer]['count'] >= 1: #min(3, c.coverage / 4):
+        #        _junction_kmers[kmer] = junction_kmers[kmer]
+        #return _junction_kmers
 
-    def approx_equal(self, a, b):
-        required_edits = [code for code in (SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes()) if code[0] != 'equal']
-        return len(required_edits) <= 3
+    #def approx_equal(self, a, b):
+    #    required_edits = [code for code in (SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes()) if code[0] != 'equal']
+    #    return len(required_edits) <= 3
 
-    #TODO: Is this a mistake?
     def is_clipped(self, track, kmer, read, clips, deletions, insertions, right_clipped, left_clipped):
         for i, clip in enumerate(clips):
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
-                if i == 0 and left_clipped:
-                    # kmer[0] < clip[1] always
-                    assert kmer[0] <= clip[1]
-                    ref_index = read.reference_start - (clip[1] - kmer[0])
-                    ref_sequence = chroms[track.chrom][ref_index: ref_index + 32]
-                    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
-                    #print('Left', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
-                    if self.approx_equal(kmer_seq, ref_sequence):
-                        return None
-                elif i == 0 and right_clipped:
-                    # kmer[1] > clip[0] always
-                    assert kmer[1] >= clip[0]
-                    ref_index = read.reference_end + (kmer[1] - clip[0])
-                    ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
-                    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
-                    #print('Left', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
-                    if self.approx_equal(kmer_seq, ref_sequence):
-                        return None
-                elif i == 1 and right_clipped:
-                    assert kmer[1] >= clip[0]
-                    ref_index = read.reference_end + (kmer[1] - clip[0])
-                    ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
-                    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
-                    #print('Right', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
-                    if self.approx_equal(kmer_seq, ref_sequence):
-                        return None
-                else:
-                    #print(i, clips, right_clipped, left_clipped)
-                    assert False
+                #if i == 0 and left_clipped:
+                #    # kmer[0] < clip[1] always
+                #    assert kmer[0] <= clip[1]
+                #    ref_index = read.reference_start - (clip[1] - kmer[0])
+                #    ref_sequence = chroms[track.chrom][ref_index: ref_index + 32]
+                #    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
+                #    #print('Left', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
+                #    if self.approx_equal(kmer_seq, ref_sequence):
+                #        return None
+                #elif i == 0 and right_clipped:
+                #    # kmer[1] > clip[0] always
+                #    assert kmer[1] >= clip[0]
+                #    ref_index = read.reference_end + (kmer[1] - clip[0])
+                #    ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
+                #    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
+                #    #print('Left', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
+                #    if self.approx_equal(kmer_seq, ref_sequence):
+                #        return None
+                #elif i == 1 and right_clipped:
+                #    assert kmer[1] >= clip[0]
+                #    ref_index = read.reference_end + (kmer[1] - clip[0])
+                #    ref_sequence = chroms[track.chrom][ref_index - 32: ref_index]
+                #    kmer_seq = read.query_sequence[kmer[0]: kmer[0] + 32]
+                #    #print('Right', kmer_seq, ' = ', ref_sequence, self.approx_equal(kmer_seq, ref_sequence))
+                #    if self.approx_equal(kmer_seq, ref_sequence):
+                #        return None
+                #else:
+                #    #print(i, clips, right_clipped, left_clipped)
+                #    assert False
                 return 'junction'
         for clip in deletions:
             if self.overlap(kmer, clip) >= 0 and self.overlap(kmer, clip) >= 10:
@@ -258,11 +232,11 @@ class ExtractJunctionKmersJob(map_reduce.Job):
     def reduce(self):
         c = config.Configuration()
         map_reduce.Job.reduce(self)
-        #return None
-        cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/scanner')
-        command = os.path.join(cpp_dir, "scanner.out") + " " + c.reference + " " + self.get_output_directory() +  " " + str(24)
-        print(command)
-        output = subprocess.call(command, shell = True)
+        if c.cpp:
+            cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/scanner')
+            command = " ".join([os.path.join(cpp_dir, "scanner.out"), c.reference, self.get_output_directory(), 'junction', str(24)])
+            print(command)
+            output = subprocess.call(command, shell = True)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

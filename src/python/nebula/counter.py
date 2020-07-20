@@ -36,11 +36,8 @@ class BaseExactCountingJob(map_reduce.Job):
     # MapReduce overrides
     # ============================================================================================================================ #
 
-    def find_thread_count(self):
-        c = config.Configuration()
-        self.num_threads = 1
-
     def round_robin(self):
+        self.num_threads = 1
         for i in range(0, self.num_threads):
             self.batch[i] = {}
 
@@ -64,11 +61,11 @@ class BaseExactCountingJob(map_reduce.Job):
 
     def merge_counts(self):
         c = config.Configuration()
+        print('Aggregating kmer counts..')
         with open (os.path.join(self.get_current_job_directory(), 'counts.json'), 'r') as json_file:
             line = json_file.readline()
             while line:
                 tokens = line.split(':')
                 self.merge_count(tokens[0], [int(t) for t in tokens[1:]])
                 line = json_file.readline()
-        print('Done aggregating kmer counts.')
 

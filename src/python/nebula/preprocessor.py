@@ -39,149 +39,6 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
-class EventSetUnificationJob(map_reduce.Job):
-
-    _name = 'EventSetUnificationJob'
-    _category = 'preprocessing'
-    _previous_job = None
-
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
-
-    @staticmethod
-    def launch(**kwargs):
-        job = EventSetUnificationJob(**kwargs)
-        job.execute()
-
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    SUPPORTED_SVTYPES = ['<DEL>', '<INS>', '<INV>']
-
-    def execute(self):
-        c = config.Configuration()
-        self.create_output_directories()
-        tracks = {}
-        all_tracks = {}
-        for path in c.vcf:
-            tracks[path] = {}
-            tracks[path].update(vcf.load_tracks_from_file_as_dict(path, parse_header = True))
-            for track in tracks[path]:
-                tracks[path][track]['genotypes'] = {path: tracks[path][track]['genotype'].replace('|', '/')}
-                if track not in all_tracks:
-                    all_tracks.update({track: tracks[path][track]})
-                else:
-                    all_tracks[track]['genotypes'].update(tracks[path][track]['genotypes'])
-            user_print('Loaded', len(tracks[path]), 'tracks from', path)
-        user_print('Loaded', len(all_tracks), 'tracks.')
-        # add genotypes for all samples to each track
-        for track in all_tracks:
-            for path in tracks:
-                if path not in all_tracks[track]['genotypes']:
-                    all_tracks[track]['genotypes'].update({path: '0/0'})
-            assert len(all_tracks[track]['genotypes']) == 3
-        all_tracks = bed.sort_tracks(all_tracks)
-        # sort each svtype
-        svtypes = {track.alt: True for track in all_tracks}
-        #svtypes = {track.svtype: True for track in all_tracks}
-        print(svtypes)
-        merged_tracks = []
-        for svtype in svtypes:
-            if svtype in EventSetUnificationJob.SUPPORTED_SVTYPES:
-                print('Processing ' + svtype + '..')
-                _tracks = [track for track in all_tracks if track.alt == svtype]
-                print('Merging', svtype + '.', len(_tracks), 'tracks.')
-                _tracks = self.filter_overlapping_tracks(_tracks, svtype)
-                print('Merged.', len(_tracks), 'tracks remaining.')
-                merged_tracks += _tracks
-        # merge all svtypes back together
-        merged_tracks = bed.sort_tracks(merged_tracks)
-        files = {}
-        for path in c.vcf:
-            name = path.split('/')[-1]
-            name = name[0: name.rfind('.')]
-            #name = name + '.unified.all.vcf'
-            files[path] = [open(os.path.join(self.get_current_job_directory(), name + '.unified.vcf'), 'w'), open(os.path.join(self.get_current_job_directory(), name + '.unified.repeat.vcf'), 'w'), open(os.path.join(self.get_current_job_directory(), name + '.unified.all.vcf'), 'w')]
-        n = 0
-        for track in merged_tracks:
-            # for Illumina tracks
-            track.svtype = track.alt[1:-1]
-            genotypes = copy.deepcopy(track.genotypes)
-            del track.genotypes
-            for path in files:
-                if n == 0:
-                    files[path][0].write(track.header())
-                    files[path][1].write(track.header())
-                    files[path][2].write(track.header())
-                if genotypes[path] != '0/0':
-                    track['genotype'] = genotypes[path]
-                    if track['IS_TRF'] == 'TR':
-                        files[path][1].write(track.serialize())
-                    else:
-                        files[path][0].write(track.serialize())
-                    files[path][2].write(track.serialize())
-            n += 1
-        exit()
-
-    def calc_checksum(self, l):
-        s = 0
-        n = 0
-        p = 0
-        for track in l:
-            if n % 2 == 0:
-                s += int(track.begin)
-            else:
-                s -= int(track.begin)
-            p = int(track.begin)
-            n += 1
-        print('Checksum:', s)
-
-    def filter_overlapping_tracks(self, tracks, svtype):
-        i = 0
-        remove = []
-        tracks = bed.sort_tracks(tracks)
-        while i < len(tracks):
-            for j in range(i + 1, len(tracks)):
-                if tracks[j].chrom != tracks[i].chrom:
-                    i = j
-                    break
-                if svtype == '<DEL>':
-                    if tracks[j].begin <= int(tracks[i].end):
-                        remove.append(j)
-                        for path in tracks[j]['genotypes']:
-                            if tracks[j]['genotypes'][path] != '0/0':
-                                tracks[i]['genotypes'][path] = tracks[j]['genotypes'][path]
-                        user_print_error('DEL Merged', str(tracks[j]), 'into', blue(str(tracks[i])))
-                        continue
-                # consider these the same track
-                if svtype == '<INS>':
-                    if tracks[j].begin - int(tracks[i].begin) < 100:
-                        remove.append(j)
-                        for path in tracks[j]['genotypes']:
-                            if tracks[j]['genotypes'][path] != '0/0':
-                                tracks[i]['genotypes'][path] = tracks[j]['genotypes'][path]
-                        user_print_warning('INS Merged', str(tracks[j]), 'into', blue(str(tracks[i])))
-                        continue
-                i = j
-            if j == len(tracks) - 1:
-                break
-        n = 0
-        for index in sorted(remove):
-            tracks.pop(index - n)
-            n = n + 1
-        return tracks
-
-    def get_current_job_directory(self):
-        return self.get_output_directory()
-
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-# ============================================================================================================================ #
-
 class TrackPreprocessorJob(map_reduce.Job):
 
     _name = 'TrackPreprocessorJob'
@@ -210,18 +67,18 @@ class TrackPreprocessorJob(map_reduce.Job):
             tracks.update(bed.load_tracks_from_file_as_dict(path, parse_header = True))
         user_print('Loaded', len(tracks), 'tracks.')
         tracks = bed.sort_tracks(tracks)
-        svtypes = {track.svtype: True for track in tracks}
-        merged_tracks = []
-        for svtype in svtypes:
-            if svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES:
-                _tracks = [track for track in tracks if track.svtype == svtype]
-                print('Merging', svtype + '.', len(_tracks), 'tracks.')
-                _tracks = bed.filter_overlapping_tracks(_tracks, svtype)
-                print('Merged.', len(_tracks), 'tracks remaining.')
-                merged_tracks += _tracks
-        tracks = bed.sort_tracks(merged_tracks)
+        #svtypes = {track.svtype: True for track in tracks}
+        #merged_tracks = []
+        #for svtype in svtypes:
+        #    if svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES:
+        #        _tracks = [track for track in tracks if track.svtype == svtype]
+        #        print('Merging', len(_tracks), svtype, 'tracks..')
+        #        _tracks = bed.filter_overlapping_tracks(_tracks, svtype)
+        #        print('Done', len(_tracks), 'tracks remaining.')
+        #        merged_tracks += _tracks
+        #tracks = bed.sort_tracks(bed.filter_short_tracks(merged_tracks))
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
-        user_print('Removed overlapping tracks.', len(tracks), 'non-overlapping tracks.')
+        user_print('Removed overlapping tracks.', len(tracks), 'non-overlapping tracks remainig.')
         return tracks
 
 # ============================================================================================================================ #
@@ -275,44 +132,6 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
                 self.exons[chrom][exon] = exons[exon]
         print(len(self.exons))
 
-    #def transform(self, sequence, chrom):
-    #    c = config.Configuration()
-    #    t = time.time()
-    #    n = 0
-    #    for exon in self.exons[chrom]:
-    #        track = self.exons[chrom][exon]
-    #        ends = track.exonends.split(',')
-    #        begins = track.exonstarts.split(',')
-    #        for j, begin in enumerate(begins[:-1]):
-    #            seq = sequence[int(begin): int(ends[j])]
-    #            l = len(seq)
-    #            i = self.window_size / 2
-    #            while i < l - self.window_size / 2:
-    #                kmer = canonicalize(seq[i - c.ksize / 2: i + c.ksize / 2])
-    #                if self.reference_counts_provider.get_kmer_count(kmer) == 1:
-    #                    contig = 'chrX' if 'x' in chrom else 'chrY' if 'y' in chrom else chrom + ':' + str(int(begin) + i - self.window_size / 2) + '-' + str(int(begin) + i + self.window_size / 2)
-    #                    command = "samtools depth -r %s %s | awk 'BEGIN {cnt = 0} {sum+=$3; cnt++} END {OFS = \"\t\"; print sum / cnt}'" % (contig, c.bam)
-    #                    coverage = subprocess.Popen(command, stdout = subprocess.PIPE, shell = True).communicate()[0].strip()
-    #                    try:
-    #                        coverage = float(coverage)
-    #                    except:
-    #                        system_print_error(command)
-    #                        i += 1
-    #                        continue
-    #                    gc = calculate_gc_content(seq[i - self.window_size / 2: i + self.window_size / 2]) / self.bin_size
-    #                    self.gc[gc][kmer] = {'contig': contig, 'gc': gc, 'coverage': coverage}
-    #                    i += self.window_size / 2 + c.ksize / 2
-    #                else:
-    #                    i += 1
-    #                    continue
-    #        n += 1
-    #        if n % 100 == 0:
-    #            s = time.time()
-    #            p = n / float(len(self.exons[chrom]))
-    #            e = (1.0 - p) * (((1.0 / p) * (s - t)) / 3600)
-    #            print('{:5}'.format(chrom), 'progress:', '{:12.10f}'.format(p), 'took:', '{:14.10f}'.format(s - t), 'ETA:', '{:12.10f}'.format(e))
-    #    return None
-
     # No exon, unique kmers from all across the genome
     def transform(self, sequence, chrom):
         c = config.Configuration()
@@ -348,13 +167,10 @@ class GcContentKmerSelectionJob(map_reduce.GenomeDependentJob):
         self.kmers = {}
         random.seed(c.seed)
         gc_files = []
-        #for gc in range(0, 100 + 1):
-        #    gc_files.append(open(os.path.join(self.get_current_job_directory(), 'gc_' + str(gc) + '.bed'), 'w'))
         for batch in self.load_output():
             for gc in range(0, 100 + 1):
                 for kmer in batch[str(gc)]:
                     self.gc[gc][kmer] = batch[str(gc)][kmer]
-                    #gc_files[gc].write(batch[str(gc)][kmer]['contig'] + '\n')
         for gc in self.gc:
             print(len(self.gc[gc]), 'kmers with GC content', gc)
             if len(self.gc[gc]) > 10000:
@@ -432,7 +248,8 @@ class MixKmersJob(map_reduce.Job):
         c = config.Configuration()
         job = junction.FilterJunctionKmersJob()
         self.junction_kmers = {}
-        with open(os.path.join(job.get_current_job_directory(), 'kmers.json'), 'r') as json_file:
+        name = 'kmers_cpp.json' if c.cpp else 'kmers.json'
+        with open(os.path.join(job.get_current_job_directory(), name), 'r') as json_file:
             kmers = json.load(json_file)
             for kmer in kmers:
                 kmer = canonicalize(kmer)

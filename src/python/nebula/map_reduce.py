@@ -14,7 +14,12 @@ import atexit
 import argparse
 import traceback
 
+from queue import Queue
 from shutil import copyfile
+from threading import Thread
+from multiprocessing import Pool
+
+import tracemalloc
 
 from nebula import (
     bed,
@@ -54,7 +59,6 @@ class Job(object):
         c = config.Configuration()
         system_print_high('================== Stage ' + self._name + ' started..')
         start = time.time() 
-        self.find_thread_count()
         self.create_output_directories()
         self.load_inputs()
         if not self.resume_from_reduce: 
@@ -66,10 +70,6 @@ class Job(object):
         end = time.time()
         system_print_high('################## Stage ' + self._name + ' finished. Execution time {}.'.format(end - start))
         return output
-
-    def find_thread_count(self):
-        c = config.Configuration()
-        self.num_threads = c.threads
 
     def load_inputs(self):
         tracks = self.load_previous_job_results()
@@ -115,10 +115,11 @@ class Job(object):
         remove = {}
         n = 0
         start = time.time()
+        output = {}
         for track in batch:
             try:
-                batch[track] = self.transform(batch[track], track)
-                if batch[track] == None:
+                output[track] = self.transform(batch[track], track)
+                if output[track] == None:
                     remove[track] = True
             except Exception as e:
                 system_print_error(track)
@@ -133,9 +134,9 @@ class Job(object):
             if n % 1000 == 0:
                 gc.collect()
         for track in remove:
-            batch.pop(track, None)
+            output.pop(track, None)
         # if there is no output, don't write anything
-        self.output_batch(batch)
+        self.output_batch(output)
         exit()
 
     def transform(self, track, track_name):
@@ -230,7 +231,7 @@ class Job(object):
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
-# Base class for every job that is a direct part of the genotyping process
+# ============================================================================================================================ #
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
@@ -251,40 +252,27 @@ class GenomeDependentJob(Job):
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+def export_json(t):
+    print(t[0])
+    path = os.path.join(t[2], t[0] + '.json')
+    with open(path, 'w') as json_file:
+        json.dump(t[1], json_file, indent = 4)
+
 class TrackExportHelper(Job):
 
-    # ============================================================================================================================ #
-    # Launcher
-    # ============================================================================================================================ #
+    def execute(self):
+        print('Launching pool..')
+        pool = Pool(self.num_threads, maxtasksperchild = 100)
+        pool.imap(export_json, self.enumerate(), chunksize = 1000)
+        pool.close()
+        pool.join()
+        print('Export completed.')
 
-    _name = 'TrackExportHelper'
-    _category = 'genotyping'
-    _previous_job = None
+    def enumerate(self):
+        i = 0
+        for track in self.tracks:
+            i += 1
+            yield (track, copy.deepcopy(self.tracks[track]), self.output_dir)
+        print('Generator done', i)
 
-    @staticmethod
-    def launch(**kwargs):
-        job = TrackExportHelper(**kwargs)
-        job.execute()
 
-    # ============================================================================================================================ #
-    # MapReduce overrides
-    # ============================================================================================================================ #
-
-    def load_inputs(self):
-        c = config.Configuration()
-        self.resume_from_reduce = False
-        self.round_robin(self.tracks)
-
-    def transform(self, track, track_name):
-        with open(os.path.join(self.get_current_job_directory(), track_name + '.json'), 'w') as json_file:
-            json.dump(track, json_file, indent = 4)
-        return None
-
-    def get_current_job_directory(self):
-        return self.current_job_directory
-
-    def output_batch(self, batch):
-        pass
-
-    def reduce(self):
-        pass

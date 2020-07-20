@@ -59,6 +59,8 @@ def parse_args():
     parser.add_argument("--bam", default = None)
     # whether we are running on CGC or not 
     parser.add_argument("--cgc", action = 'store_true')
+    # whether to use the CPP scanner 
+    parser.add_argument("--cpp", action = 'store_true')
     # gap size, should be odd
     parser.add_argument("--gap", default = None, type = int) #TODO: depracate
     # the job to execute from this file

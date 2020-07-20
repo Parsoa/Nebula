@@ -19,7 +19,7 @@ tabulate.sh merge.DEL.shared.bed
 verify.sh $1
 wc -l *_as_*.bed
 
-echo "======================== Only Delly ==========================="
-tabulate.sh delly.DEL.not.bed
-verify.sh $1
-wc -l *_as_*.bed
+#echo "======================== Only Delly ==========================="
+#tabulate.sh delly.DEL.not.bed
+#verify.sh $1
+#wc -l *_as_*.bed

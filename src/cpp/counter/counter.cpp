@@ -147,7 +147,6 @@ void process_batch_fastq(vector<string> fastq_entries, int thread, int p) {
 
 samFile *bam_file ;
 bam_hdr_t *bam_header ;
-bam1_t *bam_iterator ;
 
 vector<vector<vector<bam1_t*>>> bam_entries ;
 
@@ -163,10 +162,7 @@ bool load_batch_bam(int threads, int batch_size, int p) {
             return true ;
         }
     }
-    if(bam_entries[p].empty()) {
-        return false ;
-    }
-    return true ;
+    return n != 0 ? true : false ;
 }
 
 void process_batch_bam(vector<bam1_t*> alignments, int thread, int p) {
@@ -226,6 +222,7 @@ int process_reads(int threads, int mode, string input_file) {
     time(&t) ;
     int b = 0 ;
     uint64_t u = 0 ;
+    bool should_continue = true ;
     while (true) {
         uint64_t v = u ;
         for (int i = 0 ; i < threads ; i++) {
@@ -243,7 +240,7 @@ int process_reads(int threads, int mode, string input_file) {
             if (i == 0) {
                 // load next batch
                 if (mode == BAM) {
-                    load_batch_bam(threads, batch_size, (p + 1) % 2) ;
+                    should_continue = load_batch_bam(threads, batch_size, (p + 1) % 2) ;
                 } else {
                     load_batch_fastq(threads, batch_size, (p + 1) % 2) ;
                 }
@@ -280,6 +277,9 @@ int process_reads(int threads, int mode, string input_file) {
         time_t s ;
         time(&s) ;
         cerr << "Processed batch " << std::left << std::setw(10) << b << ". Reads so far " << std::right << std::setw(12) << u << ". Reads per second: " <<  u / (s - t) << ". Time: " << std::setw(8) << std::fixed << s - t << "\r" ;
+        if (!should_continue) {
+            break ;
+        }
     }
     return u ;
 }
@@ -301,7 +301,7 @@ void output_counts(string path) {
 
 int load_kmers(string path) {
     cout << "Loading kmers from " << path << ".." << endl ;
-    ifstream json_file(path + "/pre_inner_kmers.json") ;
+    ifstream json_file(path + "/raw_kmers.json") ;
     nlohmann::json kmers_json ;
     json_file >> kmers_json ;
     for (nlohmann::json::iterator it = kmers_json.begin(); it != kmers_json.end(); ++it) {
@@ -345,13 +345,12 @@ int main(int argc, char** argv) {
     int threads = std::stoi(string(argv[3]), nullptr, 10) ;
     time_t t ;
     time(&t) ;
-    //load_kmers(path) ;
+    load_kmers(path) ;
     int u = 0;
     if (input_file.compare(input_file.size() - 4, 4, ".bam") == 0) {
         cout << "Input is BAM." << endl ;
         bam_file = hts_open(input_file.c_str(), "r") ;
         bam_header = sam_hdr_read(bam_file) ; //read header
-        bam_iterator = bam_init1() ; //initialize an alignment
         u = process_reads(threads, BAM, input_file) ;
     } else {
         cout << "Input is FASTQ." << endl ;
@@ -364,5 +363,5 @@ int main(int argc, char** argv) {
     auto d = s - t ;
     cout << "\33[2K" << "Processed " << u << " reads in " << (s - t) << " seconds. Averaging " << u / d << " reads per second." << endl ;
     output_counts(path) ;
-    cout << "Returning to CgcCounterJob.." << endl ;
+    //cout << "Returning to CgcCounterJob.." << endl ;
 }

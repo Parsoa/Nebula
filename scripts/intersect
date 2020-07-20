@@ -36,11 +36,12 @@ def index_file(path, get_header = False):
                 header = line.strip()
                 tokens = header.split()
             line = f.readline()
+        m = 0
         while line:
             svtype = 'DEL' if 'DEL' in line else 'INS' if 'INS' in line else 'SV'
             tokens = line.split()
             chrom = tokens[0].lower().strip()
-            s = chrom + '_' + tokens[1] + '_' + tokens[2]
+            s = svtype + '@' + chrom + '_' + tokens[1] + '_' + tokens[2]
             if exact:
                 index[s] = (line, chrom, int(tokens[1]), int(tokens[2]), svtype)
             else:
@@ -48,6 +49,7 @@ def index_file(path, get_header = False):
                     index[chrom] = []
                 index[chrom].append((line, int(tokens[1]), int(tokens[2]), svtype))
             line = f.readline()
+            m += 1
     if not exact:
         for chrom in index:
             index[chrom] = sorted(index[chrom], key = lambda x: x[1])
@@ -55,21 +57,6 @@ def index_file(path, get_header = False):
 
 def overlap(a, b):
     return max(0, min(a[1], b[1]) - max(a[0], b[0]))
-
-def binary_search(x, a, begin, end, side):
-    m = (end + begin) // 2
-    l = end - begin
-    #print(begin, end)
-    if a[m][side] == x:
-        return m
-    elif a[m][side] > x:
-        if a[m - 1][side] <= x:
-            return m - 1 if side == 1 else m
-        return binary_search(x, a, begin, m, side)
-    elif a[m][side] < x:
-        if a[m + 1][side] > x:
-            return m if side == 1 else m + 1
-        return binary_search(x, a, begin, m - 1, side)
 
 def match_overlap(a, tracks):
     m = 1 if intersect_only else match

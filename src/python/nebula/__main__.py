@@ -35,6 +35,7 @@ def unify():
 def preprocess():
 
     def supply_inner_kmers():
+        c = config.Configuration()
         tracks = {}
         job = reduction.ExtractInnerKmersJob()
         tracks = job.execute()
@@ -44,20 +45,21 @@ def preprocess():
         job.execute()
 
     def supply_junction_kmers():
+        c = config.Configuration()
         tracks = {}
         job = junction.ExtractJunctionKmersJob()
         job.execute()
-        exit()
+        if c.cpp:
+            return
         job = junction.ScoreJunctionKmersJob()
         tracks = job.execute()
         job = junction.FilterJunctionKmersJob(tracks = tracks)
         job.execute()
 
     load_tracks()
-    supply_inner_kmers()
+    #supply_inner_kmers()
     supply_junction_kmers()
-    job = preprocessor.MixKmersJob()
-    job.execute()
+    preprocessor.MixKmersJob().execute()
 
 # ============================================================================================================================ #
 
@@ -77,12 +79,8 @@ def genotype():
     else:
         load_tracks(filter_overlap = False)
         job = cgc.CgcCounterJob(resume_from_reduce = c.reduce)
-        if c.reduce:
-            tracks, stats = job.execute()
-        else:
-            tracks, stats = job.execute()
-        config.Configuration.update(stats)
-        job = cgc.CgcIntegerProgrammingJob(tracks = tracks)
+        #job.execute()
+        job = cgc.CgcIntegerProgrammingJob()
         job.execute()
         if c.select:
             job = cgc.ExportGenotypingKmersJob()
