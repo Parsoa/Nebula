@@ -312,7 +312,7 @@ void KmerCounter::load_kmers() {
             }
         }
     }
-    cout << "Loaded " << counts.size() / 2 << " kmers." << endl ;
+    cout << "Loaded " << counts.size() / 2 << " kmers with " << masks.size() << " masks." << endl ;
 }
 
 void KmerCounter::output_counts() {

@@ -51,6 +51,7 @@ string get_chromosome_name(uint8_t index) {
     } else if (index == 23) {
         return "chrY" ;
     } else {
+        cout << int(index) << endl ;
         assert(false) ;
         return "chrUn" ;
     }

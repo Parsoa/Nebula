@@ -55,20 +55,32 @@ void to_json(nlohmann::json& j, const Locus& l) {
     if (l.right != 0) {
         masks[decode_kmer(l.right)] = 0 ;
     }
-    j = nlohmann::json{{"chrom", get_chromosome_name(l.chrom)}, {"position", l.position}, {"masks", masks}, {"type", l.type}, {"gc", l.gc}} ;
+    j = nlohmann::json{{"chrom", get_chromosome_name(l.chrom)}, {"position", l.position}, {"masks", masks},\
+        {"type", l.type}, {"gc", l.gc}} ;
 }
 
 void from_json(const nlohmann::json& j, Locus& l) {
     nlohmann::json masks = j.at("masks") ;
-    if (masks.find("left") != masks.end()) {
-        l.left = encode_kmer(masks.at("left")) ;
-    } else {
-        l.left = 0 ;
+    int i = 0 ;
+    for (auto mask = masks.begin(); mask != masks.end(); mask++) {
+        if (i == 0) {
+            l.left = encode_kmer(mask.key()) ;
+            i ++ ;
+        } else {
+            l.right = encode_kmer(mask.key()) ;
+        }
     }
-    if (masks.find("right") != masks.end()) {
-        l.right = encode_kmer(masks.at("right")) ;
-    } else {
-        l.right = 0 ;
+    if (j.find("gc") != j.end()) {
+        l.gc = j["gc"] ;
+    }
+    if (j.find("type") != j.end()) {
+        l.type = j["type"] ;
+    }
+    if (j.find("chrom") != j.end()) {
+        l.chrom = get_chromosome_index(j["chrom"]) ;
+    }
+    if (j.find("position") != j.end()) {
+        l.position = j["position"] ;
     }
 }
 
@@ -85,22 +97,19 @@ void from_json(const nlohmann::json& j, Kmer& k) {
     if (j.find("reference") != j.end()) {
         k.reference = j["reference"] ;
     }
-    for (auto track = j.at("loci").begin(); track != j.at("loci").end(); track++) {
-        Locus l ;
-        k.loci.push_back(l) ;
+    for (auto locus = j.at("loci").begin(); locus != j.at("loci").end(); locus++) {
+        k.loci.push_back(locus.value().get<Locus>()) ;
     }
     for (auto track = j.at("tracks").begin(); track != j.at("tracks").end(); track++) {
         SimpleTrack t ;
         t.parse_from_name(track.key()) ;
         k.tracks[t] = track.value() ;
     }
-    for (auto track = j.at("junction_loci").begin(); track != j.at("junction_loci").end(); track++) {
-        Locus l ;
-        k.junction_loci.push_back(l) ;
+    for (auto locus = j.at("junction_loci").begin(); locus != j.at("junction_loci").end(); locus++) {
+        k.junction_loci.push_back(locus.value().get<Locus>()) ;
     }
-    for (auto track = j.at("filtered_loci").begin(); track != j.at("filtered_loci").end(); track++) {
-        Locus l ;
-        k.filtered_loci.push_back(l) ;
+    for (auto locus = j.at("filtered_loci").begin(); locus != j.at("filtered_loci").end(); locus++) {
+        k.filtered_loci.push_back(locus.value().get<Locus>()) ;
     }
 }
 

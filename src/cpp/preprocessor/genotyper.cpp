@@ -125,6 +125,8 @@ void Genotyper::load_kmers() {
             uint64_t k = encode_kmer(kmer.key()) ;
             _kmers[t][k] = kmer.value().get<Kmer>() ;
             _kmers[t][k].seq = encode_kmer(kmer.key()) ;
+            _kmers[t][k].count = 0 ; 
+            _kmers[t][k].total = 0 ;
             if (_kmers[t][k].type == KMER_TYPE_JUNCTION) {
                 junction += 1 ;
             } else {
@@ -406,15 +408,6 @@ void sample_lp_solve(int batch) {
 void Genotyper::solve_lp() {
     cout << "Solving LP.." << endl ;
     auto c = Configuration::getInstance() ;
-    //int m = 0 ;
-    //for (auto track = tracks.begin(); track != tracks.end(); track++) {
-    //    for (auto kmer = track->second.begin(); kmer != track->second.end(); kmer++) {
-    //        //cout << decode_kmer(*kmer) << endl ;
-    //        assert(kmers[*kmer].type == KMER_TYPE_JUNCTION) ;
-    //        m += 1 ;
-    //    }
-    //}
-    //cout << m << " kmers for LP. " << endl ;
     int n = 0 ;
     int batch_size = 1 ;
     #pragma omp parallel for num_threads(48)
@@ -449,7 +442,9 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
     vector<lp::MPVariable*> error_variables ;
     unordered_map<uint64_t, bool> lp_kmers ;
     std::ofstream j ;
-    j.open(c->workdir + "/batch_" + std::to_string(batch_b) + ".json") ;
+    //j.open(c->workdir + "/batch_" + std::to_string(batch_b) + ".json") ;
+    string name = clusters[batch_b][0].get_name() ;
+    j.open(c->workdir + "/batch_" + name + ".json") ;
     j << "{\n" ;
     int u = 0 ;
     //cout << "building lp.." << endl ;
@@ -513,7 +508,7 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
     objective->SetMinimization() ;
     // Export program
     std::ofstream o ;
-    o.open(c->workdir + "/batch_" + std::to_string(batch_b) + ".lp") ;
+    o.open(c->workdir + "/batch_" + name + ".lp") ;
     string program ;
     solver.ExportModelAsLpFormat(false, &program) ;
     o << program ; 
