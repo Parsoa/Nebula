@@ -2,6 +2,7 @@
 #include <vector>
 #include <mutex>
 #include <iostream>
+#include <iomanip>
 #include <chrono>
 #include <pthread.h>
 #include <thread>
@@ -66,9 +67,14 @@ void test_print_2() {
     }
 }
 int main(int argc, char** argv) {
-    for (int i = 100; i < 180; i++) {
-        cout << i << endl ;
+    float f = 0.0 ;
+    while (f < 1.0) {
+        f += 0.01 ;
+        cout << std::fixed << std::setprecision(3) << f << endl ;
     }
-    test_print_2() ;
+    //for (int i = 100; i < 180; i++) {
+    //    cout << i << endl ;
+    //}
+    //test_print_2() ;
 }
 

@@ -2,6 +2,7 @@
 #include <fstream>
 #include <stdlib.h>
 #include <iostream>
+#include <assert.h>
 #include <unordered_map>
 
 #include "bed_utils.hpp"
@@ -50,8 +51,7 @@ string get_chromosome_name(uint8_t index) {
     } else if (index == 23) {
         return "chrY" ;
     } else {
-        cout << index << endl ;
-        exit(0) ;
+        assert(false) ;
         return "chrUn" ;
     }
 }

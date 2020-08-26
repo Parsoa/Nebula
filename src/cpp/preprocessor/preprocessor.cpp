@@ -251,7 +251,7 @@ void Preprocessor::filter_kmers() {
         }
         if (n - p > 10000) {
             p = n ;
-            cout << "\rProgress " << std::fixed << std::setprecision(3) << float(n) / kmers.size() << "%.." ;
+            cout << "Progress " << std::fixed << std::setprecision(3) << float(n) / kmers.size() << "%..\r" ;
         }
     }
     cout << endl ;
@@ -271,24 +271,35 @@ void Preprocessor::filter_kmers() {
 // ============================================================================= \\
 
 void Preprocessor::dump_kmers(string path) {
-    nlohmann::json payload ;
+    auto c = Configuration::getInstance() ;
     cout << "Verifying and dumping kmers.." << endl ;
-    string p = path + "/genotyping_kmers.json" ;
-    std::ofstream o(p) ;
-    o << "{\n" ;
-    uint64_t i = 0 ;
-    for (auto it = kmers.begin(); it != kmers.end(); it++) {
-        auto kmer = it->second ;
-        assert(kmer.loci.size() != 0) ;
-        assert(kmer.tracks.size() != 0) ;
-        if (i != 0) {
-            o << ",\n" ;
-        }
-        o << "\"" << decode_kmer(it->first) << "\":" ;
-        o << nlohmann::json(kmer).dump(4) ;
-        i++ ;
+    vector<int> counters ;
+    int num_batches = 1000 ;
+    vector<mutex> locks(num_batches) ;
+    vector<ofstream> output_files ;
+    for (int i = 0; i < num_batches; i++) {
+        string p = path + "/kmers_batch_" + std::to_string(i) + ".json" ;
+        output_files.emplace_back(ofstream {p}) ;
+        output_files[i] << "{\n" ;
+        counters.push_back(0) ;
     }
-    o << "\n}\n" ;
+    #pragma omp parallel for num_threads(c->threads)
+    for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {
+        for (auto kmer = kmers.begin(bucket); kmer != kmers.end(bucket); kmer++) {
+            int t = bucket % num_batches ;
+            locks[t].lock() ;
+            if (counters[t] != 0) {
+                output_files[t] << ",\n" ;
+            }
+            counters[t] += 1 ;
+            output_files[t] << "\"" << decode_kmer(kmer->first) << "\":" ;
+            output_files[t] << nlohmann::json(kmer->second).dump(4) ;
+            locks[t].unlock() ;
+        }
+    }
+    for (int i = 0; i < num_batches; i++) {
+        output_files[i] << "\n}\n" ;
+    }
 }
 
 void Preprocessor::merge_genotyping_kmers(unordered_map<uint64_t, Kmer> inner_kmers, unordered_map<uint64_t, Kmer> junction_kmers) {

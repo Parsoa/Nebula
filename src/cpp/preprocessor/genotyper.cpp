@@ -1,4 +1,5 @@
 #include <omp.h>
+#include <mutex>
 #include <math.h>
 #include <string>
 #include <stdio.h>
@@ -7,12 +8,13 @@
 #include <assert.h>
 #include <iostream>
 #include <stdlib.h>
-#include <bits/stdc++.h>
-#include <mutex>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unordered_map>
+#include <bits/stdc++.h>
 
-#include "logger.hpp"
 #include "stats.hpp"
+#include "logger.hpp"
 #include "counter.hpp"
 #include "genotyper.hpp"
 
@@ -49,7 +51,7 @@ double calc_kmer_genotype_likelihood(Kmer& kmer, double count, string genotype, 
     if (kmer.type == KMER_TYPE_JUNCTION || kmer.trend) {
        return NormalDistribution(c * mean, s * std).log_prob(count) ; 
     } else {
-        return NormalDistribution((c - 1) * mean, (0.25 / s) * std).log_prob(count) ; 
+        return NormalDistribution((1 - c) * mean, (0.25 / s) * std).log_prob(count) ; 
     }
 }
 
@@ -103,22 +105,38 @@ void Genotyper::load_kmers() {
     json_file.close() ;
     cout << "loading genotyping kmers.." << endl ;
     int inner ;
-    int junction ; 
-    for (auto path = c->kmers.begin(); path != c->kmers.end(); path++) {
-        json_file.open(*path) ;
+    int junction ;
+    int num_batches = 1000 ;
+    vector<unordered_map<uint64_t, Kmer>> _kmers(num_batches) ;
+    #pragma omp parallel for num_threads(c->threads)
+    for (int i = 0; i < num_batches; i++) {
+        //cout << "batch" << i << endl ;
+        int t = i ;//omp_get_thread_num() ;
+        ifstream json_file ;
+        string path = c->kmers[0] + "/kmers_batch_" + std::to_string(t) + ".json" ;
+        struct stat info ;
+        if (stat(path.c_str(), &info) != 0) {
+            continue ;
+        }
+        json_file.open(path) ;
         nlohmann::json kmers_json ;
         json_file >> kmers_json ;
         for (nlohmann::json::iterator kmer = kmers_json.begin(); kmer != kmers_json.end(); ++kmer) {
             uint64_t k = encode_kmer(kmer.key()) ;
-            kmers[k] = kmer.value().get<Kmer>() ;
-            kmers[k].seq = encode_kmer(kmer.key()) ;
-            if (kmers[k].type == KMER_TYPE_JUNCTION) {
+            _kmers[t][k] = kmer.value().get<Kmer>() ;
+            _kmers[t][k].seq = encode_kmer(kmer.key()) ;
+            if (_kmers[t][k].type == KMER_TYPE_JUNCTION) {
                 junction += 1 ;
             } else {
                 inner += 1 ;
             }
         }
         json_file.close() ;
+    }
+    cout << "Loaded all kmers batches, merging.." << endl ;
+    for (int i = 0; i < num_batches; i++) {
+        kmers.insert(_kmers[i].begin(), _kmers[i].end()) ;
+        _kmers[i].clear() ;
     }
     cout << "Loaded all kmers:" << endl ;
     cout << "\t" << gc_kmers.size() << " GC kmers." << endl ;
@@ -211,10 +229,10 @@ void Genotyper::filter_kmers() {
                 //cout << decode_kmer(it->first) << endl ;
                 //cout << kmer.loci.size() << endl ;
                 e += 1 ;
-                if (e != 0) {
-                    j << ",\n" ;
-                }
-                j << "\"" << decode_kmer(it->first) << "\":" ;
+                //if (e != 0) {
+                //    j << ",\n" ;
+                //}
+                //j << "\"" << decode_kmer(it->first) << "\":" ;
                 //j << nlohmann::json(kmer).dump(4) ;
             }
             //assert(kmer.loci.size() == 1) ;
@@ -277,10 +295,10 @@ void Genotyper::filter_kmers() {
             junction += 1 ;
         }
     }
-    cout << kmers.size() << " kmers remain after filtering.." << endl ;
-    cout << "Inner kmers: " << inner << endl ;
-    cout << "Junction kmers: " << junction << endl ;
-    cout << e << " inconsistent kmers." << endl ;
+    cout << kmers.size() << " kmers remain after filtering:" << endl ;
+    cout << "\tInner kmers: " << inner << endl ;
+    cout << "\tJunction kmers: " << junction << endl ;
+    //cout << e << " inconsistent kmers." << endl ;
 }
 
 void Genotyper::cluster_kmers() {
@@ -430,9 +448,9 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
     //cout << track_variables.size() << " track variables." << endl ;
     vector<lp::MPVariable*> error_variables ;
     unordered_map<uint64_t, bool> lp_kmers ;
-    //std::ofstream j ;
-    //j.open(c->workdir + "/batch_" + std::to_string(batch) + ".json") ;
-    //j << "{\n" ;
+    std::ofstream j ;
+    j.open(c->workdir + "/batch_" + std::to_string(batch_b) + ".json") ;
+    j << "{\n" ;
     int u = 0 ;
     //cout << "building lp.." << endl ;
     for (int i = batch_b; i < batch_e; i++) {
@@ -442,11 +460,11 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
                     auto kmer = kmers[*k] ;
                     //print_kmer(kmer) ;
                     // JSON output
-                    //if (u != 0) {
-                    //    j << ",\n" ;
-                    //}
-                    //j << "\"" << decode_kmer(*k) << "\":" ;
-                    //j << nlohmann::json(kmer).dump(4) ;
+                    if (u != 0) {
+                        j << ",\n" ;
+                    }
+                    j << "\"" << decode_kmer(*k) << "\":" ;
+                    j << nlohmann::json(kmer).dump(4) ;
                     u += 1 ;
                     // JSON output
                     lp_kmers[*k] = true ;
@@ -489,7 +507,7 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
             }
         }
     }
-    //j << "\n}\n" ;
+    j << "\n}\n" ;
     //cout << lp_kmers.size() << " lp kmers." << endl ;
     //cout << error_variables.size() << " error variables." << endl ;
     objective->SetMinimization() ;

@@ -340,37 +340,33 @@ void KmerCounter::output_counts() {
 
 void KmerCounter::load_counts() {
     auto c = Configuration::getInstance() ;
-    string p = c->workdir + "/counts.txt" ;
-    cout << "Loading kmer counts from " << p << ".." << endl ;
-    std::ifstream o(p) ;
-    string line ;
-    int g = 0 ;
-    int n = 0 ;
-    int u = 0 ;
-    while (std::getline(o, line)) {
-        stringstream ss(line) ;
-        vector<string> tokens ;
-        string token ;
-        while (getline(ss, token, ':')) {
-            tokens.push_back(token) ;
+    cout << "Loading kmer counts.." << endl ;
+    int num_batches = 1000 ;
+    #pragma omp parallel for num_threads(c->threads)
+    for (int i = 0; i < num_batches; i++) {
+        string path = c->workdir + "/counts_batch_" + std::to_string(i) ;
+        std::ifstream o(path) ;
+        string line ;
+        while (std::getline(o, line)) {
+            stringstream ss(line) ;
+            vector<string> tokens ;
+            string token ;
+            while (getline(ss, token, ':')) {
+                tokens.push_back(token) ;
+            }
+            int count = std::stoi(tokens[1]) ;
+            int total = std::stoi(tokens[2]) ;
+            uint64_t canon = encode_kmer(canonicalize(tokens[0])) ;
+            if (gc_kmers->find(canon) != gc_kmers->end()) {
+                gc_kmers->find(canon)->second.count += count ;
+            }
+            if (depth_kmers->find(canon) != depth_kmers->end()) {
+                depth_kmers->find(canon)->second.count += count ;
+            }
+            if (genotyping_kmers->find(canon) != genotyping_kmers->end()) {
+                genotyping_kmers->find(canon)->second.count += count ;
+                genotyping_kmers->find(canon)->second.total += total ;
+            }
         }
-        int count = std::stoi(tokens[1]) ;
-        int total = std::stoi(tokens[2]) ;
-        uint64_t canon = encode_kmer(canonicalize(tokens[0])) ;
-        if (gc_kmers->find(canon) != gc_kmers->end()) {
-            gc_kmers->find(canon)->second.count += count ;
-        }
-        if (depth_kmers->find(canon) != depth_kmers->end()) {
-            depth_kmers->find(canon)->second.count += count ;
-            g += count ;
-            n += 1 ;
-        }
-        if (genotyping_kmers->find(canon) != genotyping_kmers->end()) {
-            genotyping_kmers->find(canon)->second.count += count ;
-            genotyping_kmers->find(canon)->second.total += total ;
-        }
-        u += 1 ;
     }
-    cout << g << " " << n << endl ;
-    cout << u << endl ;
 }
