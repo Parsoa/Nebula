@@ -67,16 +67,16 @@ class TrackPreprocessorJob(map_reduce.Job):
             tracks.update(bed.load_tracks_from_file_as_dict(path, parse_header = True))
         user_print('Loaded', len(tracks), 'tracks.')
         tracks = bed.sort_tracks(tracks)
-        #svtypes = {track.svtype: True for track in tracks}
-        #merged_tracks = []
-        #for svtype in svtypes:
-        #    if svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES:
-        #        _tracks = [track for track in tracks if track.svtype == svtype]
-        #        print('Merging', len(_tracks), svtype, 'tracks..')
-        #        _tracks = bed.filter_overlapping_tracks(_tracks, svtype)
-        #        print('Done', len(_tracks), 'tracks remaining.')
-        #        merged_tracks += _tracks
-        #tracks = bed.sort_tracks(bed.filter_short_tracks(merged_tracks))
+        svtypes = {track.svtype: True for track in tracks}
+        merged_tracks = []
+        for svtype in svtypes:
+            if svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES:
+                _tracks = [track for track in tracks if track.svtype == svtype]
+                print('Merging', len(_tracks), svtype, 'tracks..')
+                _tracks = bed.filter_overlapping_tracks(_tracks, svtype)
+                print('Done', len(_tracks), 'tracks remaining.')
+                merged_tracks += _tracks
+        tracks = bed.sort_tracks(bed.filter_short_tracks(merged_tracks))
         tracks = {track.id: track for track in tracks if track.svtype in TrackPreprocessorJob.SUPPORTED_SVTYPES}
         user_print('Removed overlapping tracks.', len(tracks), 'non-overlapping tracks remainig.')
         return tracks
@@ -239,6 +239,7 @@ class MixKmersJob(map_reduce.Job):
             json.dump(kmers, json_file, indent = 4, sort_keys = True)
 
     def load_inner_kmers(self):
+        c = config.Configuration()
         self.inner_kmers = {}
         job = reduction.FilterInnerKmersJob()
         with open(os.path.join(job.get_current_job_directory(), 'kmers.json'), 'r') as json_file:
@@ -271,6 +272,8 @@ class MixKmersJob(map_reduce.Job):
                     if n == 0:
                         break
         self.unload_reference_counts_provider()
+        with open(os.path.join(self.get_current_job_directory(), 'reference_kmers.json'), 'w') as json_file:
+            json.dump(self.depth_kmers, json_file, indent = 4)
 
     def load_gc_content_kmers(self):
         c = config.Configuration()

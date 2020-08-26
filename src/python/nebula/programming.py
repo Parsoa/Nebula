@@ -65,11 +65,9 @@ class IntegerProgrammingJob(map_reduce.Job):
         json_file.close()
 
     def reduce(self):
-        c = config.Configuration()
         self.index_kmers()
         self.index_tracks()
         #self.cluster_kmers()
-        self.calculate_residual_coverage()
         #self.clustered_solve()
         self.solve()
 
@@ -89,10 +87,17 @@ class IntegerProgrammingJob(map_reduce.Job):
                     for track in kmers[kmer]['tracks']:
                         if not track in self.tracks:
                             self.tracks[track] = bed.track_from_id(track)
-                            if kmers[kmer]['type'] == 'inner':
-                                self.tracks[track]['confidence'] = 'LOW'
-                            else:
-                                self.tracks[track]['confidence'] = 'HIGH'
+                            self.tracks[track]['confidence'] = 'N/A'
+                            #if kmers[kmer]['type'] == 'inner':
+                            #    if self.tracks[track]['confidence'] == 'HIGH':
+                            #        self.tracks[track]['confidence'] = 'MIX'
+                            #    else:
+                            #        self.tracks[track]['confidence'] = 'LOW'
+                            #else:
+                            #    if self.tracks[track]['confidence'] == 'LOW':
+                            #        self.tracks[track]['confidence'] = 'MIX'
+                            #    else:
+                            #        self.tracks[track]['confidence'] = 'HIGH'
                         if 'svtype' in self.lp_kmers[-1] and self.lp_kmers[-1]['svtype'] != self.tracks[track].svtype:
                             system_print_warning('Kmer with multiple event types..')
                             pass
@@ -101,6 +106,7 @@ class IntegerProgrammingJob(map_reduce.Job):
         return self.lp_kmers
 
     def index_tracks(self):
+        c = config.Configuration()
         n = 0
         tmp = sorted([t for t in self.tracks])
         for track in tmp:
@@ -108,86 +114,97 @@ class IntegerProgrammingJob(map_reduce.Job):
             self.tracks[track]['kmers'] = []
             self.tracks[track]['cluster'] = -1
             n += 1
+        m = 0
+        ultrahigh_tracks = {}
         for index, kmer in enumerate(self.lp_kmers):
+            self.calculate_residual_coverage(kmer)
             for track in kmer['tracks']:
                 self.tracks[track]['kmers'].append(index)
+                if kmer['count'] > kmer['coverage'] + 3 * c.std:
+                    m += 1
+                    if not track in ultrahigh_tracks:
+                        ultrahigh_tracks[track] = 0
+                    ultrahigh_tracks[track] += 1
+        print(len(ultrahigh_tracks), 'events with ultra high-frequency kmers.')
+        for track in self.tracks:
+            self.tracks[track]['ultrahigh'] = 0
+        for track in ultrahigh_tracks:
+            self.tracks[track]['ultrahigh'] = ultrahigh_tracks[track]
         return self.tracks
 
-    #def cluster_kmers(self):
-    #    print('Clustering kmers..')
-    #    clusters = []
-    #    cluster_index = {}
-    #    for track in self.tracks:
-    #        cluster_index[track] = -1
-    #    n = 0
-    #    for track in self.tracks:
-    #        #print(track, len(self.tracks[track]['kmers']))
-    #        cluster = cluster_index[track]
-    #        for i in self.tracks[track]['kmers']: # iterate kmers
-    #            kmer = self.lp_kmers[i]
-    #            #print(kmer)
-    #            for track_name in kmer['tracks']: # iterate tracks for kmer
-    #                if track_name != track: # kmer has track other than current one
-    #                    if cluster_index[track_name] == -1: # other track not yet clustered
-    #                        if cluster == -1: # current track not yet clustered, create cluster
-    #                            clusters.append([])
-    #                            cluster = len(clusters) - 1
-    #                            cluster_index[track] = cluster
-    #                            cluster_index[track_name] = cluster
-    #                            clusters[cluster].append(track)
-    #                            clusters[cluster].append(track_name)
-    #                            cluster_index[track_name] = cluster
-    #                            clusters[cluster].append(track_name)
-    #                    else: # append current track to cluster
-    #                        if cluster == -1:
-    #                            cluster = cluster_index[track_name]
-    #                            clusters[cluster].append(track)
-    #                        else:
-    #                            # merge cluster with this cluster
-    #                            c = cluster_index[track_name]
-    #                            if c != cluster:
-    #                                #print('Reclustering', len(clusters[c]), 'tracks..')
-    #                                for _track in clusters[c]:
-    #                                    cluster_index[_track] = cluster
-    #                                    clusters[cluster].append(_track)
-    #                                clusters[c] = None
-    #        if cluster == -1:
-    #            clusters.append([])
-    #            cluster = len(clusters) - 1
-    #            cluster_index[track] = cluster
-    #            clusters[cluster].append(track)
-    #        n += 1
-    #        #if n % 100 == 0:
-    #        #    print('Processed', n, 'out of', len(self.tracks), 'tracks..')
-    #    l = len(list(filter(lambda x: x != None, clusters)))
-    #    assert all([cluster_index[t] != -1 for t in self.tracks])
-    #    print('Clustered', len(self.lp_kmers), 'kmers and', len(self.tracks), 'tracks into', l, 'clusters..')
-    #    self.clusters = clusters
+    def cluster_kmers(self):
+        print('Clustering kmers..')
+        clusters = []
+        cluster_index = {}
+        for track in self.tracks:
+            cluster_index[track] = -1
+        n = 0
+        for track in self.tracks:
+            cluster = cluster_index[track]
+            for i in self.tracks[track]['kmers']: # iterate kmers
+                kmer = self.lp_kmers[i]
+                for track_name in kmer['tracks']: # iterate tracks for kmer
+                    if track_name != track: # kmer has track other than current one
+                        if cluster_index[track_name] == -1: # other track not yet clustered
+                            if cluster == -1: # current track not yet clustered, create cluster
+                                clusters.append([])
+                                cluster = len(clusters) - 1
+                                cluster_index[track] = cluster
+                                cluster_index[track_name] = cluster
+                                clusters[cluster].append(track)
+                                clusters[cluster].append(track_name)
+                                cluster_index[track_name] = cluster
+                                clusters[cluster].append(track_name)
+                        else: # append current track to cluster
+                            if cluster == -1:
+                                cluster = cluster_index[track_name]
+                                clusters[cluster].append(track)
+                            else: # merge cluster with this cluster
+                                c = cluster_index[track_name]
+                                if c != cluster:
+                                    for _track in clusters[c]:
+                                        cluster_index[_track] = cluster
+                                        clusters[cluster].append(_track)
+                                    clusters[c] = None
+            if cluster == -1:
+                clusters.append([])
+                cluster = len(clusters) - 1
+                cluster_index[track] = cluster
+                clusters[cluster].append(track)
+            n += 1
+            #if n % 100 == 0:
+            #    print('Processed', n, 'out of', len(self.tracks), 'tracks..')
+        l = len(list(filter(lambda x: x != None, clusters)))
+        assert all([cluster_index[t] != -1 for t in self.tracks])
+        print('Clustered', len(self.lp_kmers), 'kmers and', len(self.tracks), 'tracks into', l, 'clusters..')
+        self.clusters = clusters
 
-    #def clustered_solve(self):
-    #    for cluster in self.clusters:
-    #        if len(cluster) == 1:
-    #            track = cluster[0] 
-    #            n = len(self.tracks[track]['kmers'])
-    #            cov = 0
-    #            count = 0
-    #            kmer_type = 'junction'
-    #            #lp_file = open(os.path.join(self.get_current_job_directory(), track + '.lp'), 'w')
-    #            for k in self.tracks[track]['kmers']:
-    #                kmer = self.lp_kmers[k]
-    #                cov += kmer['coverage'] * 0.97
-    #                count += kmer['lp_count'] - kmer['coverage'] * kmer['residue']
-    #                #lp_file.write(str(kmer['coverage'] * 0.97) + ' '+ track + ' + e = ' + str(kmer['lp_count'] - kmer['coverage'] * kmer['residue']) + '\n')
-    #                kmer_type = kmer['type']
-    #            if kmer['type'] == 'inner' and self.tracks[track].svtype == 'DEL':
-    #                lp = 1.0 - float(count) / float(cov)
-    #            if kmer['type'] == 'junction' or self.tracks[track].svtype == 'INS':
-    #                lp = float(count) / float(cov)
-    #            self.tracks[track]['lp_value'] = lp
-    #            self.tracks[track]['lp_genotype'] = self.round_genotype(lp, self.tracks[track]['svtype'])[1]
-    #        else:
-    #            print('Skipping cluster..')
-    #    self.export_solution('algerba')
+    def clustered_solve(self):
+        _tracks = self.tracks
+        _lp_kmers = self.lp_kmers
+        self.tracks = {}
+        self.lp_kmers = []
+        for i, cluster in enumerate(self.clusters):
+            print('Solving for cluster', i, 'with', len(cluster), 'tracks..')
+            self.tracks = {track: _tracks[track] for track in cluster}
+            self.lp_kmers = [kmer for kmer in _lp_kmers if any([track in kmer['tracks'] for track in cluster])]
+            self.index_tracks()
+            problem, variables = self.generate_mps_linear_program()
+            problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin.lp'))
+            problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin.mps'))
+            command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution.mps')
+            output = subprocess.call(command, shell = True)
+            self.import_lp_values()
+            self.round_lp()
+            for track in self.tracks:
+                _tracks[track]['lp_value'] = self.tracks[track]['lp_value']
+                _tracks[track]['lp_genotype'] = self.tracks[track]['lp_genotype']
+        self.tracks = _tracks
+        self.lp_kmers = _lp_kmers
+        self.verify_genotypes()
+        self.correct_genotypes()
+        self.export_genotypes('merge')
+        self.export_kmers()
 
     def solve(self):
         c = config.Configuration()
@@ -195,13 +212,13 @@ class IntegerProgrammingJob(map_reduce.Job):
         problem.writeLP(os.path.join(self.get_current_job_directory(), 'program_coin.lp'))
         problem.writeMPS(os.path.join(self.get_current_job_directory(), 'program_coin.mps'))
         command = '/share/hormozdiarilab/Codes/NebulousSerendipity/coin/build/bin/clp ' + os.path.join(self.get_current_job_directory(), 'program_coin.mps') + ' -dualsimplex -solution ' + os.path.join(self.get_current_job_directory(), 'solution.mps')
-        #output = subprocess.call(command, shell = True)
-        #self.import_lp_values()
-        #self.round_lp()
+        output = subprocess.call(command, shell = True)
+        self.import_lp_values()
+        self.round_lp()
         self.verify_genotypes()
-        self.correct_genotypes()
         self.export_genotypes('merge')
-        #self.export_kmers()
+        self.correct_genotypes()
+        self.export_kmers()
 
     def add_mps_error_absolute_value_constraints(self, problem, variables, index):
         expr = LpAffineExpression([(variables[len(self.tracks) + len(self.lp_kmers) + index], 1.0), (variables[len(self.tracks) + index], 1.0)])
@@ -233,8 +250,6 @@ class IntegerProgrammingJob(map_reduce.Job):
                 else:
                     self.solution[index] = value
                 line = f.readline()
-        #with open(os.path.join(self.get_current_job_directory(), 'solution_coin.json'), 'w') as json_file:
-        #    json.dump({'variables': self.solution}, json_file, indent = 4, sort_keys = True)
 
     def round_lp(self):
         c = config.Configuration()
@@ -249,30 +264,15 @@ class IntegerProgrammingJob(map_reduce.Job):
         name = name + '.bed' if not c.cgc else 'genotypes_' + (c.fastq.split('/')[-1] if c.fastq else c.bam.split('/')[-1]) + '.bed'
         path = os.path.join(c.workdir if c.cgc else self.get_current_job_directory(), name)
         with open(path, 'w') as bed_file:
-            bed_file.write('#CHROM\tBEGIN\tEND\tID\tSVTYPE\tLP\tCONFIDENCE\tGENOTYPE\tCOMPATIBILITY\tRENOTYPE\tULTRAHIGH\t0/0\t0/1\t1/1\n')
+            bed_file.write('\t'.join(['#CHROM', 'BEGIN', 'END', 'ID', 'SVTYPE', 'LP', 'CONFIDENCE', 'GENOTYPE', 'COMPATIBILITY', 'RENOTYPE', 'ULTRAHIGH', '0/0', '1/0', '1/1']) + '\n')
             for t in bed.sort_tracks(self.tracks):
-                #bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, t.id, t.svtype, t['lp_value'], t['confidence'], t['score'], t['lp_genotype']]]) + '\n')
-                _t = c.tracks[str(t)]
-                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, t.id, t.svtype, _t['lp'], _t['confidence'], t['genotype'], t['compatibility'], t['renotype'], t['ultrahigh'], t['score_0/0'], t['score_1/0'], t['score_1/1']]]) + '\n')
+                #_t = c.tracks[str(t)]
+                bed_file.write('\t'.join([str(x) for x in [t.chrom, t.begin, t.end, t.id, t.svtype, t['lp_value'], t['confidence'], t['lp_genotype'], t['compatibility'], t['renotype'], t['ultrahigh'], t['score_0/0'], t['score_1/0'], t['score_1/1']]]) + '\n')
 
-    # BUG 0000
-    # This is problematic
-    # Assume an event was genotyped with inner kmers and one of these kmers also belongs to an event that
-    # was genotyped with junction kmers alone. Although it won't appear in the second event's kmer set, the
-    # first event will add it here. kmer will be mistakenly categorized as junction by Export later as Export
-    # assumes all kmers of an event have the same type..
-    # Fix: 1. Only add kmer to other event if it matches type
-    #      2. Filter kmer entirely
     def export_kmers(self):
         c = config.Configuration()
         tracks = {}
         for index, kmer in enumerate(self.lp_kmers):
-            j = all(self.tracks[track]['confidence'] == 'LOW' for track in kmer['tracks'])
-            i = all(self.tracks[track]['confidence'] == 'HIGH' for track in kmer['tracks'])
-            if not i and not j:
-                # ignore kmer
-                # or keep it but force the LP to use it
-                continue
             for track in kmer['tracks']:
                 if not track in tracks:
                     tracks[track] = {}
@@ -286,94 +286,56 @@ class IntegerProgrammingJob(map_reduce.Job):
             with open(os.path.join(c.workdir, name), 'w') as json_file:
                 json.dump({kmer['kmer']: kmer for kmer in self.lp_kmers}, json_file, indent = 4, sort_keys = True)
 
-    def calc_kmer_genotype_likelihood(self, kmer, track, genotype, std):
+    def calc_kmer_genotype_likelihood(self, kmer, genotype, std):
         c = 0 if genotype == '0/0' else 0.5 if genotype == '1/0' else 1.0
+        s = 0.25 if genotype == '0/0' else 0.50 if genotype == '1/0' else 1.00
         if kmer['type'] == 'junction':
-            d = statistics.NormalDistribution(kmer['coverage'] * c, std)
+            d = statistics.NormalDistribution(kmer['gc_coverage'] * c, std * s)
         else:
-            if track.svtype == 'INS':
-                d = statistics.NormalDistribution(kmer['coverage'] * c, std)
+            if kmer['trend'] == 'upward':
+                d = statistics.NormalDistribution(kmer['gc_coverage'] * c, std * s)
             else:
-                d = statistics.NormalDistribution(kmer['coverage'] * (1 - c), std)
-        return d.log_pmf(kmer['lp_count'])
-
-    #def verify_genotypes(self):
-    #    c = config.Configuration()
-    #    genotypes = ['0/0', '1/0', '1/1']
-    #    for track in self.tracks:
-    #        print('Validating ', track)
-    #        likelihoods = {g: 1 for g in genotypes}
-    #        for k in self.tracks[track]['kmers']:
-    #            kmer = self.lp_kmers[k]
-    #            #print(kmer['kmer'], kmer['count'])
-    #            if kmer['count'] > kmer['coverage'] + 3 * c.std:
-    #                continue
-    #            for g in likelihoods:
-    #                l = self.calc_kmer_genotype_likelihood(kmer, self.tracks[track], g, c.std)
-    #                likelihoods[g] += l
-    #                #print(g, l)
-    #        g = max(likelihoods, key = likelihoods.get)
-    #        #self.tracks[track]['score'] = likelihoods[g] 
-    #        #self.tracks[track]['renotype'] = g 
-    #        print(likelihoods)
-    #        genotype = c.tracks[track].genotype
-    #        #genotype = self.tracks[track].lp_genotype
-    #        ## log likelihoods are always negative, but increasing as the log is increasing itslef, so higher log likelihood means higher likelihood
-    #        ## if test is positive, then g is more likely
-    #        ## if test is negative, then g is less likely
-    #        ## if this selects zero, means that there was no positive genotype
-    #        ratios = [int(likelihoods[g] - likelihoods[genotype]) for g in genotypes if g != genotype]
-    #        #print(genotype, ratios)
-    #        m = int(max(ratios))
-    #        i = ratios.index(m)
-    #        self.tracks[track]['score'] = float(max(ratios)) / likelihoods[genotype]
-    #        self.tracks[track]['renotype'] = genotypes[i]
-    #    #exit()
+                d = statistics.NormalDistribution(kmer['gc_coverage'] * (1 - c), std * (0.25 / s))
+        return d.log_pmf(kmer['count'])
 
     def verify_genotypes(self):
         c = config.Configuration()
         genotypes = ['0/0', '1/0', '1/1']
         for track in self.tracks:
-            t = c.tracks[track]
-            print('Validating ', track)
+            #print('Validating ', track)
             kmer_likelihood = {g: 0 for g in genotypes}
             n = 0
             for k in self.tracks[track]['kmers']:
                 kmer = self.lp_kmers[k]
-                likelihoods = {g: self.calc_kmer_genotype_likelihood(kmer, self.tracks[track], g, c.std) for g in genotypes}
+                likelihoods = {g: self.calc_kmer_genotype_likelihood(kmer, g, c.std) for g in genotypes}
                 g = max(likelihoods, key = likelihoods.get)
                 kmer_likelihood[g] += 1
                 n += 1
             kmer_likelihood = {g: float(kmer_likelihood[g]) / n for g in genotypes}
             g = max(kmer_likelihood, key = kmer_likelihood.get)
-            score = kmer_likelihood[t.genotype]
+            lp_genotype = self.tracks[track]['lp_genotype']
+            score = kmer_likelihood[lp_genotype]
             self.tracks[track]['compatibility'] = score
             for g in kmer_likelihood:
                 self.tracks[track]['score_' + g] = kmer_likelihood[g]
             if score < 0.7:
-                kmer_likelihood.pop(t.genotype, None)
+                kmer_likelihood.pop(lp_genotype, None)
                 g = max(kmer_likelihood, key = kmer_likelihood.get)
-                if '1' in t.genotype and not '1' in g:
-                    self.tracks[track]['renotype'] = './.'
-                elif '1' in g and not '1' in t.genotype:
+                if ('1' in lp_genotype and not '1' in g) or ('1' in g and not '1' in lp_genotype):
                     self.tracks[track]['renotype'] = './.'
                 else:
-                    self.tracks[track]['renotype'] = t.genotype
+                    self.tracks[track]['renotype'] = lp_genotype
             else:
-                self.tracks[track]['renotype'] = g
+                self.tracks[track]['renotype'] = lp_genotype
 
     def correct_genotypes(self):
         c = config.Configuration()
         for track in self.tracks:
-            t = c.tracks[track]
-            self.tracks[track]['genotype'] = t.genotype
             if self.tracks[track]['ultrahigh'] > 10:
-                self.tracks[track]['genotype'] = './.'
+                self.tracks[track]['lp_genotype'] = './.'
             if float(self.tracks[track]['ultrahigh']) / len(self.tracks[track]['kmers']) > 0.5:
-                self.tracks[track]['genotype'] = './.'
-            if t['genotype'] == '0/0' and float(t['lp']) > 0.05 and t['renotype'] != '0/0':
-                self.tracks[track]['genotype'] = '1/0'
+                self.tracks[track]['lp_genotype'] = './.'
+            if self.tracks[track]['lp_genotype'] == '0/0' and float(self.tracks[track]['lp_value']) > 0.05 and self.tracks[track]['renotype'] != '0/0':
+                self.tracks[track]['lp_genotype'] = '0/1'
         self.export_genotypes('corrected')
-
-
 

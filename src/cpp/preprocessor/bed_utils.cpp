@@ -1,6 +1,35 @@
+#include <string>
+#include <fstream>
+#include <stdlib.h>
+#include <iostream>
+#include <unordered_map>
+
 #include "bed_utils.hpp"
 
 using namespace std ;
+
+vector<Track> bed_tracks ;
+
+string get_svtype(uint8_t svtype) {
+    if (svtype == SVTYPE_DEL) {
+        return "DEL" ;
+    }
+    if (svtype == SVTYPE_INS) {
+        return "INS" ;
+    }
+    return "INV" ;
+}
+
+uint8_t parse_svtype(string svtype) {
+    if (svtype == "DEL") {
+        return SVTYPE_DEL ;
+    }
+    if (svtype == "INS") {
+        return SVTYPE_INS ;
+    }
+    return SVTYPE_MISC ;
+}
+
 
 uint8_t get_chromosome_index(string chrom) {
     string ch = chrom.substr(3, chrom.length() - 3) ;
@@ -21,21 +50,24 @@ string get_chromosome_name(uint8_t index) {
     } else if (index == 23) {
         return "chrY" ;
     } else {
+        cout << index << endl ;
+        exit(0) ;
         return "chrUn" ;
     }
 }
 
-int parse_svtype(string svtype) {
-    if (svtype == "DEL") {
-        return SVTYPE_DEL ;
+string SimpleTrack::get_name() const {
+    std::string base = get_chromosome_name(chrom) + "_" + std::to_string(begin) + "_" + std::to_string(end) ;
+    if (svtype == SVTYPE_DEL) {
+        return "DEL@" + base ;
     }
-    if (svtype == "INS") {
-        return SVTYPE_INS ;
+    if (svtype == SVTYPE_INS) {
+        return "INS@" + base ;
     }
-    return SVTYPE_MISC ;
+    return base ;
 }
 
-Track parse_track_name(string name) {
+void SimpleTrack::parse_from_name(string name) {
     stringstream ss(name) ;
     vector<string> tokens ;
     string token ;
@@ -43,11 +75,10 @@ Track parse_track_name(string name) {
         tokens.push_back(token) ;
     }
     int i = tokens[0].find('@') ;
-    Track track ;
-    track.chrom = get_chromosome_index(tokens[0].substr(i + 1, tokens[0].length() - (i + 1))) ;
-    track.begin = stoi(tokens[1]) ;
-    track.end = stoi(tokens[2]) ;
-    return track ;
+    svtype = parse_svtype(tokens[0].substr(0, 3)) ;
+    chrom = get_chromosome_index(tokens[0].substr(i + 1, tokens[0].length() - (i + 1))) ;
+    begin = stoi(tokens[1]) ;
+    end = stoi(tokens[2]) ;
 }
 
 std::vector<Track> load_tracks_from_file(string path) {
@@ -61,7 +92,8 @@ std::vector<Track> load_tracks_from_file(string path) {
         istringstream iss(line) ;
         if (i == 0) {
             if (line[0] != '#') {
-                // TODO: error
+                cout << "BAM header not present (first line doesn't begin with #). Aborting.." << endl ;
+                exit(0) ;
             }
             vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}} ;
             for (int i = 0; i < tokens.size(); i++) {
@@ -75,13 +107,16 @@ std::vector<Track> load_tracks_from_file(string path) {
             track.begin = std::stoi(tokens[1]) ;
             track.end = std::stoi(tokens[2]) ;
             if (header.find("SVLEN") != header.end()) {
-                track.svlen = std::stoi(tokens[header["SVLEN"]]) ;
+                track.svlen = abs(std::stoi(tokens[header["SVLEN"]])) ;
             }
             if (header.find("SEQ") != header.end()) {
                 track.seq = tokens[header["SEQ"]] ;
             }
+            if (header.find("GENOTYPE") != header.end()) {
+                track.genotype = tokens[header["GENOTYPE"]] ;
+            }
             if (header.find("SVTYPE") != header.end()) {
-                track.svtype = parse_svtype(tokens[header["SEQ"]]) ;
+                track.svtype = parse_svtype(tokens[header["SVTYPE"]]) ;
             } else {
                 track.svtype = SVTYPE_DEL ; 
             }
@@ -89,5 +124,15 @@ std::vector<Track> load_tracks_from_file(string path) {
         }
     }
     cout << "Loaded " << tracks.size() << " tracks." << endl ;
+    return tracks ;
+}
+
+std::unordered_map<Track, int> load_tracks_from_file_as_dict(string path) {
+    auto _tracks = load_tracks_from_file(path) ;
+    std::unordered_map<Track, int> tracks ;
+    for (auto track = _tracks.begin(); track != _tracks.end(); track++) {
+        tracks[*track] = 1 ;
+    }
+    return tracks ;
 }
 

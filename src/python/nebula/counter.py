@@ -50,7 +50,7 @@ class BaseExactCountingJob(map_reduce.Job):
         self.create_output_directories()
         cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/counter')
         if c.bam:
-            command = os.path.join(cpp_dir, "counter.out") + " " + self.get_current_job_directory() +  " " + c.bam + " " + str(16)
+            command = os.path.join(cpp_dir, "counter.out") + " " + self.get_current_job_directory() +  " " + c.bam[0] + " " + str(16)
         else:
             command = os.path.join(cpp_dir, "counter.out") + " " + self.get_current_job_directory() +  " " + c.fastq[0] + " " + str(16)
         print(command)

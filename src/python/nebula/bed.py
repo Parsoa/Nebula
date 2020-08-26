@@ -29,6 +29,9 @@ class BedTrack:
             self[k] = v
         if not hasattr(self, 'svtype'):
             self.svtype = 'DEL'
+        if hasattr(self, 'genotype'):
+            if self.genotype == '0/1' or self.genotype == './1' or self.genotype == '1/.':
+                self.genotype = '1/0'
         if not hasattr(self, 'id'):
             self.id = self.svtype + '@' + self.chrom + '_' + str(self.begin) + '_' + str(self.end)
 
@@ -72,7 +75,7 @@ class BedTrack:
         return self.id
 
     def __getitem__(self, key):
-        return getattr(self, key)
+        return getattr(self, key.lower())
 
     def __setitem__(self, key, value):
         key = key.lower()
@@ -88,6 +91,9 @@ class BedTrack:
 # ============================================================================================================================ #
 # BED Tracks
 # ============================================================================================================================ #
+
+def as_dict(tracks):
+    return {str(track): track for track in tracks}
 
 # sorts a dictionary of tracks into a list
 def sort_tracks(tracks):
@@ -145,24 +151,10 @@ def load_tracks_from_file(path, parse_header = True, keywords = []):
         while line:
             tokens = line.split()
             kwargs = []
-            if len(tokens) > 3:
-                if parse_header:
-                    for i in range(3, len(tokens)):
-                        kwargs.append((fields[i], tokens[i]))
-                else:
-                    for index, pair in enumerate(keywords):
-                        if index + 3 < len(tokens):
-                            if len(pair) >= 3:
-                                kwargs.append((pair[0], pair[2](tokens[3 + index])))
-                            else:
-                                kwargs.append((pair[0], tokens[3 + index]))
-                        else:
-                            kwargs.append((pair[0], pair[1]))
-                track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[2]), fields = kwargs)
-                tracks.append(track)
-            else:
-                track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[1]))
-                tracks.append(track)
+            for i in range(3, len(tokens)):
+                kwargs.append((fields[i], tokens[i]))
+            track = BedTrack(chrom = tokens[0], begin = int(tokens[1]), end = int(tokens[2]), fields = kwargs)
+            tracks.append(track)
             line = f.readline()
     return tracks
 

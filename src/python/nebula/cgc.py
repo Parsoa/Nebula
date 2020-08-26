@@ -10,6 +10,7 @@ import json
 import time
 import argparse
 import operator
+import functools
 import traceback
 
 from nebula import (
@@ -239,12 +240,116 @@ class CgcCounterJob(counter.BaseExactCountingJob):
         print('Exporting kmers for', len(self.tracks), 'tracks.')
         exporter = map_reduce.TrackExportHelper(tracks = self.tracks, output_dir = self.get_current_job_directory(), num_threads = 12)
         exporter.execute()
-        #else:
-        #    for track in self.tracks:
-        #        with open(os.path.join(self.get_current_job_directory(), track + '.json'), 'w') as json_file:
-        #            json.dump(self.tracks[track], json_file, indent = 4)
         with open(os.path.join(self.get_current_job_directory(), 'batch_merge.json'), 'w') as json_file:
             json.dump({track: os.path.join(self.get_current_job_directory(), track + '.json') for track in self.tracks}, json_file, indent = 4)
+        with open(os.path.join(self.get_current_job_directory(), 'all_tracks.bed'), 'w') as bed_file:
+            bed_file.write('\t'.join([str(s) for s in ['#CHROM', 'BEGIN', 'END', 'KMERS', 'GENOTYPE']]) + '\n')
+            for track in self.tracks:
+                if track in c.tracks:
+                    t = c.tracks[track]
+                    l = len(self.tracks[track]['inner_kmers']) + len(self.tracks[track]['junction_kmers'])
+                    bed_file.write('\t'.join([str(s) for s in [t.chrom, t.begin, t.end, l, t.genotype]]) + '\n')
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class PreFilteringJob(map_reduce.Job):
+
+    _name = 'PreFilteringJob'
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.tracks = []
+        for i, bed_path in enumerate(c.bed):
+            self.tracks.append(bed.as_dict(bed.sort_tracks(bed.filter_short_tracks(bed.load_tracks_from_file(bed_path)))))
+        self.all_tracks = json.load(open(os.path.join(c.workdir, c.samples[0], 'CgcCounterJob', 'batch_merge.json')))
+        self.round_robin(self.all_tracks)
+
+    def calc_kmer_genotype_likelihood(self, kmer, genotype, std):
+        c = 0 if genotype == '0/0' else 0.5 if genotype == '1/0' else 1.0
+        s = 0.25 if genotype == '0/0' else 0.50 if genotype == '1/0' else 1.00
+        if kmer['type'] == 'junction':
+            d = statistics.NormalDistribution(kmer['gc_coverage'] * c, std * s)
+        else:
+            if kmer['trend'] == 'upward':
+                d = statistics.NormalDistribution(kmer['gc_coverage'] * c, std * s)
+            else:
+                d = statistics.NormalDistribution(kmer['gc_coverage'] * (1 - c), std * (0.25 / s))
+        return d.log_pmf(kmer['count'])
+
+    def transform(self, _, track):
+        if not '39061957' in track:
+            return None
+        print(track)
+        c = config.Configuration()
+        genotypes = ['0/0', '1/0', '1/1']
+        kmers = {}
+        scores = {}
+        for i, sample in enumerate(c.samples):
+            kmers[sample] = json.load(open(os.path.join(c.workdir, sample, 'CgcCounterJob', track + '.json')))
+            for kmer_type in ['junction_kmers', 'inner_kmers']:
+                for kmer in kmers[sample][kmer_type]:
+                    #if kmer != 'AAAAAGAAAGAAAGAAAGAAAGATAAATGTCT':
+                    if kmer != 'CCCCGCAACCCCAACCGGGGCGCAAGAGAAAC':
+                        continue
+                    if len(kmers[sample][kmer_type][kmer]['loci']) > 1:
+                        continue
+                    if len(kmers[sample][kmer_type][kmer]['tracks']) > 1:
+                        continue
+                    if i == 0:
+                        scores[kmer] = []
+                    likelihoods = {g: self.calc_kmer_genotype_likelihood(kmers[sample][kmer_type][kmer], g, c.std) for g in genotypes}
+                    a = self.tracks[i][track].genotype if track in self.tracks[i] else '0/0'
+                    other_likelihoods = {g: likelihoods[g] for g in genotypes if g != a}
+                    g = max(other_likelihoods, key = other_likelihoods.get)
+                    s = likelihoods[a] - likelihoods[g]
+                    print(sample)
+                    print(kmers[sample][kmer_type][kmer]['count'], likelihoods, g, a, s)
+                    scores[kmer].append(s)
+        remove = {}
+        for kmer in scores:
+            #score = functools.reduce(lambda x, y: x * y, scores[kmer])
+            score = sum(scores[kmer])
+            #print(score)
+            if score >= 0.0:
+                #print(cyan('Keeping', kmer, scores[kmer]))
+                pass
+            else:
+                #print(yellow('Filtering', kmer, scores[kmer]))
+                remove[kmer] = True
+        debug_breakpoint()
+        for kmer in remove:
+            scores.pop(kmer)
+        if len(scores) > 0:
+            for i, sample in enumerate(c.samples):
+                path = os.path.join(c.workdir, sample, 'PreFilteringJob')
+                if not os.path.exists(path):
+                    os.makedirs(path)
+                with open(os.path.join(path, track + '.json'), 'w') as json_file:
+                    _kmers = {}
+                    for kmer_type in ['junction_kmers', 'inner_kmers']:
+                        _kmers[kmer_type] = {}
+                        for kmer in kmers[sample][kmer_type]:
+                            if kmer in scores:
+                                _kmers[kmer_type][kmer] = kmers[sample][kmer_type][kmer]
+                    json.dump(_kmers, json_file, indent = 4)
+            return track
+        else:
+            return None
+    
+    def reduce(self):
+        c = config.Configuration()
+        for sample in c.samples:
+            path = os.path.join(c.workdir, sample, 'PreFilteringJob')
+            tracks = {}
+            for batch in self.load_output():
+                for track in batch:
+                    tracks[track] = os.path.join(path, track + '.json')
+            with open(os.path.join(path, 'batch_merge.json'), 'w') as json_file:
+                json.dump(tracks, json_file, indent = 4)
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #
@@ -256,7 +361,7 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
 
     _name = 'CgcIntegerProgrammingJob'
     _category = 'genotyping'
-    _previous_job = CgcCounterJob
+    _previous_job = CgcCounterJob 
 
     # ============================================================================================================================ #
     # Launcher
@@ -271,75 +376,48 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
     # ============================================================================================================================ #
     # MapReduce overrides
     # ============================================================================================================================ #
-
     def transform(self, path, track_name):
         c = config.Configuration()
         kmers = json.load(open(path))
         lp_kmers = {}
-        #if 'chr1_1900363_1900432' not in track_name:
-        #    return None
+        genotypes = ['0/0', '1/0', '1/1']
         all_non_unique = all(map(lambda kmer: len(kmers['inner_kmers'][kmer]['loci']) > 1, kmers['inner_kmers']))
         n = 0
-        for kmer in kmers['junction_kmers']:
-            #if is_kmer_low_entropy(kmer):
-            #    continue
-            if len(kmers['junction_kmers'][kmer]['loci']) > 1:
-                continue
-            if len(kmers['junction_kmers'][kmer]['tracks']) > 1:
-                continue
-            if c.select:
-                if kmers['junction_kmers'][kmer]['count'] < 10:
+        for kmer_type in ['junction_kmers', 'inner_kmers']:
+            for kmer in kmers[kmer_type]:
+                if len(kmers[kmer_type][kmer]['loci']) > 1:
                     continue
-            lp_kmers[kmer] = True
-            self.lp_kmers[kmer] = kmers['junction_kmers'][kmer]
-            self.lp_kmers[kmer]['reduction'] = len(kmers['junction_kmers'][kmer]['loci'])
-            n += 1
-        for kmer in kmers['inner_kmers']:
-            if n > 0:
-                continue
-            if all_non_unique:
-                continue
-            #if is_kmer_low_entropy(kmer):
-            #    continue
-            if len(kmers['inner_kmers'][kmer]['loci']) > 1:
-                continue
-            if len(kmers['inner_kmers'][kmer]['loci']) > 3:
-                continue
-            if len(kmers['inner_kmers'][kmer]['tracks']) > 1:
-                continue
-            lp_kmers[kmer] = True
-            self.lp_kmers[kmer] = kmers['inner_kmers'][kmer]
-            self.lp_kmers[kmer]['reduction'] = len(kmers['inner_kmers'][kmer]['loci'])
+                if len(kmers[kmer_type][kmer]['tracks']) > 1:
+                    continue
+                self.calculate_residual_coverage(kmers[kmer_type][kmer])
+                if c.select:
+                    p = False
+                    for track in kmers[kmer_type][kmer]['tracks']:
+                        t = bed.track_from_id(track_name)
+                        likelihoods = {g: self.calc_kmer_genotype_likelihood(kmers[kmer_type][kmer], g, c.std) for g in genotypes}
+                        g = max(likelihoods, key = likelihoods.get)
+                        if '1' in g:
+                            if track in c.tracks and '1' in c.tracks[track].genotype:
+                                p = True
+                        else:
+                            if not track in c.tracks or not '1' in c.tracks[track].genotype:
+                                p = True
+                    if not p:
+                        continue
+                lp_kmers[kmer] = True
+                self.lp_kmers[kmer] = kmers[kmer_type][kmer]
         path = os.path.join(self.get_current_job_directory(), track_name + '.json')
-        #print(len(lp_kmers), 'kmers passed to LP..')
         return path
 
-    def calculate_residual_coverage(self):
-        c = config.Configuration()
-        print('Adjusting kmer counts..')
-        m = 0
-        wrong_tracks = {}
-        for kmer in self.lp_kmers:
-            r = 0
-            for track in kmer['tracks']:
-                r += kmer['tracks'][track]
-            kmer['weight'] = 1.0
-            kmer['residue'] = 0 if 'inverse' in kmer else kmer['reduction'] - r
-            kmer['coverage'] = kmer['gc_coverage']
-            kmer['lp_count'] = min(kmer['count'], kmer['coverage'] * kmer['reduction'])
-            if kmer['count'] > kmer['coverage'] + 3 * c.std:
-                m += 1
-                for track in kmer['tracks']:
-                    if not track in wrong_tracks:
-                        wrong_tracks[track] = 0
-                    wrong_tracks[track] += 1
-        visualizer.histogram([wrong_tracks[t] for t in wrong_tracks], 'Ultrafrequency Kmers', self.get_current_job_directory(), 'Frequency', 'Tracks')
-        visualizer.histogram([wrong_tracks[t] / float(len(self.tracks[t]['kmers'])) for t in wrong_tracks], 'Ultrafrequency Kmers Ratio', self.get_current_job_directory(), 'Frequency', 'Tracks')
-        print(len(wrong_tracks), 'events with BAD BAD kmers.')
-        for track in self.tracks:
-            self.tracks[track]['ultrahigh'] = 0
-        for track in wrong_tracks:
-            self.tracks[track]['ultrahigh'] = wrong_tracks[track]
+    def calculate_residual_coverage(self, kmer):
+        r = 0
+        kmer['reduction'] = len(kmer['loci'])
+        for track in kmer['tracks']:
+            r += kmer['tracks'][track]
+        kmer['weight'] = 1.0
+        kmer['residue'] = 0 if 'inverse' in kmer else kmer['reduction'] - r
+        kmer['coverage'] = kmer['gc_coverage']
+        kmer['lp_count'] = min(kmer['count'], kmer['coverage'] * kmer['reduction'])
 
     def generate_mps_linear_program(self):
         c = config.Configuration()
@@ -368,11 +446,11 @@ class CgcIntegerProgrammingJob(programming.IntegerProgrammingJob):
             self.add_mps_error_absolute_value_constraints(problem, variables, i)
             indices = list(map(lambda track: self.tracks[track]['index'], kmer['tracks']))
             indices.append(len(self.tracks) + i)
-            if kmer['svtype'] == 'INS' or kmer['type'] == 'junction':
+            if kmer['type'] == 'junction' or kmer['trend'] == 'upward':
                 coeffs = list(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
                 coeffs.append(1.0)
                 rhs = kmer['lp_count'] - kmer['coverage'] * kmer['residue']
-            if kmer['svtype'] == 'DEL' and kmer['type'] == 'inner':
+            else:
                 coeffs = list(map(lambda track: -1 * kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
                 coeffs.append(1.0)
                 rhs = kmer['lp_count'] - kmer['coverage'] * kmer['residue'] - sum(map(lambda track: kmer['coverage'] * kmer['tracks'][track] * (1.0 - 0.03), kmer['tracks']))
@@ -420,26 +498,18 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         exit()
 
     def load_kmers(self):
+        c = config.Configuration()
         print('loading kmers..')
         self.kmers['inner_kmers'] = {}
         self.kmers['junction_kmers'] = {}
         job = CgcIntegerProgrammingJob()
         tracks = bed.load_tracks_from_file(os.path.join(job.get_current_job_directory(), 'merge.bed'))
         print('Loaded', len(tracks), 'tracks.')
-        self.inner_tracks = set()
-        self.junction_tracks = set()
         for track in tracks:
-            if track.genotype != '0/0':
-            #if float(track.lp) > 0.25 or (track.svtype == 'INS' and float(track.lp) > 0.15):
+            if (track.genotype == '0/0' and track.id not in c.tracks) or ((track.id in c.tracks) and (('1' in track.genotype and '1' in c.tracks[track.id].genotype) or ('1' not in track.genotype and '1' not in c.tracks[track.id].genotype))):
                 self.tracks[track.id] = track
-                if track.confidence == 'LOW':
-                    self.inner_tracks.add(track.id)
-                else:
-                    self.junction_tracks.add(track.id)
                 kmers = json.load(open(os.path.join(job.get_current_job_directory(), track.id + '.json'), 'r'))
                 for kmer in kmers:
-                    # BUG 0000
-                    # TODO: this should assign correct type to the kmer
                     kmer_type = kmers[kmer]['type'] + '_kmers'
                     self.kmers[kmer_type][kmer] = kmers[kmer]
                     self.kmers[kmer_type][kmer]['count'] = 0
@@ -466,15 +536,76 @@ class ExportGenotypingKmersJob(map_reduce.Job):
         with open(os.path.join(self.get_current_job_directory(), 'all.bed'), 'w') as bed_file:
             for track in self.tracks:
                 bed_file.write(self.tracks[track].serialize())
-        with open(os.path.join(self.get_current_job_directory(), 'both.bed'), 'w') as bed_file:
-            for track in self.inner_tracks.intersection(self.junction_tracks):
-                bed_file.write(self.tracks[track].serialize())
-        with open(os.path.join(self.get_current_job_directory(), 'inner.bed'), 'w') as bed_file:
-            for track in self.inner_tracks.difference(self.junction_tracks):
-                bed_file.write(self.tracks[track].serialize())
-        with open(os.path.join(self.get_current_job_directory(), 'junction.bed'), 'w') as bed_file:
-            for track in self.junction_tracks.difference(self.inner_tracks):
-                bed_file.write(self.tracks[track].serialize())
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
+class MultiSampleExportGenotypingKmersJob(map_reduce.Job):
+
+    _name = 'ExportGenotypingKmersJob'
+    _category = 'genotyping'
+    _previous_job = CgcIntegerProgrammingJob
+
+    def load_inputs(self):
+        c = config.Configuration()
+        kmers = {}
+        calls = []
+        tracks = []
+        inner_kmers = {}
+        junction_kmers = {}
+        for i, bed_path in enumerate(c.bed):
+            path = os.path.join(self.get_output_directory(), c.samples[i], 'CgcIntegerProgrammingJob', 'merge.bed')
+            calls.append(bed.load_tracks_from_file_as_dict(path))
+            tracks.append(bed.as_dict(bed.sort_tracks(bed.filter_short_tracks(bed.load_tracks_from_file(bed_path)))))
+        m = 0
+        k = 0
+        u = 0
+        print(len(c.tracks), 'tracks in total.')
+        for track in c.tracks:
+            # one sample has this event as present
+            if any(['1' in tracks[i][track].genotype for i in range(len(tracks)) if track in tracks[i]]):
+                m += 1
+                if any(['1' in calls[i][track].genotype and '1' in tracks[i][track].genotype for i in range(len(tracks)) if track in calls[i] and track in tracks[i]]):
+                    k += 1
+                    found = False
+                    for i, sample in enumerate(c.samples):
+                        if track in calls[i]:
+                            if not found:
+                                u += 1
+                                found = True
+                            g_1 = calls[i][track].genotype
+                            if (track in tracks[i] and (g_1 == tracks[i][track].genotype or '1' in g_1 and '1' in tracks[i][track].genotype)) or (track not in tracks[i] and not '1' in g_1):
+                            #if (track in tracks[i] and (g_1 == tracks[i][track].genotype)) or (track not in tracks[i] and not '1' in g_1):
+                                with open(os.path.join(self.get_output_directory(), sample, 'CgcIntegerProgrammingJob', str(track) + '.json'), 'r') as json_file:
+                                    _kmers = json.load(json_file)
+                                if not track in kmers:
+                                    kmers[track] = _kmers
+                                else:
+                                    kmers[track] = {kmer: kmers[track][kmer] for kmer in kmers[track] if kmer in _kmers}
+                    if track in kmers:
+                        inner_kmers.update({kmer: kmers[track][kmer] for kmer in kmers[track] if kmers[track][kmer]['type'] == 'inner'})
+                        junction_kmers.update({kmer: kmers[track][kmer] for kmer in kmers[track] if kmers[track][kmer]['type'] == 'junction'})
+        print(m)
+        print(u)
+        print(k)
+        n = len([track for track in kmers if track in kmers and len(kmers[track]) != 0])
+        print(n, 'tracks.')
+        print(len(inner_kmers), 'inner kmers.')
+        print(len(junction_kmers), 'junction kmers.')
+        with open(os.path.join(self.get_output_directory(), sample, 'CgcCounterJob', 'kmers.json'), 'r') as json_file:
+            _kmers = json.load(json_file)
+            gc_kmers = _kmers['gc_kmers']
+            depth_kmers = _kmers['depth_kmers']
+        for _kmers in [junction_kmers, inner_kmers, depth_kmers, gc_kmers]:
+            for kmer in _kmers:
+                _kmers[kmer]['count'] = 0
+                _kmers[kmer]['total'] = 0
+        with open(os.path.join(self.get_current_job_directory(), 'kmers.json'), 'w') as json_file:
+            json.dump({'junction_kmers': junction_kmers, 'inner_kmers': inner_kmers, 'depth_kmers': depth_kmers, 'gc_kmers': gc_kmers}, json_file, indent = 4)
+        exit()
 
 # ============================================================================================================================ #
 # ============================================================================================================================ #

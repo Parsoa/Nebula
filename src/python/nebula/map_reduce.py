@@ -253,7 +253,7 @@ class GenomeDependentJob(Job):
 # ============================================================================================================================ #
 
 def export_json(t):
-    print(t[0])
+    #print(t[0])
     path = os.path.join(t[2], t[0] + '.json')
     with open(path, 'w') as json_file:
         json.dump(t[1], json_file, indent = 4)

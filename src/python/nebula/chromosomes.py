@@ -52,6 +52,8 @@ def extract_chromosomes(chromosomes):
                     sequence += line.upper()
         if found:
             found = False
+            if chrom == 'chr1':
+                break
             continue
         line = ref.readline().strip()
         if len(line) == 0:

@@ -41,6 +41,202 @@ print = pretty_print
 # ============================================================================================================================ #
 # ============================================================================================================================ #
 
+class MultiSampleExtractJunctionKmersJob(map_reduce.Job):
+
+    _name = 'ExtractJunctionKmersJob'
+    _category = 'preprocessing'
+    _previous_job = None
+
+    # ============================================================================================================================ #
+    # Launcher
+    # ============================================================================================================================ #
+
+    @staticmethod
+    def launch(**kwargs):
+        job = ExtractJunctionKmersJob(**kwargs)
+        job.execute()
+
+    # ============================================================================================================================ #
+    # MapReduce overrides
+    # ============================================================================================================================ #
+
+    def load_inputs(self):
+        c = config.Configuration()
+        self.bam_files = [pysam.AlignmentFile(bam, "rb") for bam in c.bam]
+        self.load_tracks()
+        self.round_robin(c.tracks)
+
+    # Load each sample's events separately and do not filter anything. Use this to get the genotypes.
+    # One ideally wants the exact same set of events for all samples. 
+    def load_tracks(self):
+        c = config.Configuration()
+        self.tracks = []
+        for bed_path in c.bed:
+            tracks = bed.sort_tracks(bed.filter_short_tracks(bed.load_tracks_from_file(bed_path)))
+            self.tracks.append({str(track): track for track in tracks})
+
+    def transform(self, track, track_name):
+        if not 'chr2_188505187_188505534' in track_name:
+            return None
+        print(track)
+        c = config.Configuration()
+        kmers = []
+        self.bam_files = [pysam.AlignmentFile(bam, "rb") for bam in c.bam]
+        absent_samples = []
+        present_samples = []
+        print(track_name)
+        for i, tracks in enumerate(self.tracks):
+            if track_name in tracks:
+                if tracks[track_name].genotype == '0/0' or tracks[track_name].genotype == './.':
+                    absent_samples.append(i)
+                else:
+                    present_samples.append(i)
+            else:
+                absent_samples.append(i)
+        print('Supporting: ', present_samples)
+        print('No supporting: ', absent_samples)
+        absent_kmers = {}
+        present_kmers = {}
+        first_batch = True 
+        for i, bam_file in enumerate(self.bam_files):
+            _kmers = self.extract_mapping_kmers(bam_file, track)
+            print(len(_kmers))
+            if i in absent_samples:
+                absent_kmers.update(_kmers)
+            else:
+                if first_batch:
+                    present_kmers.update(_kmers)
+                    first_batch = False
+                else:
+                    present_kmers = {kmer: present_kmers[kmer] for kmer in present_kmers if kmer in _kmers}
+        print('Opposing kmers:', len(absent_kmers))
+        print('Suporting kmers:', len(present_kmers))
+        kmers = {kmer: present_kmers[kmer] for kmer in present_kmers if not kmer in absent_kmers}
+        print(len(kmers), 'remainig.')
+        assert(len(kmers) <= len(present_kmers))
+        if len(kmers) > 0:
+            path = os.path.join(self.get_current_job_directory(), track_name + '.json')
+            with open(path, 'w') as json_file:
+                json.dump(kmers, json_file, indent = 4)
+            return path
+        else:
+            system_print_warning('No junction kmers found for ' + track_name + '.')
+            return None
+
+    def extract_mapping_kmers(self, bam_file, track):
+        c = config.Configuration()
+        junction_kmers = {}
+        slack = c.read_length
+        stride = c.ksize
+        try:
+            reads = bam_file.fetch(track.chrom, track.begin - 1 * slack, track.end + 1 * slack)
+        except:
+            return {}
+        m = 0
+        n = 0
+        for read in reads:
+            #if read.query_alignment_length == len(read.query_sequence): # not everything was mapped
+            #    continue
+            if read.reference_start >= track.begin - slack and read.reference_start <= track.end + slack:
+                n += 1
+                clips = []
+                offset = 0
+                deletions = []
+                insertions = []
+                i = 0
+                left_clipped = False
+                right_clipped = False
+                for cigar in read.cigartuples:
+                    if cigar[0] == 4: #soft clip
+                        if i == 0:
+                            left_clipped = True
+                        else:
+                            right_clipped = True
+                        clips.append((offset, offset + cigar[1]))
+                    if cigar[0] == 2: #deletion
+                        if cigar[1] >= abs(int(track.svlen)) * 0.9 and cigar[1] <= abs(int(track.svlen)) * 1.1:
+                            deletions.append((offset, offset + cigar[1]))
+                    if cigar[0] == 1: #insertion
+                        if cigar[1] >= abs(int(track.svlen)) * 0.9 and cigar[1] <= abs(int(track.svlen)) * 1.1:
+                            insertions.append((offset, offset + cigar[1]))
+                    offset += cigar[1]
+                    i += 1
+                #s = ''
+                #for clip in clips:
+                #    s += str(clip[0]) + ',' + str(clip[1]) + ' '
+                #print(s)
+                if right_clipped and left_clipped:
+                    continue
+                #TODO Should try and correct for sequencing errors in masks by doing a consensus
+                seq = read.query_sequence
+                index = 0
+                for kmer in stream_kmers(c.ksize, True, True, seq):
+                    #if 'N' in kmer:
+                    #    index += 1
+                    #    continue
+                    b = self.is_clipped(track, (index, index + c.ksize), read, clips, deletions, insertions, right_clipped, left_clipped)
+                    if b:
+                        #print(index, index + c.ksize, b)
+                        m += 1
+                        #print('Selecting', kmer)
+                        locus = 'junction_' + track.id
+                        if not kmer in junction_kmers:
+                            junction_kmers[kmer] = {
+                                'count': 0,
+                                'source': b,
+                                'loci': {
+                                    locus: {
+                                        'masks': {}
+                                    }
+                                },
+                                'read': {
+                                    'end': read.reference_end,
+                                    'start': read.reference_start,
+                                    'qname': read.qname
+                                },
+                            }
+                            if len(seq[index - c.ksize: index]) == c.ksize:
+                                junction_kmers[kmer]['loci'][locus]['masks']['left'] = seq[index - c.ksize: index]
+                            if len(seq[index + c.ksize: index + c.ksize + c.ksize]) == c.ksize:
+                                junction_kmers[kmer]['loci'][locus]['masks']['right'] = seq[index + c.ksize: index + c.ksize + c.ksize]
+                        junction_kmers[kmer]['count'] += 1
+                    index += 1
+        print(m)
+        print(n, 'reads.')
+        debug_breakpoint()
+        return junction_kmers
+
+    def is_clipped(self, track, kmer, read, clips, deletions, insertions, right_clipped, left_clipped):
+        for i, clip in enumerate(clips):
+            if self.overlap(kmer, clip) >= 10:
+                return 'junction'
+        for clip in deletions:
+            if self.overlap(kmer, clip) >= 10:
+                return 'deletion'
+        for clip in insertions:
+            if self.overlap(kmer, clip) >= 10:
+                return 'insertion'
+        return False
+
+    def overlap(self, a, b):
+        return max(0, min(a[1], b[1]) - max(a[0], b[0]))
+
+    def reduce(self):
+        c = config.Configuration()
+        map_reduce.Job.reduce(self)
+        if c.cpp:
+            cpp_dir = os.path.join(os.path.dirname(__file__), '../../cpp/scanner')
+            command = " ".join([os.path.join(cpp_dir, "scanner"), c.reference, self.get_output_directory(), 'junction', str(24)])
+            print(command)
+            output = subprocess.call(command, shell = True)
+
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+# ============================================================================================================================ #
+
 class ExtractJunctionKmersJob(map_reduce.Job):
 
     _name = 'ExtractJunctionKmersJob'
@@ -70,8 +266,6 @@ class ExtractJunctionKmersJob(map_reduce.Job):
     def transform(self, track, track_name):
         if abs(int(track.svlen)) < 50:
             return None
-        #if not '234805712' in track_name:
-        #    return None
         #print('Found')
         c = config.Configuration()
         self.alignments = pysam.AlignmentFile(c.bam, "rb")

@@ -39,6 +39,7 @@ def index_file(path, get_header = False):
         m = 0
         while line:
             svtype = 'DEL' if 'DEL' in line else 'INS' if 'INS' in line else 'SV'
+            svtype = 'SV'
             tokens = line.split()
             chrom = tokens[0].lower().strip()
             s = svtype + '@' + chrom + '_' + tokens[1] + '_' + tokens[2]

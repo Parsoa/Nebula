@@ -56,7 +56,7 @@ def parse_args():
     # path to a VCF files, for jobs that need one as input
     parser.add_argument("--vcf", nargs = '+', default = None)
     # path to a BAM files, for jobs that need one as input
-    parser.add_argument("--bam", default = None)
+    parser.add_argument("--bam", nargs = '+', default = [])
     # whether we are running on CGC or not 
     parser.add_argument("--cgc", action = 'store_true')
     # whether to use the CPP scanner 
@@ -81,6 +81,10 @@ def parse_args():
     parser.add_argument("--fastq", nargs = '*', default = None)
     # generic flag for passing input arguments
     parser.add_argument("--input")
+    # whether processing multiple sample at the same time 
+    parser.add_argument("--multi")
+    # the list of sample names currently being processed
+    parser.add_argument("--samples", nargs = '*', default = None)
     # a JSON file containing the list of kmers to count
     parser.add_argument("--kmers", nargs = '+')
     # length of the kmers 

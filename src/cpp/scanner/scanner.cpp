@@ -444,10 +444,10 @@ void filter_kmers() {
                     continue ;
                 }
             } else { // no ref loci was filtered, so we need to count every loci, ignore masks
-                for (auto locus = k.loci.begin(); locus != k.loci.end(); locus++){
-                    locus->left = 0 ;
-                    locus->right = 0 ;
-                }
+                //for (auto locus = k.loci.begin(); locus != k.loci.end(); locus++){
+                //    locus->left = 0 ;
+                //    locus->right = 0 ;
+                //}
             }
         }
         kmer++ ;
@@ -585,73 +585,21 @@ int load_kmers(string path, int threads) {
 // ============================================================================= \\
 // ============================================================================= \\
 
-unordered_map<uint64_t, Kmer> extract_insertion_kmers(Track& track) {
-    unordered_map<uint64_t, Kmer> kmers ;
-    if (track.svlen < 96) {
-        return kmers ;
-    }
-    int l = track.svlen + 250 + 250 ;
-    char* seq = (char*) malloc(sizeof(char) * (l + 1)) ;
-    strncpy(seq, chromosome_seqs[get_chromosome_name(track.chrom)] + track.begin - 250, 250) ;
-    strcpy(seq + 250, track.seq.c_str()) ;
-    strncpy(seq + 250 + track.seq.length(), chromosome_seqs[get_chromosome_name(track.chrom)] + track.end, 250) ;
-    KmerIterator it(seq, 250, l - 250) ;
-    return kmers ;
-}
-
-unordered_map<uint64_t, Kmer> extract_deletion_kmers(Track& track) {
-    unordered_map<uint64_t, Kmer> kmers ;
-    char* seq = (char*) malloc(sizeof(char) * (64 + 1)) ;
-    strncpy(seq, chromosome_seqs[get_chromosome_name(track.chrom)] + track.begin - 32, 32) ;
-    strncpy(seq + 32, chromosome_seqs[get_chromosome_name(track.chrom)] + track.end, 32) ;
-    return kmers ;
-}
-
-void extract_inner_kmers(vector<Track> tracks, int threads) {
-    #pragma omp parallel for num_threads(threads)
-    for (int i = 0; i < tracks.size(); i++) {
-        if (tracks[i].svtype == SVTYPE_DEL) {
-            extract_deletion_kmers(tracks[i]) ;
-        }
-        if (tracks[i].svtype == SVTYPE_INS) {
-            extract_insertion_kmers(tracks[i]) ;
-        }
-    }
-}
-
-// ============================================================================= \\
-// ============================================================================= \\
-// ============================================================================= \\
-
 int main(int argc, char** argv) {
-    if (argv[1] == "preprocess") {
-        KMER_TYPE = LOCUS_TYPE_INNER ;
-        auto bed_tracks = load_tracks_from_file(argv[2]) ;
-        string reference_path(argv[3]) ;
-        int threads = std::stoi(string(argv[4]), nullptr, 10) ;
-        load_chromosomes(reference_path) ;
-        extract_inner_kmers(bed_tracks, threads) ;
-    }
-    if (argv[1] == "genotype") {
-        
-    }
+    string path(argv[2]) ;
+    string reference_path(argv[1]) ;
+    int threads = std::stoi(string(argv[4]), nullptr, 10) ;
+    string mode(argv[3]) ;
+    KMER_TYPE = mode == "junction" ? LOCUS_TYPE_JUNCTION : LOCUS_TYPE_INNER ;
+    time_t t ;
+    time(&t) ;
+    load_kmers(path, threads) ;
+    load_chromosomes(reference_path) ;
+    scan_reference(threads) ;
+    filter_kmers() ;
+    output_kmers(path) ;
+    time_t s ;
+    time(&s) ;
+    auto d = s - t ;
+    cout << "Returning to CgcCounterJob.." << endl ;
 }
-
-//int main(int argc, char** argv) {
-//    string path(argv[2]) ;
-//    string reference_path(argv[1]) ;
-//    int threads = std::stoi(string(argv[4]), nullptr, 10) ;
-//    string mode(argv[3]) ;
-//    KMER_TYPE = mode == "junction" ? LOCUS_TYPE_JUNCTION : LOCUS_TYPE_INNER ;
-//    time_t t ;
-//    time(&t) ;
-//    load_kmers(path, threads) ;
-//    load_chromosomes(reference_path) ;
-//    scan_reference(threads) ;
-//    filter_kmers() ;
-//    output_kmers(path) ;
-//    time_t s ;
-//    time(&s) ;
-//    auto d = s - t ;
-//    cout << "Returning to CgcCounterJob.." << endl ;
-//}

@@ -17,7 +17,6 @@
 #include <zlib.h>
 #include <htslib/hts.h>
 #include <htslib/sam.h>
-#include <htslib/hts.h>
 #include <htslib/bgzf.h>
 #include <hts_internal.h>
 #include "htslib/hts_endian.h"
@@ -61,19 +60,19 @@ void process_read(const char* seq, int l, unordered_map<uint64_t, int>& _counts,
     for (int i = 0 ; i <= l - 32 ; i++) {
         if (i == 0) {
             k = encode_kmer(seq) ;
-            left = encode_substring(seq, 32, 32) ;
-            right = k ;
+            right = encode_kmer(seq + 32) ;
+            left = k ;
         } else {
             k = k << 2 ;
             k += (seq[i + 31] & MASK) >> 1 ;
         }
-        if (i + 32 + 31 < l) {
-            left = left << 2 ;
-            left += (seq[i + 32 + 31] & MASK) >> 1 ;
-        }
         if (i > 32) {
+            left = left << 2 ;
+            left += (seq[i - 1] & MASK) >> 1 ;
+        }
+        if (i + 32 + 31 < l) {
             right = right << 2 ;
-            right += (seq[i - 1] & MASK) >> 1 ;
+            right += (seq[i + 32 + 31] & MASK) >> 1 ;
         }
         if (counts.find(k) != counts.end()) {
             if (_totals.find(k) == _totals.end()) {
@@ -86,13 +85,13 @@ void process_read(const char* seq, int l, unordered_map<uint64_t, int>& _counts,
             } else {
                 std::vector<uint64_t>* m = masks[k] ;
                 for (std::vector<uint64_t>::iterator it = m->begin(); it != m->end(); it++) {
-                    if (i + 32 + 31 < l) {
+                    if (i >= 32) {
                         if (is_subsequence(*it, left)) {
                             _counts[k] += 1 ;
                             break ;
                         }
                     }
-                    if (i >= 32) {
+                    if (i + 32 + 31 < l) {
                         if (is_subsequence(*it, right)) {
                             _counts[k] += 1 ;
                             break ;

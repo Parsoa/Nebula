@@ -1,20 +1,23 @@
-CC = g++
-CFLAGS = -std=c++11 -O3 -funroll-loops -fopenmp
+CXX = g++
 LDFLAGS = -lm -lpthread -lcurl
-SOURCES = scanner.cpp
-OBJECTS = $(SOURCES:.cpp=.o)
-# Docker config
-DCFLAGS = -O3 -funroll-loops -std=c++11
-DLDFLAGS = -lm -lpthread
+CXXFLAGS = -std=c++11 -O3 -funroll-loops -fopenmp
 
-debug: scanner.cpp
-	$(CC) -g $(CFLAGS) -DDEBUG_MODE $< -o scanner.out $(LDFLAGS)
+HPP = $(wildcard *.hpp)
+SRC = $(wildcard *.cpp)
+OBJ = $(SRC:.cpp=.o)
 
-shared: scanner.cpp
-	$(CC) $(CFLAGS) -fPIC -shared $< -o libnebula.so $(LDFLAGS)
+all: scanner 
 
-docker: scanner.cpp
-	$(CC) $(DCFLAGS) $< -o scanner.out $(DLDFLAGS)
+debug: CXXFLAGS += -DDEBUG -g
+debug: preprocessor
 
-scanner: scanner.cpp
-	$(CC) -g $(CFLAGS) $< -o scanner.out $(LDFLAGS)
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@ 
+
+scanner: $(OBJ) $(HPP) 
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJ)
+
+clean:
+	rm *.o
+.PHONY: clean
+

@@ -47,8 +47,11 @@ def preprocess():
     def supply_junction_kmers():
         c = config.Configuration()
         tracks = {}
-        job = junction.ExtractJunctionKmersJob()
+        #job = junction.ExtractJunctionKmersJob()
+        #job.execute()
+        job = junction.MultiSampleExtractJunctionKmersJob()
         job.execute()
+        exit()
         if c.cpp:
             return
         job = junction.ScoreJunctionKmersJob()
@@ -76,10 +79,19 @@ def genotype():
     c = config.Configuration()
     if c.cgc:
         cgc_genotype()
+    elif c.multi:
+        load_tracks(filter_overlap = False)
+        if c.select:
+            job = cgc.MultiSampleExportGenotypingKmersJob()
+            job.execute()
+        else:
+            job = cgc.PreFilteringJob()
+            job.execute()
     else:
         load_tracks(filter_overlap = False)
+        #if not c.reduce:
         job = cgc.CgcCounterJob(resume_from_reduce = c.reduce)
-        #job.execute()
+        job.execute()
         job = cgc.CgcIntegerProgrammingJob()
         job.execute()
         if c.select:

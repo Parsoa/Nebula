@@ -16,44 +16,6 @@ using namespace std ;
 // ======================= Kmer Manipulation Helpers =========================== \\
 // ============================================================================= \\
 
-KmerIterator::operator++() {
-    assert(!done);
-    if (i == seq_begin) {
-        left = encode_kmer(seq + i - 32) ;
-        k = encode_kmer(seq + i) ;
-        right = encode_kmer(seq + i + 32) ;
-        gc = calc_gc_content(seq + i) ;
-    if (i == seq_end) {
-        done = true ;
-        return *this ;
-    } else {
-        k = k << 2 ;
-        k += (seq[i + 31] & MASK) >> 1 ;
-        right = right << 2 ;
-        right += (seq[i + 32 + 31] & MASK) >> 1 ;
-        left = left << 2 ;
-        left += (seq[i - 1] & MASK) >> 1 ;
-        if (seq[i - (250 - 16)] == 'C' || seq[i - (250 - 16)] == 'G') {
-            gc -= 1 ;
-        }
-        if (seq[i + (250 + 32)] == 'C' || seq[i + (250 + 32)] == 'G') {
-            gc += 1 ;
-        }
-    }
-    done = true;
-    return *this;
-}
-
-KmerIterator::operator++(int) {
-    KmerIterator const tmp(*this) ;
-    ++*this ;
-    return tmp ;
-}
-
-// ============================================================================= \\
-// ======================= Kmer Manipulation Helpers =========================== \\
-// ============================================================================= \\
-
 string reverse_complement(string s) {
     char rc[s.length()] ;
     int j = 0 ;
