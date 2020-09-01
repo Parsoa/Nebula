@@ -1,9 +1,11 @@
 #include <omp.h>
+#include <errno.h>
 #include <iomanip>
 
 #include "preprocessor.hpp"
 
 #include "inner.hpp"
+#include "logger.hpp"
 #include "junction.hpp"
 #include "bed_utils.hpp"
 
@@ -113,7 +115,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
             for (int j = 0; j < (threads - 1) - index; j++) {
                 cout << "\x1b[A" ;
             }
-            cout << "\r"<< std::left << std::setw(6) << chrom << " progress " << std::setprecision(3) << float(it.position) / float(l) << "%, loci: " << std::left << std::setw(9) << n ;
+            cout << "\r"<< std::left << std::setw(6) << chrom << " progress " << std::fixed << std::setprecision(3) << float(it.position) / float(l) << "%, loci: " << std::left << std::setw(9) << n ;
             for (int j = 0; j < (threads - 1) - index; j++) {
                 cout << endl ;
             }
@@ -122,6 +124,41 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
         }
     }
     return _kmers ;
+}
+
+// ============================================================================= \\
+// ================================= Filtering ================================= \\
+// ============================================================================= \\
+
+void Preprocessor::merge_genotyping_kmers(unordered_map<uint64_t, Kmer> inner_kmers, unordered_map<uint64_t, Kmer> junction_kmers) {
+    auto c = Configuration::getInstance() ;
+    cout << "--------------------------------------------------------- " << endl ;
+    cout << "Merging inner and junction kmers.." << endl ;
+    std::vector<uint64_t> remove ;
+    for (auto junction_kmer = junction_kmers.begin(); junction_kmer != junction_kmers.end(); junction_kmer++) {
+        if (inner_kmers.find(junction_kmer->first) != inner_kmers.end()) {
+            remove.push_back(junction_kmer->first) ;
+        }
+    }
+    int m = 0 ;
+    std::ofstream j ;
+    j.open(c->workdir + "/common.json") ;
+    j << "{\n" ;
+    for (auto kmer = remove.begin(); kmer != remove.end(); kmer++) {
+        if (m != 0) {
+            j << ",\n" ;
+        }
+        m++ ;
+        j << "\"" << decode_kmer(*kmer) << "\":" ;
+        j << nlohmann::json(inner_kmers.find(*kmer)->second).dump(4) ;
+        inner_kmers.erase(*kmer) ;
+        junction_kmers.erase(*kmer) ;
+    }
+    j << "\n}\n" ;
+    j.close() ;
+    cout << "Filtered " << m << " common kmers." << endl ;
+    kmers.insert(inner_kmers.begin(), inner_kmers.end()) ;
+    kmers.insert(junction_kmers.begin(), junction_kmers.end()) ;
 }
 
 // ============================================================================= \\
@@ -166,7 +203,7 @@ void Preprocessor::filter_kmers() {
     int p = 0 ;
     int threads = min(c->threads, int(kmers.bucket_count())) ;
     vector<vector<uint64_t>> filters(threads) ;
-    cout << "Filtering " << kmers.size() << " kmers using " << threads << " threads on " << kmers.bucket_count() << " buckets." << endl ;
+    cout << "Filtering " << kmers.size() << " kmers using " << threads << " threads on " << kmers.bucket_count() << " buckets.." << endl ;
     #pragma omp parallel for num_threads(threads)
     for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {
         //cout << bucket << " " << n << endl ;
@@ -178,6 +215,7 @@ void Preprocessor::filter_kmers() {
                 int t = omp_get_thread_num() ;
                 filters[t].push_back(kmer->first) ;
                 r += 1 ;
+                //cout << "filtered based on ref count" << endl ;
                 continue ;
             }
             std::vector<Locus> loci(k.loci) ;
@@ -213,6 +251,7 @@ void Preprocessor::filter_kmers() {
             }
             // number of loci after filtering
             int l_2 = k.loci.size() ;
+            //cout << l_2 << " remaining" << endl ;
             // loci with less than two masks exist
             auto a = find_if(k.loci.begin(), k.loci.end(), [](Locus l) {
                 return l.left == 0 || l.right == 0 ;
@@ -242,7 +281,7 @@ void Preprocessor::filter_kmers() {
                         int t = omp_get_thread_num() ;
                         filters[t].push_back(kmer->first) ;
                         l += 1 ;
-                        //continue ;
+                        continue ;
                     }
                 } else { 
                     // no ref loci was filtered, so we need to count every loci
@@ -251,16 +290,29 @@ void Preprocessor::filter_kmers() {
         }
         if (n - p > 10000) {
             p = n ;
-            cout << "Progress " << std::fixed << std::setprecision(3) << float(n) / kmers.size() << "%..\r" ;
+            cout << "Progress " << std::left << std::setw(6) << std::fixed << std::setprecision(3) << float(n) / kmers.size() << "%..\r" << flush ;
         }
     }
     cout << endl ;
     cout << "Removing filtered kmers.." << endl ;
+    int f = 0 ;
+    std::ofstream j ;
+    j.open(c->workdir + "/filtered.json") ;
+    j << "{\n" ;
     for (auto it = filters.begin(); it != filters.end(); it++) {
         for (auto k: *it) {
+            if (f != 0) {
+                j << ",\n" ;
+            }
+            f++ ;
+            j << "\"" << decode_kmer(k) << "\":" ;
+            j << nlohmann::json(kmers.find(k)->second).dump(4) ;
             kmers.erase(kmers.find(k)) ;
         }
-    } 
+    }
+    cout << "Removed " << f << " kmers." << endl ;
+    j << "\n}\n" ;
+    j.close() ;
     cout << "Remaining " << kmers.size() << endl ;
 }
 
@@ -274,46 +326,55 @@ void Preprocessor::dump_kmers(string path) {
     auto c = Configuration::getInstance() ;
     cout << "Verifying and dumping kmers.." << endl ;
     vector<int> counters ;
-    int num_batches = 1000 ;
+    int num_batches = 100 ;
     vector<mutex> locks(num_batches) ;
     vector<ofstream> output_files ;
+
+    ofstream test(path + "/kmers.txt") ;
+    for (auto kmer = kmers.begin(); kmer != kmers.end(); kmer++) {
+        test << decode_kmer(kmer->first) << endl ;
+    }
+    test.close() ;
+
+
     for (int i = 0; i < num_batches; i++) {
         string p = path + "/kmers_batch_" + std::to_string(i) + ".json" ;
         output_files.emplace_back(ofstream {p}) ;
         output_files[i] << "{\n" ;
         counters.push_back(0) ;
     }
-    #pragma omp parallel for num_threads(c->threads)
+    
+    cout << path + "/kmers_2.txt" << endl ;
+    ofstream test_2(path + "/kirekhar.txt") ;
+
+    if (!test_2.is_open()) {
+        cerr << "Failed to open file: " << errno << endl ;
+    }
+
+    test_2 << "KIREKHAR" << endl ;
+    cout << "KIREKHAR" << endl ;
+    //#pragma omp parallel for num_threads(c->threads)
     for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {
+        int t = bucket % num_batches ;
+        locks[t].lock() ;
         for (auto kmer = kmers.begin(bucket); kmer != kmers.end(bucket); kmer++) {
-            int t = bucket % num_batches ;
-            locks[t].lock() ;
             if (counters[t] != 0) {
                 output_files[t] << ",\n" ;
             }
             counters[t] += 1 ;
             output_files[t] << "\"" << decode_kmer(kmer->first) << "\":" ;
             output_files[t] << nlohmann::json(kmer->second).dump(4) ;
-            locks[t].unlock() ;
+            if (decode_kmer(kmer->first) == "AATACAATCCATCAATGTTCATCAAGGATATT") {
+                print_kmer(kmer->second) ;
+                cout << "Found kmer.." << endl ;
+            }
+            test_2 << decode_kmer(kmer->first) << endl ;
         }
+        locks[t].unlock() ;
     }
+    test_2.close() ;
     for (int i = 0; i < num_batches; i++) {
         output_files[i] << "\n}\n" ;
     }
-}
-
-void Preprocessor::merge_genotyping_kmers(unordered_map<uint64_t, Kmer> inner_kmers, unordered_map<uint64_t, Kmer> junction_kmers) {
-    std::vector<uint64_t> remove ;
-    for (auto junction_kmer = junction_kmers.begin(); junction_kmer != junction_kmers.end(); junction_kmer++) {
-        if (inner_kmers.find(junction_kmer->first) != inner_kmers.end()) {
-            remove.push_back(junction_kmer->first) ;
-        }
-    }
-    for (auto kmer = remove.begin(); kmer != remove.end(); kmer++) {
-        inner_kmers.erase(*kmer) ;
-        junction_kmers.erase(*kmer) ;
-    }
-    kmers.insert(inner_kmers.begin(), inner_kmers.end()) ;
-    kmers.insert(junction_kmers.begin(), junction_kmers.end()) ;
 }
 

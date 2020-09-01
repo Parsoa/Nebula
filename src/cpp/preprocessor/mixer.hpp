@@ -5,11 +5,10 @@
 #include <string>
 #include <iostream>
 #include <iterator>
+#include <unordered_map>
 
-#include "config.hpp"
 #include "bed_utils.hpp"
 #include "kmer_utils.hpp"
-#include "chromosomes.hpp"
 
 // mixes kmers from multiple preprocessing runs
 
@@ -17,10 +16,18 @@ class Mixer {
 
 public:
 
+    void run() ;
+    void load_tracks() ;
+    void export_kmers() ;
+    void load_kmers(Track track) ;
 
 private:
 
-    std::unordered_map<uint64_t, Kmer> kmers ;
+    std::vector<std::unordered_map<Track, int>> calls ;
+    std::vector<std::unordered_map<Track, int>> tracks ;
+    std::unordered_map<Track, bool> flags ;
+    std::unordered_map<Track, std::unordered_map<uint64_t, Kmer>> kmers ;
+
 } ;
 
 #endif

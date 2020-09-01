@@ -26,6 +26,7 @@ Configuration::Configuration() :
         ("threads", "", cxxopts::value<int>())
         ("workdir", "", cxxopts::value<std::string>())
         ("kmers", "", cxxopts::value<std::vector<std::string>>())
+        ("samples", "", cxxopts::value<std::vector<std::string>>())
         ("gc_kmers", "", cxxopts::value<std::string>())
         ("reference", "", cxxopts::value<std::string>())
         ("depth_kmers", "", cxxopts::value<std::string>())
@@ -62,6 +63,9 @@ void Configuration::parse(int argc, char** argv) {
     }
     if (results.count("kmers")) {
         kmers = results["kmers"].as<std::vector<std::string>>() ;
+    }
+    if (results.count("samples")) {
+        samples = results["samples"].as<std::vector<std::string>>() ;
     }
     if (results.count("gc_kmers")) {
         gc_kmers = results["gc_kmers"].as<string>() ;

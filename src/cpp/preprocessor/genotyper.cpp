@@ -43,15 +43,13 @@ double calc_std(vector<int> counts, double mean) {
 
 std::string genotypes[] = {"0/0", "0/1", "1/1"} ;
 double calc_kmer_genotype_likelihood(Kmer& kmer, double count, string genotype, double mean, double std) {
-    if (genotype == "1/0") {
-        genotype = "0/1" ;
-    }
+    genotype = genotype == "1/0" ? "0/1" : genotype ;
     double c = genotype == "0/0" ? 0.0 : genotype == "0/1" ? 0.5 : 1.0 ;
     double s = genotype == "0/0" ? 0.25 : genotype == "0/1" ? 0.5 : 1.0 ;
     if (kmer.type == KMER_TYPE_JUNCTION || kmer.trend) {
-       return NormalDistribution(c * mean, s * std).log_prob(count) ; 
+       return NormalDistribution(c * mean, s * std).log_prob(count) ;
     } else {
-        return NormalDistribution((1 - c) * mean, (0.25 / s) * std).log_prob(count) ; 
+        return NormalDistribution((1 - c) * mean, (0.25 / s) * std).log_prob(count) ;
     }
 }
 
@@ -106,12 +104,11 @@ void Genotyper::load_kmers() {
     cout << "loading genotyping kmers.." << endl ;
     int inner ;
     int junction ;
-    int num_batches = 1000 ;
+    int num_batches = 100 ;
     vector<unordered_map<uint64_t, Kmer>> _kmers(num_batches) ;
     #pragma omp parallel for num_threads(c->threads)
     for (int i = 0; i < num_batches; i++) {
-        //cout << "batch" << i << endl ;
-        int t = i ;//omp_get_thread_num() ;
+        int t = i ;
         ifstream json_file ;
         string path = c->kmers[0] + "/kmers_batch_" + std::to_string(t) + ".json" ;
         struct stat info ;
@@ -206,46 +203,43 @@ void Genotyper::adjust_gc_coverage() {
 
 void Genotyper::filter_kmers() {
     auto c = Configuration::getInstance() ;
-    cout << "Filtering " << kmers.size() << " kmers.." << endl ;
     int e = 0 ;
     int threads = min(c->threads, int(kmers.bucket_count())) ;
     vector<vector<uint64_t>> filters(threads) ;
     cout << "Filtering " << kmers.size() << " kmers using " << threads << " threads.." << endl ;
-    std::ofstream j ;
-    j.open(c->workdir + "/error.json") ;
-    j << "{\n" ;
-    //#pragma omp parallel for num_threads(threads)
+    //std::ofstream j ;
+    //j.open(c->workdir + "/error.json") ;
+    //j << "{\n" ;
+    #pragma omp parallel for num_threads(threads)
     for(size_t b = 0; b < kmers.bucket_count(); b++) {
         for(auto it = kmers.begin(b); it != kmers.end(b); it++) {
-            auto kmer = it->second ;
+            auto& kmer = it->second ;
             int t = omp_get_thread_num() ;
-            int count = kmer.inverse ? kmer.total - kmer.count : kmer.count ;
-            int residue = kmer.inverse ? 0 : kmer.loci.size() - kmer.tracks.size() ;
-            int coverage = kmer.type == KMER_TYPE_JUNCTION ? this->coverage : gc_coverage[kmer.gc] ;
-            int lp_count = min(count, coverage * int(kmer.loci.size())) ;
             if (kmer.loci.size() > 1) {
                 filters[t].push_back(it->first) ;
                 continue ;
             }
             if (kmer.loci.size() != 1) {
-                //cout << decode_kmer(it->first) << endl ;
-                //cout << kmer.loci.size() << endl ;
                 e += 1 ;
-                //if (e != 0) {
-                //    j << ",\n" ;
-                //}
-                //j << "\"" << decode_kmer(it->first) << "\":" ;
-                //j << nlohmann::json(kmer).dump(4) ;
             }
-            //assert(kmer.loci.size() == 1) ;
+            assert(kmer.loci.size() == 1) ;
             if (kmer.tracks.size() > 1) {
                 filters[t].push_back(it->first) ;
                 continue ;
             }
-            //if (kmer.tracks.size() != 1) {
-            //    print_kmer(kmer) ;
-            //}
             assert(kmer.tracks.size() == 1) ;
+            // not filtered, fix GC:
+            int gc = 0 ;
+            for (auto locus: kmer.loci) {
+                gc += locus.gc ;
+            }
+            kmer.gc = gc / kmer.loci.size() ;
+            // filter based on liklihood
+            int count = kmer.inverse ? kmer.total - kmer.count : kmer.count ;
+            int residue = kmer.inverse ? 0 : kmer.loci.size() - kmer.tracks.size() ;
+            assert(residue == 0) ;
+            int coverage = kmer.type == KMER_TYPE_JUNCTION ? this->coverage : gc_coverage[kmer.gc] ;
+            int lp_count = min(count, coverage * int(kmer.loci.size())) ;
             unordered_map<string, double> likelihoods ;
             double m = -100000000 ;
             string choice ;
@@ -270,6 +264,12 @@ void Genotyper::filter_kmers() {
                 if (c->tracks.find(track) != c->tracks.end() && c->tracks.find(track)->second.genotype.find("1") != string::npos) {
                     pass = true ;
                 }
+                //if (c->tracks.find(track) != c->tracks.end()) {
+                //    auto genotype = c->tracks.find(track)->second.genotype ;
+                //    if (genotype == choice || (genotype == "1/0" && choice == "0/1")) {
+                //        pass = true ;
+                //    }
+                //}
             } else {
                 if (c->tracks.find(track) == c->tracks.end() || c->tracks.find(track)->second.genotype.find("1") == string::npos) {
                     pass = true ;
@@ -281,8 +281,8 @@ void Genotyper::filter_kmers() {
             }
         }
     }
-    j << "\n}\n" ;
-    j.close() ;
+    //j << "\n}\n" ;
+    //j.close() ;
     for (auto it = filters.begin(); it != filters.end(); it++) {
         for (auto k: *it) {
             kmers.erase(kmers.find(k)) ;
@@ -300,7 +300,7 @@ void Genotyper::filter_kmers() {
     cout << kmers.size() << " kmers remain after filtering:" << endl ;
     cout << "\tInner kmers: " << inner << endl ;
     cout << "\tJunction kmers: " << junction << endl ;
-    //cout << e << " inconsistent kmers." << endl ;
+    cout << "\tCorrupted kmers: " << e << endl ;
 }
 
 void Genotyper::cluster_kmers() {
@@ -332,6 +332,7 @@ void Genotyper::cluster_kmers() {
                             cluster_index[track] = cluster ;
                             cluster_index[_track] = cluster ;
                         } else {
+                            continue ;
                             // current track clustered, will add other track later when it is its turn in the loop
                         }
                     } else { // append current track to cluster
@@ -373,38 +374,6 @@ void Genotyper::cluster_kmers() {
     cout << m << " kmers in clusters." << endl ;
 }
 
-void sample_lp_solve(int batch) {
-    auto c = Configuration::getInstance() ;
-    lp::MPSolver solver("cluster_" + std::to_string(batch), lp::MPSolver::CLP_LINEAR_PROGRAMMING) ;
-    lp::MPObjective* const objective = solver.MutableObjective() ;
-    vector<lp::MPVariable*> track_variables ;
-    for (int i = 0; i < 100; i++) {
-        track_variables.push_back(solver.MakeNumVar(0.0, 1.0, "t_" + std::to_string(i))) ;
-    }
-    vector<lp::MPVariable*> error_variables ;
-    cout << "building lp.." << endl ;
-    for (int i = 0; i < 1000; i++) {
-        error_variables.push_back(solver.MakeNumVar(-1000, 1000, "e_" + std::to_string(i))) ;
-        error_variables.push_back(solver.MakeNumVar(0, 1000, "l_" + std::to_string(i))) ;
-        int n = error_variables.size() ;
-        // error absolute value
-        lp::MPConstraint* const abs_1 = solver.MakeRowConstraint(0.0, lp::MPSolver::infinity(), "abs_1_" + std::to_string(i));
-        abs_1->SetCoefficient(error_variables[n - 1], 1) ;
-        abs_1->SetCoefficient(error_variables[n - 2], +1.0) ;
-        lp::MPConstraint* const abs_2 = solver.MakeRowConstraint(0.0, lp::MPSolver::infinity(), "abs_2_" + std::to_string(i));
-        abs_2->SetCoefficient(error_variables[n - 1], 1) ;
-        abs_2->SetCoefficient(error_variables[n - 2], -1.0) ;
-        objective->SetCoefficient(error_variables[n - 1], 1) ;
-        // kmer constraint
-        int rhs = 50 + (i - 500 % 10) ;
-        lp::MPConstraint* const ct = solver.MakeRowConstraint(rhs, rhs, "count_" + std::to_string(i));
-        ct->SetCoefficient(track_variables[i % 10], 50) ;
-        ct->SetCoefficient(error_variables[n - 2], 1.0) ;
-    }
-    objective->SetMinimization() ;
-    solver.Solve() ;
-}
-
 void Genotyper::solve_lp() {
     cout << "Solving LP.." << endl ;
     auto c = Configuration::getInstance() ;
@@ -437,23 +406,19 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
             }
         }
     }
-    //cout << m << " kmers." << endl ;
-    //cout << track_variables.size() << " track variables." << endl ;
     vector<lp::MPVariable*> error_variables ;
     unordered_map<uint64_t, bool> lp_kmers ;
     std::ofstream j ;
-    //j.open(c->workdir + "/batch_" + std::to_string(batch_b) + ".json") ;
     string name = clusters[batch_b][0].get_name() ;
+    //cout << name << endl ;
     j.open(c->workdir + "/batch_" + name + ".json") ;
     j << "{\n" ;
     int u = 0 ;
-    //cout << "building lp.." << endl ;
     for (int i = batch_b; i < batch_e; i++) {
         for (auto track = clusters[i].begin(); track != clusters[i].end(); track++) {
             for (auto k = tracks[*track].begin(); k != tracks[*track].end(); k++) {
                 if (lp_kmers.find(*k) == lp_kmers.end()) {
                     auto kmer = kmers[*k] ;
-                    //print_kmer(kmer) ;
                     // JSON output
                     if (u != 0) {
                         j << ",\n" ;
@@ -461,10 +426,16 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
                     j << "\"" << decode_kmer(*k) << "\":" ;
                     j << nlohmann::json(kmer).dump(4) ;
                     u += 1 ;
-                    // JSON output
+                    // Adjust GC
+                    int gc = 0 ;
+                    for (auto locus: kmer.loci) {
+                        gc += locus.gc ;
+                    }
+                    kmer.gc = gc / kmer.loci.size() ;
                     lp_kmers[*k] = true ;
                     int count = kmer.inverse ? kmer.total - kmer.count : kmer.count ;
                     int residue = kmer.inverse ? 0 : kmer.loci.size() - kmer.tracks.size() ;
+                    assert(residue == 0) ;
                     int coverage = kmer.type == KMER_TYPE_JUNCTION ? this->coverage : gc_coverage[kmer.gc] ;
                     int lp_count = min(count, coverage * int(kmer.loci.size())) ;
                     //cout << kmer.count << " " << coverage << " " << lp_count << endl ;
@@ -485,8 +456,8 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
                         lp::MPConstraint* const ct = solver.MakeRowConstraint(rhs, rhs, "count_" + decode_kmer(*k));
                         for (auto _track = kmer.tracks.begin(); _track != kmer.tracks.end(); _track++) {
                             ct->SetCoefficient(track_variables[track_index[_track->first]], coverage * kmer.tracks[_track->first]) ;
-                            ct->SetCoefficient(error_variables[n - 2], 1.0) ;
                         }
+                        ct->SetCoefficient(error_variables[n - 2], 1.0) ;
                     } else {
                         int rhs = lp_count - residue * coverage ;
                         for (auto _track = kmer.tracks.begin(); _track != kmer.tracks.end(); _track++) {
@@ -495,8 +466,8 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
                         lp::MPConstraint* const ct = solver.MakeRowConstraint(rhs, rhs, "count_" + decode_kmer(*k));
                         for (auto _track = kmer.tracks.begin(); _track != kmer.tracks.end(); _track++) {
                             ct->SetCoefficient(track_variables[track_index[_track->first]], -1 * coverage * kmer.tracks[_track->first]) ;
-                            ct->SetCoefficient(error_variables[n - 2], 1.0) ;
                         }
+                        ct->SetCoefficient(error_variables[n - 2], 1.0) ;
                     }
                 }
             }
@@ -524,14 +495,14 @@ void Genotyper::export_genotypes() {
     auto c = Configuration::getInstance() ;
     std::ofstream o ;
     o.open(c->workdir + "/genotypes.bed") ;
-    o << "#CHROM\tBEGIN\tEND\tSVTPYE\tLP\tGENOTYPE\n" ;
+    o << "#CHROM\tBEGIN\tEND\tSVTYPE\tLP\tGENOTYPE\n" ;
     for (auto it = genotyping_tracks.begin(); it != genotyping_tracks.end(); it++) {
         auto t = it->first ;
         auto g = it->second ;
         string genotype ;
-        if (g.lp_value > 0.75) {
+        if (g.lp_value >= 0.75) {
             genotype = "1/1" ;
-        } else if (g.lp_value > 0.25) {
+        } else if (g.lp_value >= 0.25) {
             genotype = "1/0" ;
         } else {
             genotype = "0/0" ;

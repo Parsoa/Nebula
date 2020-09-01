@@ -39,6 +39,7 @@ private:
 
     void load_kmers() ;
     void output_counts() ;
+    void verify_counts() ;
 
     void process_read(const char* seq, int l, std::unordered_map<uint64_t, int>& _counts, std::unordered_map<uint64_t, int>& _totals) ;
     void process_reads(std::string) ;

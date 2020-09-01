@@ -1,4 +1,5 @@
 #include <omp.h>
+#include <mutex>
 #include <ctime>
 #include <thread>
 #include <locale>
@@ -284,7 +285,6 @@ void KmerCounter::run() {
 void KmerCounter::load_kmers() {
     vector<unordered_map<uint64_t, Kmer>*> kmers{depth_kmers, gc_kmers, genotyping_kmers} ;
     for (auto _kmers = kmers.begin(); _kmers != kmers.end(); _kmers++) {
-        //cout << counts.size() << endl ;
         for (auto it = (*_kmers)->begin(); it != (*_kmers)->end(); it++) {
             uint64_t k = it->first ;
             uint64_t rc_k = encoded_reverse_complement(k) ; 
@@ -317,34 +317,49 @@ void KmerCounter::load_kmers() {
 
 void KmerCounter::output_counts() {
     auto c = Configuration::getInstance() ;
-    string p = c->workdir + "/counts.txt" ;
-    cout << "Dumping kmer counts to " << p << ".." << endl ;
-    std::ofstream o(p);
-    for (const auto kmer : counts) {
-        o << decode_kmer(kmer.first) << ":" << kmer.second << ":" << totals[kmer.first] << "\n" ;
+    cout << "Dumping kmer counts.." << endl ;
+    int num_batches = 100 ;
+    vector<mutex> locks(num_batches) ;
+    vector<ofstream> output_files ;
+    for (int i = 0; i < num_batches; i++) {
+        string p = c->workdir + "/counts_batch_" + std::to_string(i) + ".txt" ;
+        output_files.emplace_back(ofstream {p}) ;
     }
-    nlohmann::json payload ;
+    //#pragma omp parallel for num_threads(c->threads)
+    int i = 0 ;
+    for (size_t bucket = 0; bucket < counts.bucket_count(); bucket++) {
+        for (auto kmer = counts.begin(bucket); kmer != counts.end(bucket); kmer++) {
+            output_files[i] << decode_kmer(kmer->first) << ":" << kmer->second << ":" << totals[kmer->first] << "\n" ;
+            i += 1 ;
+            i %= num_batches ;
+        }
+    }
+    // update kmer counts
     for (auto kmer: counts) {
         uint64_t canon = encode_kmer(canonicalize(decode_kmer(kmer.first))) ;
         if (gc_kmers->find(canon) != gc_kmers->end()) {
             gc_kmers->find(canon)->second.count += kmer.second ;
+            gc_kmers->find(canon)->second.total += totals[kmer.first] ;
         }
         if (depth_kmers->find(canon) != depth_kmers->end()) {
             depth_kmers->find(canon)->second.count += kmer.second ;
+            depth_kmers->find(canon)->second.total += totals[kmer.first] ;
         }
         if (genotyping_kmers->find(canon) != genotyping_kmers->end()) {
             genotyping_kmers->find(canon)->second.count += kmer.second ;
+            genotyping_kmers->find(canon)->second.total += totals[kmer.first] ;
         }
     }
+    verify_counts() ;
 }
 
 void KmerCounter::load_counts() {
     auto c = Configuration::getInstance() ;
     cout << "Loading kmer counts.." << endl ;
-    int num_batches = 1000 ;
+    int num_batches = 100 ;
     #pragma omp parallel for num_threads(c->threads)
     for (int i = 0; i < num_batches; i++) {
-        string path = c->workdir + "/counts_batch_" + std::to_string(i) ;
+        string path = c->workdir + "/counts_batch_" + std::to_string(i) + ".txt" ;
         std::ifstream o(path) ;
         string line ;
         while (std::getline(o, line)) {
@@ -368,5 +383,12 @@ void KmerCounter::load_counts() {
                 genotyping_kmers->find(canon)->second.total += total ;
             }
         }
+    }
+    verify_counts() ;
+}
+
+void KmerCounter::verify_counts() {
+    for (auto kmer = genotyping_kmers->begin(); kmer != genotyping_kmers->end(); kmer++) {
+        assert(kmer->second.total >= kmer->second.count) ;
     }
 }

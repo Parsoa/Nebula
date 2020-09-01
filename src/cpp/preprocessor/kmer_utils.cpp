@@ -65,7 +65,7 @@ void from_json(const nlohmann::json& j, Locus& l) {
     for (auto mask = masks.begin(); mask != masks.end(); mask++) {
         if (i == 0) {
             l.left = encode_kmer(mask.key()) ;
-            i ++ ;
+            i++ ;
         } else {
             l.right = encode_kmer(mask.key()) ;
         }
@@ -181,16 +181,16 @@ void KmerIterator::next() {
         kmer.left = 0 ;
     }
     // GC content
-    if (i - (234 + 1) >= 0) {
-        if (seq[i - (234 + 1)] == 'C' || seq[i - (234 + 1)] == 'G') {
-            kmer.gc -= 1 ;
-        }
-    }
-    if (i + (234 - 1 + 32) < l) {
-        if (seq[i + (234 - 1 + 32)] == 'C' || seq[i + (234 - 1 + 32)] == 'G') {
-            kmer.gc += 1 ;
-        }
-    }
+    //if (i - (234 + 1) >= 0) {
+    //    if (seq[i - (234 + 1)] == 'C' || seq[i - (234 + 1)] == 'G') {
+    //        kmer.gc -= 1 ;
+    //    }
+    //}
+    //if (i + (234 - 1 + 32) < l) {
+    //    if (seq[i + (234 - 1 + 32)] == 'C' || seq[i + (234 - 1 + 32)] == 'G') {
+    //        kmer.gc += 1 ;
+    //    }
+    //}
     i++ ;
     position++ ;
 }
@@ -343,6 +343,8 @@ int calc_gc_content(const char* seq) {
             gc += 1 ;
         }
     }
-    return gc / 5 ;
+    gc = gc / 5 ;
+    assert(gc <= 100) ;
+    return gc ;
 }
 

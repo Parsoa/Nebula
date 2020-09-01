@@ -99,6 +99,7 @@ unordered_map<uint64_t, Kmer> InnerKmerExtractor::extract_deletion_inner_kmers(T
         auto canon = encode_kmer(canonicalize(decode_kmer(it->kmer))) ;
         if (kmers.find(canon) == kmers.end()) {
             kmers[canon] = Kmer(canon, KMER_TYPE_INNER) ;
+            kmers[canon].trend = false ;
         }
         // loci will be found by scanner
         auto& tracks = kmers[canon].tracks ;

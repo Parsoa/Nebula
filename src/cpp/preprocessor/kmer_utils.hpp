@@ -82,7 +82,6 @@ struct Kmer {
         }
         return _tracks ;
     }
-
 } ;
 
 std::unordered_map<std::string, Locus> jsonify_loci(std::vector<Locus> loci) ;

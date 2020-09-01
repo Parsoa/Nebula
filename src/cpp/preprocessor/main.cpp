@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <unordered_map>
 
+#include "mixer.hpp"
 #include "config.hpp"
 #include "genotyper.hpp"
 #include "bed_utils.hpp"
@@ -120,6 +121,10 @@ int main(int argc, char** argv) {
     c->parse(argc - 1, argv + 1) ;
     create_workdir() ;
     load_tracks() ;
+    if (strcmp(argv[1], "mix") == 0) {
+        auto mixer = new Mixer() ;
+        mixer->run() ;
+    }
     if (strcmp(argv[1], "genotype") == 0) {
         auto genotyper = new Genotyper() ;
         genotyper->run() ;
