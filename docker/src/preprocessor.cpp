@@ -298,7 +298,6 @@ void Preprocessor::filter_kmers() {
     std::ofstream j ;
     j.open(c->workdir + "/filtered.json") ;
     j << "{\n" ;
-    //TODO: this is not necessary
     for (auto it = filters.begin(); it != filters.end(); it++) {
         for (auto k: *it) {
             if (f != 0) {
@@ -332,7 +331,6 @@ void Preprocessor::dump_kmers(string path) {
 
     ofstream test(path + "/kmers.txt") ;
     for (auto kmer = kmers.begin(); kmer != kmers.end(); kmer++) {
-        assert(kmer->second.weight == 1.0) ;
         test << decode_kmer(kmer->first) << endl ;
     }
     test.close() ;
@@ -345,7 +343,7 @@ void Preprocessor::dump_kmers(string path) {
     }
     
     //cout << path + "/kmers_2.txt" << endl ;
-    #pragma omp parallel for num_threads(c->threads)
+    //#pragma omp parallel for num_threads(c->threads)
     for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {
         int t = bucket % num_batches ;
         locks[t].lock() ;

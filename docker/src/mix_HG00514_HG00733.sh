@@ -1,0 +1,1 @@
+./nebula mix --bed /share/hormozdiarilab/Codes/NebulousSerendipity/data/HGSV/Unified/HG00514.unified.bed,/share/hormozdiarilab/Codes/NebulousSerendipity/data/HGSV/Unified/HG00733.unified.bed --samples HG00514,HG00733 --workdir /share/hormozdiarilab/Codes/NebulousSerendipity/output/1KG --threads 48 $@

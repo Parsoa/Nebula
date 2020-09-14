@@ -216,8 +216,10 @@ void Genotyper::filter_kmers() {
     for(size_t b = 0; b < kmers.bucket_count(); b++) {
         for(auto it = kmers.begin(b); it != kmers.end(b); it++) {
             auto& kmer = it->second ;
+            if (kmer.weight < 0.1) {
+                continue ;
+            }
             int t = omp_get_thread_num() ;
-            assert(kmer.weight == 1.0) ;
             if (kmer.loci.size() > 1) {
                 filters[t].push_back(it->first) ;
                 continue ;
@@ -307,7 +309,7 @@ void Genotyper::filter_kmers() {
     int inner = 0 ;
     int junction = 0 ;
     for (auto kmer = kmers.begin(); kmer != kmers.end(); kmer++) {
-        //assert(kmer->second.weight > WEIGHT_CUTOFF) ;
+        assert(kmer->second.weight > WEIGHT_CUTOFF) ;
         if (kmer->second.type == KMER_TYPE_INNER) {
             inner += 1 ;
         } else {
@@ -461,9 +463,6 @@ void Genotyper::genotype_clusters(int batch_b, int batch_e) {
                     lp_kmers[*k] = true ;
                     int count = kmer.inverse ? kmer.total - kmer.count : kmer.count ;
                     int residue = kmer.inverse ? 0 : kmer.loci.size() - kmer.tracks.size() ;
-                    if (residue != 0) {
-                        print_kmer(kmer) ;
-                    }
                     assert(residue == 0) ;
                     int coverage = kmer.type == KMER_TYPE_JUNCTION ? this->coverage : gc_coverage[kmer.gc] ;
                     int lp_count = min(count, coverage * int(kmer.loci.size())) ;
@@ -525,8 +524,7 @@ void Genotyper::export_genotypes() {
     cout << "Exporting genotypes.." << endl ;
     auto c = Configuration::getInstance() ;
     std::ofstream o ;
-    string name = c->bam[0].substr(c->bam[0].rfind('/'), c->bam[0].length() - c->bam[0].rfind('/')) ;
-    o.open(c->cgc ? c->workdir + "/" + name + ".bed" : c->workdir + "/genotypes.bed") ;
+    o.open(c->workdir + "/genotypes.bed") ;
     o << "#CHROM\tBEGIN\tEND\tSVTYPE\tLP\tGENOTYPE\n" ;
     for (auto it = genotyping_tracks.begin(); it != genotyping_tracks.end(); it++) {
         auto t = it->first ;

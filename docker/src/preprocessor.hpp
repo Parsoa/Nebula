@@ -29,7 +29,6 @@ private:
     std::mutex cout_mutex ;
     std::unordered_map<Track, int> bed_tracks ;
     std::unordered_map<uint64_t, Kmer> kmers ;
-    //std::vector<std::vector<uint64_t>> filters ;
 } ;
 
 #endif
