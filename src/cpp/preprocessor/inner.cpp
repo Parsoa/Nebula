@@ -175,7 +175,7 @@ unordered_map<uint64_t, Kmer> InnerKmerExtractor::extract_insertion_inner_kmers(
             cout << it.i << endl ;
         }
         assert(it.has_left && it.has_right) ;
-        Locus locus({track.chrom, track.begin, LOCUS_TYPE_INNER, it->left, it->right, it->gc}) ;
+        Locus locus({track.chrom, track.begin, LOCUS_TYPE_INNER, it->left, it->right, it->gc / 5}) ;
         inner_kmers[canon].loci.push_back(locus) ;
         auto& tracks = inner_kmers[canon].tracks ;
         if (tracks.find(_track) == tracks.end()) {

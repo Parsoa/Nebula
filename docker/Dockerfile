@@ -2,22 +2,22 @@ FROM ubuntu
 
 MAINTAINER Parsoa Khorsand
 
-WORKDIR /share/hormozdiarilab/Codes/NebulousSerendipity/
+WORKDIR /
 
-COPY . /share/hormozdiarilab/Codes/NebulousSerendipity/
+RUN mkdir src
+
+RUN mkdir lib
+
+COPY ../src/cpp/preprocessor /src
+
+RUN mkdir kmers
 
 RUN apt-get update && apt-get install -y gcc make g++ autoconf gfortran git wget tmux vim libbz2-dev zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev python3 python3-pip
 
-RUN ./htslib.sh
+RUN ./or_tools.sh
 
-RUN ./jellyfish.sh
+RUN ./make.sh
 
-RUN ./coin.sh
+ENV PATH="/src/:${PATH}"
 
-RUN ./counter.sh
-
-ENV PATH="/share/hormozdiarilab/Codes/NebulousSerendipity/scripts:${PATH}"
-
-ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
-
-ENV PYTHONPATH="$PYTHONPATH:/share/hormozdiarilab/Codes/NebulousSerendipity/src/python"
+ENV LD_LIBRARY_PATH="LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib/or-tools_Ubuntu-16.04-64bit_v7.8.7959/lib"

@@ -17,9 +17,10 @@ public:
 
     void parse(int argc, char* argv[]) ;
 
-    int threads ;
+    bool cgc ;
     bool reduce ;
     bool select ;
+    int threads ;
     std::string workdir ;
     std::string gc_kmers ;
     std::string depth_kmers ;

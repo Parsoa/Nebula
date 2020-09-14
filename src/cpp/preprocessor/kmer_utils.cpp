@@ -43,7 +43,8 @@ void Locus::parse_name(string name) {
 void to_json(nlohmann::json& j, const Kmer& k) {
     j = nlohmann::json{{"count", k.count}, {"reference", k.reference}, {"loci", k.loci},\
         {"junction_loci", k.junction_loci}, {"filtered_loci", k.filtered_loci}, {"total", k.total}, \
-        {"tracks", k.jsonify_tracks()}, {"inverse", k.inverse}, {"trend", k.trend}, {"gc", k.gc}, {"type", k.type}
+        {"tracks", k.jsonify_tracks()}, {"inverse", k.inverse}, {"trend", k.trend}, {"gc", k.gc}, {"type", k.type}, \
+        {"weight", k.weight}
     } ;
 }
 
@@ -90,6 +91,9 @@ void from_json(const nlohmann::json& j, Kmer& k) {
     }
     if (j.find("trend") != j.end()) {
         k.trend = j["trend"] ;
+    }
+    if (j.find("weight") != j.end()) {
+        k.weight = j["weight"] ;
     }
     if (j.find("inverse") != j.end()) {
         k.inverse = j["inverse"] ;
@@ -181,16 +185,16 @@ void KmerIterator::next() {
         kmer.left = 0 ;
     }
     // GC content
-    //if (i - (234 + 1) >= 0) {
-    //    if (seq[i - (234 + 1)] == 'C' || seq[i - (234 + 1)] == 'G') {
-    //        kmer.gc -= 1 ;
-    //    }
-    //}
-    //if (i + (234 - 1 + 32) < l) {
-    //    if (seq[i + (234 - 1 + 32)] == 'C' || seq[i + (234 - 1 + 32)] == 'G') {
-    //        kmer.gc += 1 ;
-    //    }
-    //}
+    if (i - (234 + 1) >= 0) {
+        if (seq[i - (234 + 1)] == 'C' || seq[i - (234 + 1)] == 'G') {
+            kmer.gc -= 1 ;
+        }
+    }
+    if (i + (234 - 1 + 32) < l) {
+        if (seq[i + (234 - 1 + 32)] == 'C' || seq[i + (234 - 1 + 32)] == 'G') {
+            kmer.gc += 1 ;
+        }
+    }
     i++ ;
     position++ ;
 }
@@ -343,8 +347,7 @@ int calc_gc_content(const char* seq) {
             gc += 1 ;
         }
     }
-    gc = gc / 5 ;
-    assert(gc <= 100) ;
+    assert(gc <= 500) ;
     return gc ;
 }
 

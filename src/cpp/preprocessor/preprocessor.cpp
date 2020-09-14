@@ -68,7 +68,6 @@ void Preprocessor::scan_reference(int threads) {
 
 unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int threads) {
     unordered_map<uint64_t, Kmer> _kmers ;
-    int gc = 0 ;
     uint64_t k = 0 ;
     uint64_t left = 0 ;
     uint64_t right = 0 ;
@@ -87,7 +86,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
                 it++ ;
                 continue ;
             }
-            Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc}) ;
+            Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5}) ;
             _kmers[k].loci.push_back(locus) ;
             _kmers[k].count ++ ;
             n++ ;
@@ -102,7 +101,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
                     it++ ;
                     continue ;
                 }
-                Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc}) ;
+                Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5}) ;
                 _kmers[rc].loci.push_back(locus) ;
                 _kmers[rc].count ++ ;
                 n++ ;
@@ -336,7 +335,6 @@ void Preprocessor::dump_kmers(string path) {
     }
     test.close() ;
 
-
     for (int i = 0; i < num_batches; i++) {
         string p = path + "/kmers_batch_" + std::to_string(i) + ".json" ;
         output_files.emplace_back(ofstream {p}) ;
@@ -344,15 +342,7 @@ void Preprocessor::dump_kmers(string path) {
         counters.push_back(0) ;
     }
     
-    cout << path + "/kmers_2.txt" << endl ;
-    ofstream test_2(path + "/kirekhar.txt") ;
-
-    if (!test_2.is_open()) {
-        cerr << "Failed to open file: " << errno << endl ;
-    }
-
-    test_2 << "KIREKHAR" << endl ;
-    cout << "KIREKHAR" << endl ;
+    //cout << path + "/kmers_2.txt" << endl ;
     //#pragma omp parallel for num_threads(c->threads)
     for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {
         int t = bucket % num_batches ;
@@ -364,15 +354,9 @@ void Preprocessor::dump_kmers(string path) {
             counters[t] += 1 ;
             output_files[t] << "\"" << decode_kmer(kmer->first) << "\":" ;
             output_files[t] << nlohmann::json(kmer->second).dump(4) ;
-            if (decode_kmer(kmer->first) == "AATACAATCCATCAATGTTCATCAAGGATATT") {
-                print_kmer(kmer->second) ;
-                cout << "Found kmer.." << endl ;
-            }
-            test_2 << decode_kmer(kmer->first) << endl ;
         }
         locks[t].unlock() ;
     }
-    test_2.close() ;
     for (int i = 0; i < num_batches; i++) {
         output_files[i] << "\n}\n" ;
     }

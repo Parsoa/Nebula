@@ -17,6 +17,7 @@ Configuration* Configuration::getInstance() {
 Configuration::Configuration() :
     parser("Nebula", "Ultra-efficient mapping-free structural variation genotyper.") {
     parser.add_options()
+        ("cgc", "", cxxopts::value<bool>())
         ("bed", "", cxxopts::value<std::vector<std::string>>())
         ("bam", "", cxxopts::value<std::vector<std::string>>())
         ("std", "", cxxopts::value<int>())
@@ -36,6 +37,9 @@ Configuration::Configuration() :
 void Configuration::parse(int argc, char** argv) {
     auto results = parser.parse(argc, argv) ;
 
+    if (results.count("cgc")) {
+        cgc = true ;
+    }
     if (results.count("bed")) {
         bed = results["bed"].as<std::vector<std::string>>() ;
     }

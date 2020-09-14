@@ -1,7 +1,3 @@
-COIN_DIR := coin-Clp
-COIN_INC_DIR := $(COIN_DIR)/include
-COIN_LIB_DIR := $(COIN_DIR)/lib
-
 OR_TOOLS_DIR := /share/hormozdiarilab/Codes/NebulousSerendipity/binaries/or-tools_Ubuntu-16.04-64bit_v7.8.7959
 OR_TOOLS_LIB_DIR := $(OR_TOOLS_DIR)/lib
 OR_TOOLS_INC_DIR := $(OR_TOOLS_DIR)/include

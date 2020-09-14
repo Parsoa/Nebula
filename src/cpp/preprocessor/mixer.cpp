@@ -108,7 +108,6 @@ void Mixer::load_kmers(Track track) {
             //    }
             //}
             if (correct) {
-                //cout << "Genotype correct" << endl ;
                 string path = c->workdir + "/" + sample + "/batch_" + track.get_name() + ".json" ;
                 ifstream json_file(path) ;
                 nlohmann::json kmers_json ;
@@ -130,9 +129,6 @@ void Mixer::load_kmers(Track track) {
                 if (!flags[track]) {
                     flags[track] = true ;
                     kmers[track].insert(_kmers.begin(), _kmers.end()) ;
-                    //if (kmers[track].size() == 0) {
-                    //    cout << "No kmers remainig for " << track.get_name() << endl ;
-                    //}
                 } else {
                     auto kmer = kmers[track].begin() ;
                     while (kmer != kmers[track].end()) {
@@ -142,20 +138,20 @@ void Mixer::load_kmers(Track track) {
                             kmer++ ;
                         }
                     }
-                    //if (kmers[track].size() == 0) {
-                    //    cout << "No kmers remainig for " << track.get_name() << endl ;
+                    //============
+                    //for (auto kmer = _kmers.begin(); kmer != _kmers.end(); kmer++) {
+                    //    if (kmers[track].find(kmer->first) != kmers[track].end()) {
+                    //        kmers[track][kmer->first].weight *= kmer->second.weight ;
+                    //    } else {
+                    //        kmers[track][kmer->first] = kmer->second ;
+                    //    }
                     //}
                 }
-                //cout << kmers[track].size() << endl ;
             }
         } else {
-            //cout << "Not found" << endl ;
         }
         s += 1 ;
     }
-    //if (kmers[track].size() == 0) {
-    //    cout << "No kmers remainig for " << track.get_name() << endl ;
-    //}
 }
 
 void Mixer::export_kmers() {

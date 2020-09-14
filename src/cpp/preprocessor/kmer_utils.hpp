@@ -71,9 +71,10 @@ struct Kmer {
     bool inverse ;
     uint16_t gc ;
     bool trend ;
-    
-    Kmer(): inverse(false), count(0), total(0), reference(0), seq(0), type(KMER_TYPE_JUNCTION) {}
-    Kmer(uint64_t seq, uint64_t type): inverse(false), count(0), total(0), reference(0), seq(seq), type(type) {}
+    double weight ;
+
+    Kmer(): inverse(false), count(0), total(0), reference(0), seq(0), type(KMER_TYPE_JUNCTION), weight(1.0) {}
+    Kmer(uint64_t seq, uint64_t type): inverse(false), count(0), total(0), reference(0), seq(seq), type(type), weight(1.0) {}
 
     std::unordered_map<std::string, int> jsonify_tracks() const {
         std::unordered_map<std::string, int> _tracks ;
