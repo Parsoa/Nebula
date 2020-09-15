@@ -32,6 +32,7 @@ void Mixer::run() {
     for (int i = 0; i < bed_tracks.size(); i++) {
         bool any_positive = false ;
         auto track = bed_tracks[i] ;
+        cout << track.get_name() << endl ;
         for (auto it = tracks.begin(); it != tracks.end(); it++) {
             if (it->find(track) != it->end()) {
                 if (it->find(track)->first.genotype.find("1") != string::npos) {
@@ -64,28 +65,28 @@ void Mixer::load_tracks() {
         string path = c->workdir + "/" + sample + "/genotypes.bed" ;
         calls.push_back(load_tracks_from_file_as_dict(path)) ;
     }
-    int n = 0 ;
-    int m = 0 ;
-    int p = 0 ;
-    int q = 0 ;
-    for (auto track = bed_tracks.begin(); track != bed_tracks.end(); track++) {
-        if (calls[0].find(*track) != calls[0].end()) {
-            n++ ;
-        }
-        if (calls[1].find(*track) != calls[1].end()) {
-            m++ ;
-        }
-        if (tracks[0].find(*track) != tracks[0].end()) {
-            p++ ;
-        }
-        if (tracks[1].find(*track) != tracks[1].end()) {
-            q++ ;
-        }
-    }
-    cout << n << " in HG00514" << endl ;
-    cout << m << " in HG00733" << endl ;
-    cout << p << " in HG00514" << endl ;
-    cout << q << " in HG00733" << endl ;
+    //int n = 0 ;
+    //int m = 0 ;
+    //int p = 0 ;
+    //int q = 0 ;
+    //for (auto track = bed_tracks.begin(); track != bed_tracks.end(); track++) {
+    //    if (calls[0].find(*track) != calls[0].end()) {
+    //        n++ ;
+    //    }
+    //    if (calls[1].find(*track) != calls[1].end()) {
+    //        m++ ;
+    //    }
+    //    if (tracks[0].find(*track) != tracks[0].end()) {
+    //        p++ ;
+    //    }
+    //    if (tracks[1].find(*track) != tracks[1].end()) {
+    //        q++ ;
+    //    }
+    //}
+    //cout << n << " in HG00514" << endl ;
+    //cout << m << " in HG00733" << endl ;
+    //cout << p << " in HG00514" << endl ;
+    //cout << q << " in HG00733" << endl ;
 }
 
 void Mixer::load_kmers(Track track) {
@@ -113,6 +114,7 @@ void Mixer::load_kmers(Track track) {
                 nlohmann::json kmers_json ;
                 json_file >> kmers_json ;
                 unordered_map<uint64_t, Kmer> _kmers ;
+                //TODO: this will silently fail if file does not exist
                 for (nlohmann::json::iterator kmer = kmers_json.begin(); kmer != kmers_json.end(); kmer++) {
                     uint64_t k = encode_kmer(canonicalize(kmer.key()).c_str()) ;
                     Kmer _kmer = kmer.value().get<Kmer>() ;
@@ -123,7 +125,6 @@ void Mixer::load_kmers(Track track) {
                 }
                 if (_kmers.size() == 0) {
                     cout << track.get_name() << " " << sample << endl ;
-                    cin.get() ;
                 }
                 json_file.close() ;
                 if (!flags[track]) {
@@ -148,7 +149,6 @@ void Mixer::load_kmers(Track track) {
                     //}
                 }
             }
-        } else {
         }
         s += 1 ;
     }
@@ -157,7 +157,16 @@ void Mixer::load_kmers(Track track) {
 void Mixer::export_kmers() {
     cout << "Exporting kmers.." << endl ;
     auto c = Configuration::getInstance() ;
+    struct stat info ;
     string path = c->workdir + "/Mix" ;
+    if (stat(path.c_str(), &info) != 0) {
+        cout << "Output directory does not exist, creating.." << endl ;
+        int check = mkdir(path.c_str(), 0777) ;
+        if (check != 0) {
+            cerr << "Failed to create output directory, aborting.." << endl ;
+            exit(check) ;
+        }
+    }
     vector<int> counters ;
     int num_batches = 100 ;
     vector<mutex> locks(num_batches) ;
