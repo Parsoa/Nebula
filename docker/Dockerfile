@@ -6,8 +6,6 @@ WORKDIR /
 
 COPY . /
 
-RUN mkdir kmers
-
 RUN apt-get update && apt-get install -y gcc make g++ autoconf gfortran git wget tmux vim libbz2-dev zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev
 
 RUN ./htslib.sh
@@ -18,4 +16,6 @@ RUN ./make.sh
 
 ENV PATH="/src/:${PATH}"
 
-ENV LD_LIBRARY_PATH="LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib/or-tools_Ubuntu-16.04-64bit_v7.8.7959/lib"
+ENV LD_LIBRARY_PATH="LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib/or-tools_Ubuntu-16.04-64bit_v7.8.7959/lib:/usr/local/lib"
+
+WORKDIR /output

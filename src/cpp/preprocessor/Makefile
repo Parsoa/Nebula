@@ -9,7 +9,7 @@ docker: HTSLIBFLAGS = -lz -llzma -lbz2 -lcurl -lcrypto -lhts
 
 CXX = g++
 LDFLAGS = -lm -lpthread $(HTSLIBFLAGS) $(OR_TOOLS_FLAGS)
-CXXFLAGS = -std=c++11 -O3 -funroll-loops -fopenmp -I htslib -I $(OR_TOOLS_INC_DIR) 
+CXXFLAGS = -std=c++11 -O3 -funroll-loops -fopenmp -I htslib -I $(OR_TOOLS_INC_DIR)
 
 HPP = $(wildcard *.hpp)
 SRC = $(wildcard *.cpp)

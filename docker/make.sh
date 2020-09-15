@@ -1,3 +1,3 @@
 cd src
-make docker
+make
 cd ..
