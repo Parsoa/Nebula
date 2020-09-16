@@ -17,5 +17,3 @@ RUN ./make.sh
 ENV PATH="/src/:${PATH}"
 
 ENV LD_LIBRARY_PATH="LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib/or-tools_Ubuntu-16.04-64bit_v7.8.7959/lib:/usr/local/lib"
-
-WORKDIR /output

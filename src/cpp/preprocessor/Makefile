@@ -5,7 +5,7 @@ OR_TOOLS_INC_DIR = $(OR_TOOLS_DIR)/include
 OR_TOOLS_FLAGS = -L$(OR_TOOLS_LIB_DIR) -lglog -lprotobuf -lgflags -lCbc -lCbcSolver -lClp -lClpSolver -lCoinUtils -lOsiCbc -lOsiClp -lCgl -lortools
 
 HTSLIBFLAGS = /software/htslib/1.8/lssc0-linux/lib/libhts.a -lz -llzma -lbz2 -lcurl -lcrypto
-docker: HTSLIBFLAGS = -lz -llzma -lbz2 -lcurl -lcrypto -lhts
+docker: HTSLIBFLAGS = -lz -llzma -lbz2 -lhts
 
 CXX = g++
 LDFLAGS = -lm -lpthread $(HTSLIBFLAGS) $(OR_TOOLS_FLAGS)
