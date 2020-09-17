@@ -80,6 +80,7 @@ void Genotyper::run() {
 
 void Genotyper::load_kmers() {
     auto c = Configuration::getInstance() ;
+    cerr << "Working directory: " << c->workdir << endl ;
     cout << "loading gc kmers.." << endl ;
     ifstream json_file(c->gc_kmers) ;
     nlohmann::json kmers_json ;
@@ -175,6 +176,7 @@ void Genotyper::estimate_coverage() {
     }
     coverage = mean ;
     cout << "Coverage " << mean << "x with variance " << std << "." << endl ;
+    cerr << "Coverage " << mean << "x with variance " << std << "." << endl ;
 }
 
 void Genotyper::adjust_gc_coverage() {
@@ -526,7 +528,7 @@ void Genotyper::export_genotypes() {
     auto c = Configuration::getInstance() ;
     std::ofstream o ;
     string name = c->bam[0].substr(c->bam[0].rfind('/'), c->bam[0].length() - c->bam[0].rfind('/')) ;
-    o.open(c->cgc ? name + ".bed" : c->workdir + "/genotypes.bed") ;
+    o.open(c->cgc ? c->workdir + "/" + name + ".bed" : c->workdir + "/genotypes.bed") ;
     o << "#CHROM\tBEGIN\tEND\tSVTYPE\tLP\tGENOTYPE\n" ;
     for (auto it = genotyping_tracks.begin(); it != genotyping_tracks.end(); it++) {
         auto t = it->first ;
