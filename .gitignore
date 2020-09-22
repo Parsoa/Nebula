@@ -1,4 +1,4 @@
-.DS_Store/
+**/.DS_Store
 
 venv/
 venv2/
@@ -34,6 +34,8 @@ misc/
 binaries/
 Jellyfish/
 programming/
+docker/src/
+docker/kmers/
 
 scripts/submit.sh
 scripts/syrupy.py
