@@ -226,7 +226,7 @@ unordered_map<uint64_t, Kmer> JunctionKmerExtractor::extract_junction_kmers(Trac
                 // only one junction loci per track
                 // TODO: what if multiple tracks insert at the same size?
                 if (kmers[canon].loci.size() == 0) {
-                    Locus locus {track.chrom, track.begin, LOCUS_TYPE_JUNCTION, it->left, it->right, 0} ;
+                    Locus locus {track.chrom, track.begin, LOCUS_TYPE_JUNCTION, it->left, it->right, 0, true} ;
                     auto d = kmers[canon] ;
                     kmers[canon].loci.push_back(locus) ;
                 } else {

@@ -28,13 +28,15 @@ private:
     void genotype_clusters(int, int) ;
     void export_genotypes() ;
     void filter_kmers() ;
+    
+    double calc_kmer_genotype_likelihood(Kmer& kmer) ;
+    void filter_kmer(Kmer& kmer, int t, std::vector<std::string>& genotypes, double max_likelihood) {
 
     std::unordered_map<uint64_t, Kmer> kmers ;
     std::unordered_map<uint64_t, Kmer> gc_kmers ;
     std::unordered_map<uint64_t, Kmer> depth_kmers ;
 
     double std ;
-    double mean ;
     double coverage ;
     std::vector<double> gc_coverage ;
 

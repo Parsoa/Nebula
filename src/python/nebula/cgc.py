@@ -624,52 +624,67 @@ class PcaClusteringJob(map_reduce.Job):
     # ============================================================================================================================ #
 
     def load_inputs(self):
-        from sklearn.decomposition import PCA
-        from matplotlib import pyplot as plt
         c = config.Configuration()
         payload = json.load(open(os.path.join(c.workdir, 'simons.json'), 'r'))
         regions = json.load(open(os.path.join(c.workdir, 'region.json'), 'r'))
+        #self.both = {}
+        #with open(c.bed[0]) as txt_file:
+        #    for line in txt_file.readlines():
+        #        key = line.strip()[6:-6]
+        #        print(key)
+        #        self.both[key] = True
+        self.common = bed.load_tracks_from_file_as_dict(c.bed[0])
+        self.estimate_hwe('DEL', payload, regions)
+        self.estimate_hwe('INS', payload, regions)
+        exit()
+
+    def estimate_hwe(self, svtype, payload, regions):
+        from sklearn.decomposition import PCA
+        from matplotlib import pyplot as plt
+        print(svtype + '..')
+        c = config.Configuration()
         features = []
         populations = []
         for name in payload['data']:
             if name in regions:
                 #if regions[name] == 'Africa':
                 #    continue
-                self.tracks = bed.load_tracks_from_file(os.path.join(c.workdir, 'Genotypes', name + '.bed' ))
-                features.append([self.ordinalize_genotype(t.lp_genotype) for t in self.tracks if 'INS' in t.id])
+                self.tracks = bed.load_tracks_from_file(os.path.join(c.workdir, 'Genotypes', name + '.bed'))
+                features.append([self.ordinalize_genotype(t.genotype) for t in self.tracks if svtype in t.id])
                 populations.append(regions[name])
-
         print(len(features))
         print(len(populations))
+        print(len(features[0]), 'events.')
 
-        #pca = PCA(n_components = 2)
-        #components = pca.fit_transform(features)
+        pca = PCA(n_components = 2)
+        components = pca.fit_transform(features)
 
-        #print(sorted(set(populations)))
+        print(sorted(set(populations)))
 
-        #fig = plt.figure(figsize = (8,8))
-        #ax = fig.add_subplot(1,1,1)
-        #ax.set_xlabel('Principal Component 1', fontsize = 15)
-        #ax.set_ylabel('Principal Component 2', fontsize = 15)
-        #ax.set_title('2 component PCA', fontsize = 20)
-        ##colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-        #colors = ['xkcd:' + a for a in ['blue', 'green', 'red', 'pink', 'brown', 'purple', 'yellow']]
-        #for j, p in enumerate(sorted(set(populations))):
-        #    print(p, colors[j])
-        #    a = [f[0] for i, f in enumerate(components) if populations[i] == p]
-        #    b = [f[1] for i, f in enumerate(components) if populations[i] == p]
-        #    print(a)
-        #    print(b)
-        #    print('====')
-        #    ax.scatter(a, b, color = colors[j])
-        #ax.legend(sorted(set(populations)))
-        ##fig.savefig(os.path.join(c.workdir, 'pca.png'))
-        #plt.close(fig)
+        fig = plt.figure(figsize = (8,8))
+        ax = fig.add_subplot(1,1,1)
+        ax.set_xlabel('Principal Component 1', fontsize = 15)
+        ax.set_ylabel('Principal Component 2', fontsize = 15)
+        ax.set_title('2 component PCA', fontsize = 20)
+        #colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
+        colors = ['xkcd:' + a for a in ['blue', 'green', 'red', 'pink', 'brown', 'purple', 'yellow']]
+        for j, p in enumerate(sorted(set(populations))):
+            print(p, colors[j])
+            a = [f[0] for i, f in enumerate(components) if populations[i] == p]
+            b = [f[1] for i, f in enumerate(components) if populations[i] == p]
+            print(a)
+            print(b)
+            print('====')
+            ax.scatter(a, b, color = colors[j])
+        ax.legend(sorted(set(populations)))
+        fig.savefig(os.path.join(c.workdir, 'pca_' +  svtype + '.png'))
+        plt.close(fig)
         #  Hardy-Weinberg equlibrium
         heteros = [0 for f in features[0]]
         genotypes = [[0, 0, 0] for f in features[0]]
         genotype_counts = [[0, 0, 0] for f in features[0]]
         alleles = [0 for f in features[0]]
+        pvalues = [0 for f in features[0]]
         for feature in features:
             for i, f in enumerate(feature):
                 alleles[i] += f #1 if f != 0 else 0
@@ -677,22 +692,33 @@ class PcaClusteringJob(map_reduce.Job):
                 genotypes[i][f] += 1
                 genotype_counts[i][f] += 1
         m = 0
+        e = 0
+        p = 0
         for i in range(len(alleles)):
             l = len(features)
             alleles[i] = alleles[i] / float(2 * len(features))
             heteros[i] = heteros[i] / float(len(features))
-            if heteros[i] > 0.90 and alleles[i] > 0.5:
-                print(self.tracks[i])
-            genotypes[i] = [str(g / float(l)) for g in genotypes[i]]
-            genotype_counts[i] = [str(g) for g in genotype_counts[i]]
-        with open(os.path.join(self.get_current_job_directory(), 'x_INS.txt'), 'w') as txt_file:
+            #if heteros[i] > 0.90 and alleles[i] > 0.5:
+            #    print(self.tracks[i])
+            genotypes[i] = [g / float(l) for g in genotypes[i]]
+            genotype_counts[i] = [g for g in genotype_counts[i]]
+            if genotype_counts[i][1] == 0:
+                if genotype_counts[i][0] == 0 or genotype_counts[i][2] == 0:
+                    e += 1
+                    continue
+            pvalues[i] = sum(genotype_counts[i]) * (((4 * genotype_counts[i][0] * genotype_counts[i][2] - genotype_counts[i][1] ** 2) / ((2 * genotype_counts[i][0] + genotype_counts[i][1]) * (2 * genotype_counts[i][2] + genotype_counts[i][1]))) ** 2)
+            #print(pvalues[i])
+            if pvalues[i] > 3.84:
+                p += 1
+        #print(e, 'division by zero errors')
+        print(p, 'pass Chi-squared test.')
+        with open(os.path.join(self.get_current_job_directory(), 'x_' + svtype + '.txt'), 'w') as txt_file:
             for genotype in genotypes:
-                txt_file.write(' '.join(genotype) + '\n')
-        with open(os.path.join(self.get_current_job_directory(), 'c_INS.txt'), 'w') as txt_file:
+                txt_file.write(' '.join([str(g) for g in genotype]) + '\n')
+        with open(os.path.join(self.get_current_job_directory(), 'c_' + svtype + '.txt'), 'w') as txt_file:
             for genotype_count in genotype_counts:
-                txt_file.write(' '.join(genotype_count) + '\n')
-        visualizer.scatter(alleles, heteros, 'Hardy Weinberg principle', self.get_current_job_directory(), 'Allele Frequency', 'Genotype Frequency')
-        exit()
+                txt_file.write(' '.join([str(g) for g in genotype_count]) + '\n')
+        visualizer.scatter(alleles, heteros, 'Hardy Weinberg Equilibrium for ' + svtype, self.get_current_job_directory(), 'Allele Frequency', 'Genotype Frequency')
 
     def ordinalize_genotype(self, g):
         if g == '0/0':

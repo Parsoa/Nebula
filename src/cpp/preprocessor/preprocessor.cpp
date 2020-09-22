@@ -86,7 +86,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
                 it++ ;
                 continue ;
             }
-            Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5}) ;
+            Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5, false}) ;
             _kmers[k].loci.push_back(locus) ;
             _kmers[k].count ++ ;
             n++ ;
@@ -101,7 +101,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
                     it++ ;
                     continue ;
                 }
-                Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5}) ;
+                Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5, false}) ;
                 _kmers[rc].loci.push_back(locus) ;
                 _kmers[rc].count ++ ;
                 n++ ;
@@ -167,7 +167,7 @@ void Preprocessor::merge_genotyping_kmers(unordered_map<uint64_t, Kmer> inner_km
 vector<uint64_t> find_interest_masks(Kmer& k) {
     std::vector<uint64_t> interset_masks ;
     for (auto locus = k.loci.begin(); locus != k.loci.end(); locus++) {
-        if (locus->type != LOCUS_TYPE_REF) {
+        if (locus->type != LOCUS_TYPE_REF) { // these will be junction
             if (locus->left != 0) {
                 interset_masks.push_back(locus->left) ;
             }
@@ -175,7 +175,7 @@ vector<uint64_t> find_interest_masks(Kmer& k) {
                 interset_masks.push_back(locus->right) ;
             }
         }
-        // ref loci that fall inside event
+        // these will be inner and breakpoint loci from deletions + inner breakpoint from insertions
         else {
             for (auto track = k.tracks.begin(); track != k.tracks.end(); track++) {
                 if (locus->chrom == track->first.chrom) {
@@ -186,6 +186,7 @@ vector<uint64_t> find_interest_masks(Kmer& k) {
                         if (locus->right != 0) {
                             interset_masks.push_back(locus->right) ;
                         }
+                        locus->type = LOCUS_TYPE_INNER ;
                     }
                 }
             }

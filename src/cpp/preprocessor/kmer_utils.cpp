@@ -57,7 +57,7 @@ void to_json(nlohmann::json& j, const Locus& l) {
         masks[decode_kmer(l.right)] = 0 ;
     }
     j = nlohmann::json{{"chrom", get_chromosome_name(l.chrom)}, {"position", l.position}, {"masks", masks},\
-        {"type", l.type}, {"gc", l.gc}} ;
+        {"type", l.type}, {"gc", l.gc}, {"trend", l.trend}} ;
 }
 
 void from_json(const nlohmann::json& j, Locus& l) {
@@ -76,6 +76,9 @@ void from_json(const nlohmann::json& j, Locus& l) {
     }
     if (j.find("type") != j.end()) {
         l.type = j["type"] ;
+    }
+    if (j.find("trend") != j.end()) {
+        l.trend = j["trend"] ;
     }
     if (j.find("chrom") != j.end()) {
         l.chrom = get_chromosome_index(j["chrom"]) ;

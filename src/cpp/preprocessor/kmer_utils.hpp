@@ -36,6 +36,7 @@ struct Locus {
     uint64_t left ;
     uint64_t right ;
     uint16_t gc ;
+    bool trend ;
 
     bool operator==(const Locus &o) const {
         return chrom == o.chrom && position == o.position && type == o.type ;
