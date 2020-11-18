@@ -25,6 +25,7 @@ __pycache__/
 *.log
 .nfs*
 
+test/
 cgc/
 lib/
 coin/
@@ -36,6 +37,8 @@ Jellyfish/
 programming/
 docker/src/
 docker/kmers/
+src/python
+src/cpp/scripts/
 
 scripts/submit.sh
 scripts/syrupy.py

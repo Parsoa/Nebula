@@ -4,9 +4,9 @@ MAINTAINER Parsoa Khorsand
 
 WORKDIR /
 
-COPY . /
-
 RUN apt-get update && apt-get install -y gcc make g++ autoconf gfortran git wget tmux vim libbz2-dev zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev
+
+COPY . /
 
 RUN ./htslib.sh
 
