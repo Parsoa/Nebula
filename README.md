@@ -10,31 +10,40 @@ Nebula is a mapping-free approach for accurate and efficient genotyping of SVs. 
 
 # Installation
 
-Nebulo requires htslib to be installed for parsing BAM and SAM files but is otherwise self-contained.
+Nebulo requires htslib and Google OR-Tools to be installed for parsing BAM and SAM files but is otherwise self-contained.
 
-Download the latest executable from releases section and put it somewhere inside your PATH.
+Download the latest executable from releases section and put it somewhere inside your PATH. Altenrtaviely, clone the repository and run `make` inside `src/cpp` to build Nebula from sources. At this point, you have to manually set the path for OR-Tools and htslib by editing lines 1 and 7 of the Makefile. This will be improved in a future release.
+
+For OR-Tools, simply download an extract a release tarball:
+
+```
+wget https://github.com/google/or-tools/releases/download/v7.8/or-tools_ubuntu-16.04_v7.8.7959.tar.gz
+tar -xzvf or-tools_ubuntu-16.04_v7.8.7959.tar.gz
+```
 
 # Usage
 
 ## kmer Extraction 
 
-For kmer extraction, a set of BAM/SAM/CRAM files should be passed to Nebula along with one BED file with the genotypes of the target SVs on that sample for each BAM file.
-The BED file can minimally contain the event coordinates and types: 
+Nebula requires a reference genome in FASTA format and a number of samples in BAM/SAM/CRAM format along with SV genotypes for each sample in BED format. Only the following basic fields are required in the BED file:
+
 ```
-#CHROM BEGIN   END SVTYPE
+#CHROM BEGIN   END SVTYPE SEQ
 ```
 
-The `SVTYPE` should be one of `DEL`, `INS` or `INV`. Optionally, the length of the SV and the actual inserted sequence can be passed for insertions (`SVLEN` and `SEQ`). Any additional field is ignored. 
+To use the reference genome for extraction, the SV type should be one of `DEL`, `INS` or `INV`. For other types of SVs, kmers will only be extracted from mapped reads. The `SEQ` field is only used for insertions and should contain the inserted sequence.
 
-Nebula expects a certain directory structure for outputs of different stages. 
+The union of all SVs found in the BED files will be considered. SVs are identified only by coordinates. SVs that don't have a genotype for a sample are assumed to be 0/0 on that sample. Ideally the same set of SVs should be passed for all samples.
+
+Nebula expects a certain directory structure for outputs of different stages. For a kmer-extraction run, create an output directory that will contain all resulting and intermediate files, e.g `output`. Run the kmer extractor as below:
 
 ```
 nebula preprocess --bed /path/to/genotypes_1.bed /path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir output/kmers --reference /path/to/reference/FASTA/file --thread <number of threads to use>
 ```
 
-This will output a number of JSON files including the kmers in the direcotry set by `workdir`.
+This will output a number of JSON files including the kmers in `output/kmers`.
 
-Next, the input samples should be genotyped with these kmers. Create a directory for this stage's output, e.g `output`. The genotyping output for each of the samples must be stored in subdirectory inside `outout` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
+Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in subdirectory inside `outout` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
 
 ```
 nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json
@@ -65,7 +74,9 @@ Nebula is designed to be simple, fast and memory efficient so it can be run on a
 
 # Citation
 
-The pre-print is currently available on BioRxiv but it's very outdated:
+The pre-print is currently available on BioRxiv. This is the version of Nebula presented in Recomb-Seq 2019 and is very different from the current implementation:
 
-The current jounral version has been completely rewritten and is now under review.
+https://doi.org/10.1101/566620
+
+The current version of Nebula is undergoing peer-review at the moment. This section will be updated when the manuscript is published.
 

@@ -45,3 +45,5 @@ scripts/syrupy.py
 scripts/syrupy-peak.py
 
 .vscode/
+
+!/experiments/data
