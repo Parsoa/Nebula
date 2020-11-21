@@ -4,78 +4,68 @@ Nebula is an ultra-efficient mapping-free structural variation genotyper based o
 
 # Operating Principles
 
-Nebula works in two stages. During the preprocessing phase, Nebula takes as input a mapped WGS sample and a set of SVs present on this sample and extracts kmers whose frequency in the sequencing reads is dependent on the presence of said SVs. These kmers can then be used to genotype the same set of structural variations on any other sample. The input to this stage is usually the VCF output of a discovery tool such a Delly or Lumpy.
-
-During the genotyping phase, Nebula uses the kmers from a previous preprocessing stage to genotype a new sample. Multiple sets of kmers can be passed at the same time and the union of events represented by them will be genotyped. Kmers are counted in the input FASTQ files and the counts are plugged into a linear programming model that outputs the final genotypes after rounding. This stage is mapping-free, as a result large libraries of newly sequenced unmapped samples can be efficiently genotyped with Nebula.
+Nebula is a mapping-free approach for accurate and efficient genotyping of SVs. Nebula is a two-stage approach and consists of a **kmer extraction phase** and a **genotyping phase**. Given as input a set of SV coordinates (BED/VCF), the  reference assembly (FASTA), and a set of mapped samples on which the genotype of these SVs is already known, Nebula extracts a collection of kmers that represent the input SVs (kmer extraction phase) and these extracted kmers will then be used to genotype the same set of SVs on any new WGS sample(s) without the need to map the reads to the reference genome (genotyping phase). This is done by counting the kmers in the WGS reads of the new sample(s) and predicting genotypes using a likelihood model. 
 
 ![Nebula's pipeline](assets/Pipeline.png)
 
 # Installation
 
-Nebula depends on [Clp](https://Github.com/coin-or/Clp) for solving the linear programming model and on [Jellyfish](https://github.com/gmarcais/Jellyfish) for the preprocessing stage. There are scripts provided for installing all dependencies. Nebula requires Python 3.5 and higher.
+Nebulo requires htslib to be installed for parsing BAM and SAM files but is otherwise self-contained.
 
-Clone this repository and run:
-
-```
-virtualenv venv
-pip install -r requirements.txt
-./htslib.sh # install htslib
-./jellyfish.sh # install Jellyfish
-./coin.sh # install COIN-OR
-./counter.sh # compile sources
-```
-
-Finally copy the `nebula.sh` script to a location in `PATH`.
+Download the latest executable from releases section and put it somewhere inside your PATH.
 
 # Usage
 
-## Preprocessing
+## kmer Extraction 
 
-Multiple BED/VCF files can be passed as input to the preprocessing stage together however only one sample can be preprocessed at a time. All input files should contain events on the same sentence and from the same reference version.
-
-The preprocessing stage requires a reference assembly in FASTA format and the Jellyfish index for that assembly with kmer length 32. The index need only be created once and can be reused on all future runs:
-
-```
-jellyfish index
-```
-
-Nebula requires to extract a set of kmers from regions with different GC content levels across the genome. This is done once and the resulting kmers can be reused for any future runs:
-
-```
-nebula.sh gc --workdir <where to store kmers> --reference GRCh38.fa --jellyfish hg38_mer_counts_32k.jf
-```
-
-Alternatively, a pre-computed Jellyfish index for GRCh38 and set of GC kmers can be downloaded from this repository. In that case, the `--jellyfish` option can be ommitted below and there is no need to install Jellyfish.
-
-Samples usage for the preprocessor is as follows:
-
-```
-nebula.sh preprocess --bed <path to bed file> --reference <path to a reference assembly> --workdir <working directory> --bam <path to a bam file with structural variations> --jellyfish <path to Jellyfish index for the reference> --gckmers <path to gc_kmers.json>
-```
-
+For kmer extraction, a set of BAM/SAM/CRAM files should be passed to Nebula along with one BED file with the genotypes of the target SVs on that sample for each BAM file.
 The BED file can minimally contain the event coordinates and types: 
+```
+#CHROM BEGIN   END SVTYPE
+```
 
-`#CHROM BEGIN   END SVTYPE`
+The `SVTYPE` should be one of `DEL`, `INS` or `INV`. Optionally, the length of the SV and the actual inserted sequence can be passed for insertions (`SVLEN` and `SEQ`). Any additional field is ignored. 
 
-The `SVTYPE` should be one of `DEL`, `INS` or `INV`.
+Nebula expects a certain directory structure for outputs of different stages. 
 
-Optionally, the length of the SV and the actual inserted sequence can be passed for insertions (`SVLEN` and `SEQ`). The fiels will be ignored for deletions and inversions. An optional `ID` field is supported. This will be the id used internally and in output files for the event. If not provided, a default value of `SVTYPE@CHROM_BEGIN_END_SVTPYE` will be used instead. Any additional field is ignored. 
+```
+nebula preprocess --bed /path/to/genotypes_1.bed /path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir output/kmers --reference /path/to/reference/FASTA/file --thread <number of threads to use>
+```
 
-The preprocessor can optionally use the extracted kmers to genotype the given sample and will only retain the events that could be genotyped as `1/0` or `1/1` (with `--select`). This may reduce the number of events that can be genotyped on other samples (recall) but should increase the precision of those genotype calls. Kmers will be output under `ExportGenotypingKmersJob/kmers.json`. A single set of kmers will be exported no matter the number of input BED files.
+This will output a number of JSON files including the kmers in the direcotry set by `workdir`.
+
+Next, the input samples should be genotyped with these kmers. Create a directory for this stage's output, e.g `output`. The genotyping output for each of the samples must be stored in subdirectory inside `outout` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
+
+```
+nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json
+nebula genotype --bed /path_to_genotypes_2.bed --bam /path/to/bam_file_2.bed --workdir output/sample_2 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json
+```
+
+Merge the remaining kmers after filtering. Note that this stage will determine the output directory for each sample based on the workdir and the name of each sample: 
+
+```
+nebula mix --bed /path_to_genotypes_1.bed//path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir ./output
+```
+
+The output kmers are stored in afolder named `Mix` inside workdir.
 
 # Genotyping
 
-The genotyper takes as input one or more sets of kmers from previous preprocessing runs along with their corresponding BED tracks and a FASTQ file to be genotyped. Multiple FASTQ files can be passed but they will be considered to be parts of the same sample. Alternatively, a single BAM files can be passed, however only the raw read sequences are used.
+For genotyping unmapped sample with the extracted kmers from an earlier kmer-extraction run:
 
 ```
-nebula.sh genotype --bed <set of bed files> --kmers <kmers.json for each preprocessed bed file> --bam/--fastq <path to sequencing reads> --workdir <output directory>
+nebula.sh genotype --kmers /path/to/Mix/directory --bam/--fastq /path/to/sample --workdir <output directory>
 ```
 
-Nebula will output a BED file named `merge.bed` in its working directory under `CgcIntegerProgrammingJob`. The file will include the original fields in the input BED files along with the fields `GENOTYPE` (one of 0/0, 1/0 or 1/1), `LP_VALUE` which is the real-valued genotype from the linear program and `CONFIDENCE` which can be either HIGH or LOW, representing Nebula's confidence in the correctness of the genotype.
+Nebula will output a BED file named `genotypes.bed` in the specified working directory. The file will include the original fields in the input BED files along with the field `GENOTYPE` (one of 0/0, 1/0 or 1/1). Note that a BED file does not need to passed to the genotyper; the variants are implicit in the kmers. There are no requirements on the output directory.
 
 # Benchmarking and Performance
 
-Nebula is designed to be simple, fast and memory efficient so it can be run on any reasonable personal hardware. A FASTQ files with 2 billion reads can be processed in about 45 minutes using 8 CPU cores.
+Nebula is designed to be simple, fast and memory efficient so it can be run on any reasonable personal hardware. Using a single processor core, Nebula can count kmers at a rate of 400,000 reads per second from a FASTQ file. A 30x human sample can be process in less than 80 minutes on a single core.
 
 # Citation
+
+The pre-print is currently available on BioRxiv but it's very outdated:
+
+The current jounral version has been completely rewritten and is now under review.
 
