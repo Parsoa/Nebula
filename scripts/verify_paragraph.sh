@@ -3,8 +3,10 @@ grep -E 'CHROM|INS' merge.bed > merge.INS.bed
 
 intersect merge.DEL.bed consensus.DEL.bed > merge.DEL.shared.bed
 intersect merge.INS.bed consensus.INS.bed > merge.INS.shared.bed
+intersect merge.INS.bed consensus.MEI.bed > merge.INS.shared.bed
 intersect ./Paragraph/DEL/genotypes.bed consensus.DEL.bed > paragraph.DEL.shared.bed
 intersect ./Paragraph/INS/genotypes.bed consensus.INS.bed > paragraph.INS.shared.bed
+intersect ./Paragraph/INS/genotypes.bed consensus.MEI.bed > paragraph.INS.shared.bed
 
 #intersect merge.DEL.bed ./Paragraph/DEL/genotypes.bed > merge.DEL.shared.bed
 #intersect merge.INS.bed ./Paragraph/INS/genotypes.bed > merge.INS.shared.bed

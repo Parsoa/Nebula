@@ -50,6 +50,9 @@ def index_file(path, get_header = False, complete_key = False):
                 tokens = line.split()
                 chrom = tokens[0].lower().strip()
                 if exact:
+                    if len(tokens) < 3:
+                        while len(tokens) < 3:
+                            tokens.append('24')
                     s = svtype + '@' + chrom + '_' + tokens[1] + '_' + tokens[2]
                     c = '_'.join(tokens)
                     if complete_key:

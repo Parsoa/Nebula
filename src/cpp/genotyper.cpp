@@ -19,11 +19,14 @@
 #include "genotyper.hpp"
 
 #include "json.hpp"
-#include "ortools/linear_solver/linear_solver.h"
 
-using namespace std ;
+#ifdef LINEARSOL
+#include "ortools/linear_solver/linear_solver.h"
 using namespace absl ;
 namespace lp = operations_research ;
+#endif
+
+using namespace std ;
 
 // ============================================================================= \\
 // ============================================================================= \\
@@ -546,7 +549,9 @@ void Genotyper::genotype_clusters() {
         if (clusters[i * batch_size].size() == 1) {
             genotype_cluster_likelihood(i * batch_size, (i + 1) * batch_size) ;
         } else {
+            #ifdef LINEARSOL
             genotype_cluster_lp(i * batch_size, (i + 1) * batch_size) ;
+            #endif
         }
         n += 1 ;
         if (n % 100 == 0) {
@@ -617,6 +622,7 @@ void Genotyper::genotype_cluster_likelihood(int batch_b, int batch_e) {
     }
 }
 
+#ifdef LINEARSOL
 void Genotyper::genotype_cluster_lp(int batch_b, int batch_e) {
     auto c = Configuration::getInstance() ;
     if (clusters[batch_b].size() == 0) {
@@ -756,6 +762,7 @@ void Genotyper::genotype_cluster_lp(int batch_b, int batch_e) {
         }
     }
 }
+#endif
 
 void Genotyper::export_genotypes() {
     cout << "Exporting genotypes.." << endl ;
