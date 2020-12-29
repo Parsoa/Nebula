@@ -39,7 +39,7 @@ docker/src/
 docker/kmers/
 src/python
 src/cpp/scripts/
-/experiments/output/
+experiments/output/
 scripts/submit.sh
 scripts/syrupy.py
 scripts/syrupy-peak.py
