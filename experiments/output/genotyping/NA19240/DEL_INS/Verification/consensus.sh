@@ -1,2 +1,0 @@
-(head -n 1 ../../../../preprocessing/HG00514/Verification/consensus_del.bed && tail -q -n +2 ../../../../preprocessing/HG00514/Verification/consensus_del.bed ../../../../preprocessing/HG00733/Verification/consensus_del.bed | grep -v "==>" | sort -u -k1,1V -k2,2n) > consensus.DEL.bed
-(head -n 1 ../../../../preprocessing/HG00514/Verification/consensus_ins.bed && tail -q -n +2 ../../../../preprocessing/HG00514/Verification/consensus_ins.bed ../../../../preprocessing/HG00733/Verification/consensus_ins.bed | grep -v "==>" | sort -u -k1,1V -k2,2n) > consensus.INS.bed
