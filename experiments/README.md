@@ -12,9 +12,30 @@ As Nebula genotypes SVs purely based on coordinates, we have done slight modific
 
 * For overlapping deletions, we only keep the one with the smallest `BEGIN` position and discard the rest.
 
-* Events that are too close to each other will yield more or less the same set of kmers and can be genotyped in place of another. We merge all insertions reported withing 50 bases of each other into a single insertion across all three samples for consistency.
+* Events that are too close to each other will yield more or less the same set of kmers and can be genotyped in place of one another. We merge all insertions reported withing 50 bases of each other into a single insertion across all three samples for consistency.
 
 * We have removed events from repeat regions, i.e those with `IS_TRF=True`.
+
+Download the above VCF files, then use the Python scripts to perform the filtering:
+
+```
+cd /nebula/clone/directory
+virtualenv -p python3 venv
+source venv3/bin/activate
+pip install -r requirements.txt
+# download VCF files and store somewhere
+cd src/python
+python -m nebula unify --vcf HG00514.merged_nonredundant.vcf HG00733.merged_nonredundant.vcf NA19240.merged_nonredundant.vcf --workdir /directory/to/save/modified/VCF/files
+```
+
+Use the `parse_vcf.py` script to convert the VCF files into BED files for input to Nebula:
+
+```
+# all variants
+./parse_vcf.py HG00514.merged_nonredundant.unified.vcf > HG00514.unified.bed
+./parse_vcf.py HG00733.merged_nonredundant.unified.vcf > HG00733.unified.bed
+./parse_vcf.py NA19240.merged_nonredundant.unified.vcf > NA19240.unified.bed
+```
 
 # Running
 
@@ -30,7 +51,7 @@ Now we can extract kmers from HG00514 and HG00733:
 ./scripts/preprocess.sh
 ```
 
-This extracts the kmers and stores them in `output/kmers`. This step should take ~15 minutes. Now we need to genotype both samples with the exrtacted kmers and filter the potentially misleaing kmers:
+This extracts the kmers and stores them in the directory `kmers`. This step should take ~15 minutes. Now we need to genotype both samples with the exrtacted kmers and filter the potentially misleaing kmers:
 
 ```
 ./scripts/genotype_HG00514.sh
@@ -45,7 +66,7 @@ Finally, the kmers are to be filtered and exported for genotyping:
 ./scripts/mix.sh
 ```
 
-This stores the kmers in `output/HG00514_HG00733_mix`
+This stores the kmers in `Mix`.
 
 Now we can genotype NA19240:
 
@@ -53,5 +74,7 @@ Now we can genotype NA19240:
 ./scripts/genotype_NA19240.sh
 ```
 
-The output file `genotypes.bed` under `output/NA19240` contains the genotype predictions.
+The output file `genotypes.bed` under the directory `NA19240` contains the genotype predictions.
+
+You can adjust the paths in the scripts according to where the various files are located. All paths must be absolute.
 

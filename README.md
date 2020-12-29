@@ -10,15 +10,19 @@ Nebula is a mapping-free approach for accurate and efficient genotyping of SVs. 
 
 # Installation
 
-Nebulo requires htslib and Google OR-Tools to be installed for parsing BAM and SAM files but is otherwise self-contained.
-
-Download the latest executable from releases section and put it somewhere inside your PATH. Altenrtaviely, clone the repository and run `make` inside `src/cpp` to build Nebula from sources. At this point, you have to manually set the path for OR-Tools and htslib by editing lines 1 and 7 of the Makefile. This will be improved in a future release.
-
-For OR-Tools, simply download an extract a release tarball:
+Nebula's only dependency is htslib; the headers are included in this repository for convenience. Clone this repository recursively and build:
 
 ```
-wget https://github.com/google/or-tools/releases/download/v7.8/or-tools_ubuntu-16.04_v7.8.7959.tar.gz
-tar -xzvf or-tools_ubuntu-16.04_v7.8.7959.tar.gz
+git clone --recursive git@github.com:Parsoa/Nebula.git
+make
+```
+
+If your htslib shared object (`libhts.a`) is in a non-standard directory you can pass it to `make` using the `HTSLIB` option :
+
+```
+HTSLIB=/software/htslib/1.8/lssc0-linux/lib/libhts.a
+```
+
 ```
 
 # Usage
@@ -35,15 +39,17 @@ To use the reference genome for extraction, the SV type should be one of `DEL`, 
 
 The union of all SVs found in the BED files will be considered. SVs are identified only by coordinates. SVs that don't have a genotype for a sample are assumed to be 0/0 on that sample. Ideally the same set of SVs should be passed for all samples.
 
-Nebula expects a certain directory structure for outputs of different stages. For a kmer-extraction run, create an output directory that will contain all resulting and intermediate files, e.g `output`. Run the kmer extractor as below:
+Nebula expects a certain directory structure for outputs of different stages. For a kmer-extraction run, create an output directory that will contain all resulting and intermediate files, e.g `/output`. Run the kmer extractor as below:
 
 ```
-nebula preprocess --bed /path/to/genotypes_1.bed /path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir output/kmers --reference /path/to/reference/FASTA/file --thread <number of threads to use>
+nebula preprocess --bed /path/to/genotypes_1.bed /path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir /output/kmers --reference /path/to/reference/FASTA/file --thread <number of threads to use>
 ```
 
 This will output a number of JSON files including the kmers in `output/kmers`.
 
-Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in subdirectory inside `outout` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
+Note that all paths passed to Nebula must be absolute.
+
+Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in subdirectory inside `output` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
 
 ```
 nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json
@@ -53,10 +59,10 @@ nebula genotype --bed /path_to_genotypes_2.bed --bam /path/to/bam_file_2.bed --w
 Merge the remaining kmers after filtering. Note that this stage will determine the output directory for each sample based on the workdir and the name of each sample: 
 
 ```
-nebula mix --bed /path_to_genotypes_1.bed//path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir ./output
+nebula mix --bed /path_to_genotypes_1.bed//path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir /output
 ```
 
-The output kmers are stored in afolder named `Mix` inside workdir.
+The output kmers are stored in afolder named `Mix` inside workdir (here `/output/Mix`).
 
 # Genotyping
 
