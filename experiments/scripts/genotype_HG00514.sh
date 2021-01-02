@@ -1,1 +1,0 @@
-nebula genotype --bed HG00514.unified.bed --gc_kmers gc_kmers.json --depth_kmers reference_kmers.json --bam HG00514.alt_bwamem_GRCh38DH.20150715.CHS.high_coverage.bam --kmers $PWD/kmers --workdir $PWD/HG00514 --threads 8 --select --unique

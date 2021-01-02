@@ -366,7 +366,7 @@ void Preprocessor::dump_kmers(string path) {
         output_files[i] << "{\n" ;
         counters.push_back(0) ;
     }
-    
+    //TODO: check if correctly parallel
     //cout << path + "/kmers_2.txt" << endl ;
     //#pragma omp parallel for num_threads(c->threads)
     for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {

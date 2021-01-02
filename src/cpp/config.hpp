@@ -31,6 +31,7 @@ public:
     std::vector<std::string> fastq ;
     std::vector<std::string> kmers ;
     std::vector<std::string> samples ;
+    // map of all loaded tracks
     std::unordered_map<SimpleTrack, Track> tracks ;
 
 private:

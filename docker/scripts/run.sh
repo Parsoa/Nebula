@@ -1,1 +1,0 @@
-nebula "$@" --workdir "$PWD"

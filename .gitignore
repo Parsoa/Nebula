@@ -43,3 +43,8 @@ experiments/output/
 scripts/
 
 .vscode/
+
+!/experiments/kmers/depth_kmers.json
+!/experiments/kmers/reference_kmers.json
+!/experimenmts/variants/*.bed
+!/experimenmts/variants/*.vcf

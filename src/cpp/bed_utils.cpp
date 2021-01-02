@@ -9,6 +9,7 @@
 
 using namespace std ;
 
+// list of all loaded tracks
 vector<Track> bed_tracks ;
 
 string get_svtype(uint8_t svtype) {

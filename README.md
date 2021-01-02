@@ -14,6 +14,7 @@ Nebula's only dependency is htslib; the headers are included in this repository 
 
 ```
 git clone --recursive git@github.com:Parsoa/Nebula.git
+cd Nebula
 make
 ```
 
@@ -21,8 +22,6 @@ If your htslib shared object (`libhts.a`) is in a non-standard directory you can
 
 ```
 HTSLIB=/software/htslib/1.8/lssc0-linux/lib/libhts.a
-```
-
 ```
 
 # Usage

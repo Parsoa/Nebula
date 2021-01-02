@@ -1,1 +1,0 @@
-/share/hormozdiarilab/Codes/NebulousSerendipity/scripts/union.py "$1" "$2" | grep -v "#" | awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4}' | sort -u | sort -k1,1V -k2,2n
