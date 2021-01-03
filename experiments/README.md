@@ -4,7 +4,7 @@ This README files provides instructions on how to reproduce the results presente
 
 # Data
 
-We used the SV calls made by <cite>[Chaisson et al][1]</cite> on 1KG samples [HG00514](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/CHS/HG00514/), [HG00733](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/PUR/HG00733/) and [NA19240](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/YRI/NA19240/high_cov_alignment/) as the basis of this study. The deletion and insertion calls can be retrievd from [this link](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/working/20180627_PanTechnologyIntegrationSet/). The inversion calls can be retrived from dbVar's ftp website [here](https://ftp.ncbi.nlm.nih.gov/pub/dbVar/data/Homo_sapiens/by_study/genotype/nstd152/).
+We used the SV calls made by [Chaisson et al](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/working/20180627_PanTechnologyIntegrationSet/) on 1KG samples [HG00514](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/CHS/HG00514/), [HG00733](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/PUR/HG00733/) and [NA19240](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/YRI/NA19240/high_cov_alignment/) as the basis of this study. The deletion and insertion calls can be retrievd from [this link](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/working/20180627_PanTechnologyIntegrationSet/). The inversion calls can be retrived from dbVar's ftp website [here](https://ftp.ncbi.nlm.nih.gov/pub/dbVar/data/Homo_sapiens/by_study/genotype/nstd152/).
 
 For consistency, we have merged events that overladp or are less than 10bp aprt (only for insertions) into single events across all three samples. This allows for a more streamlined comparison of genotypes. SVs that are form repeat regions (`IS_TRF=TR`) and SVs shorter than 10bp have been filtered. Insertions with an absent `SEQ` field have also been filtered. The original SV calls and the modified calls can be found in the `variants` folder.
 
@@ -43,9 +43,10 @@ nebula mix --bed $PWD/variants/HG00514.unified.bed,$PWD/variants/HG00733.unified
 4. Now we can genotype NA19240:
 
 ```
-nebula genotype --bed $PWD/variants/NA19240.unified.bed --gc_kmers $PWD/kmers/gc_kmers.json --depth_kmers $PWD/kmers/reference_kmers.json --fastq /path/toNA19240.alt_bwamem_GRCh38DH.20150715.YRI.high_coverage.bam --kmers $PWD/Mix --workdir $PWD/NA19240 --threads 8
+nebula genotype --bed $PWD/variants/HG00514.unified.bed,$PWD/variants/HG00733.unified.bed --gc_kmers $PWD/kmers/gc_kmers.json --depth_kmers $PWD/kmers/reference_kmers.json --fastq /path/toNA19240.alt_bwamem_GRCh38DH.20150715.YRI.high_coverage.bam --kmers $PWD/Mix --workdir $PWD/NA19240 --threads 8
 ```
 
 The output file `genotypes.bed` under the directory `NA19240` contains the genotype predictions.
 
 Nebula requires absolute paths for all arguments. If you are inside a different directory, change the paths as needed.
+

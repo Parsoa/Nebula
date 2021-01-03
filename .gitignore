@@ -4,6 +4,8 @@ venv/
 venv2/
 venv3/
 
+.cgcrc
+
 *.pyc
 
 __pycache__/
@@ -15,8 +17,6 @@ __pycache__/
 *.Fq
 *.swp
 *.json
-*.vcf
-*.bed
 
 *.o
 *.so
@@ -44,7 +44,7 @@ scripts/
 
 .vscode/
 
-!/experiments/kmers/depth_kmers.json
+!/experiments/kmers/gc_kmers.json
 !/experiments/kmers/reference_kmers.json
 !/experimenmts/variants/*.bed
 !/experimenmts/variants/*.vcf

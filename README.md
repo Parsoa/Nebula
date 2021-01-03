@@ -21,7 +21,7 @@ make
 If your htslib shared object (`libhts.a`) is in a non-standard directory you can pass it to `make` using the `HTSLIB` option :
 
 ```
-HTSLIB=/software/htslib/1.8/lssc0-linux/lib/libhts.a
+make HTSLIB=/software/htslib/1.8/lssc0-linux/lib/libhts.a
 ```
 
 # Usage
@@ -63,7 +63,7 @@ nebula mix --bed /path_to_genotypes_1.bed//path_to_genotypes_2.bed --samples sam
 
 The output kmers are stored in afolder named `Mix` inside workdir (here `/output/Mix`).
 
-# Genotyping
+## Genotyping
 
 For genotyping unmapped sample with the extracted kmers from an earlier kmer-extraction run:
 
@@ -76,6 +76,9 @@ Nebula will output a BED file named `genotypes.bed` in the specified working dir
 # Benchmarking and Performance
 
 Nebula is designed to be simple, fast and memory efficient so it can be run on any reasonable personal hardware. Using a single processor core, Nebula can count kmers at a rate of 400,000 reads per second from a FASTQ file. A 30x human sample can be process in less than 80 minutes on a single core.
+
+Nebula's kmer counter is very fast, as a result genotyping runtime is mostly a function of memory bandwidth and I/O speed when reading sequencing data from disk. Unless you have very fast disk I/O, it's unlikely that adding more threads will improve kmer counting runtime. The initial loading of kmers and the final step of genotyping SVs using the likelihood model will benefit significantly from multiple threads, however they account for only 15% of the runtime.
+The kmer extraction step will benefit largely from multiple threads as its most time-consuming component, finding occurrences of kmers in the reference genome, can be parallelized over differnet chromosomes.
 
 # Citation
 
