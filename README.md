@@ -80,6 +80,10 @@ Nebula is designed to be simple, fast and memory efficient so it can be run on a
 Nebula's kmer counter is very fast, as a result genotyping runtime is mostly a function of memory bandwidth and I/O speed when reading sequencing data from disk. Unless you have very fast disk I/O, it's unlikely that adding more threads will improve kmer counting runtime. The initial loading of kmers and the final step of genotyping SVs using the likelihood model will benefit significantly from multiple threads, however they account for only 15% of the runtime.
 The kmer extraction step will benefit largely from multiple threads as its most time-consuming component, finding occurrences of kmers in the reference genome, can be parallelized over differnet chromosomes.
 
+Nebula is an order of magnitude faster than other tools when genotyping an unmapped sample in FASTQ sample. The figure below shows comparison of Nebula's runtime against several other state-of-the-art methods.
+
+![Runtime comparison when genotyping an unmapped sample](assets/Runtime.png)
+
 # Citation
 
 Nebula was originally presented in Recomb-Seq 2019, the pre-print for that version can be found below:
