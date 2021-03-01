@@ -40,7 +40,7 @@ docker/kmers/
 src/python
 src/cpp/scripts/
 experiments/output/
-scripts/
+/scripts/
 
 .vscode/
 

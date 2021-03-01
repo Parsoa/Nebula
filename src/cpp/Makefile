@@ -3,13 +3,13 @@ OR_TOOLS_LIB_DIR = $(OR_TOOLS_DIR)/lib
 OR_TOOLS_INC_DIR = $(OR_TOOLS_DIR)/include
 OR_TOOLS_FLAGS = -L$(shell pwd)/$(OR_TOOLS_LIB_DIR) -lglog -lprotobuf -lgflags -lCbc -lCbcSolver -lClp -lClpSolver -lCoinUtils -lOsiCbc -lOsiClp -lCgl -lortools
 
-HTSLIB ?= -lhts
-HTSLIBFLAGS = $(HTSLIB) -lz -llzma -lbz2 -lcurl -lcrypto
+HTSLIB_PREFIEX = ./htslib
+HTSLIBFLAGS = -L$(HTSLIB_PREFIEX) -lz -llzma -lbz2 -lcurl -lcrypto -lhts
 HTSLIBSOURCES = htslib
 
 CXX = g++
 LDFLAGS = -lm -lpthread $(HTSLIBFLAGS)
-CXXFLAGS = -std=c++11 -O3 -funroll-loops -fopenmp -I $(HTSLIBSOURCES)
+CXXFLAGS = -std=c++11 -O3 -funroll-loops -fopenmp -I$(HTSLIB_PREFIEX)
 
 HPP = $(wildcard *.hpp)
 SRC = $(wildcard *.cpp)

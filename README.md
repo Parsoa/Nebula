@@ -82,9 +82,10 @@ The kmer extraction step will benefit largely from multiple threads as its most 
 
 # Citation
 
-The pre-print is currently available on BioRxiv. This is the version of Nebula presented in Recomb-Seq 2019 and is very different from the current implementation:
+Nebula was originally presented in Recomb-Seq 2019, the pre-print for that version can be found below:
 
 https://doi.org/10.1101/566620
 
-The current version of Nebula is undergoing peer-review at the moment. This section will be updated when the manuscript is published.
+The current version of Nebula is substantially different from what was presented in 2019. Nebula was published on Oxford Nucleic Acid Research In Jan 2021:
 
+https://doi.org/10.1093/nar/gkab025

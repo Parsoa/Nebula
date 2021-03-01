@@ -1,0 +1,1 @@
+nebula preprocess --bed HG00514.unified.bed,HG00733.unified.bed --reference GRC38.fasta --bam HG00514.alt_bwamem_GRCh38DH.20150715.CHS.high_coverage.bam,HG00733.alt_bwamem_GRCh38DH.20150715.PUR.high_coverage.bam --workdir $PWD/kmers --threads 48 $@
