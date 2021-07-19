@@ -10,18 +10,31 @@ Nebula is a mapping-free approach for accurate and efficient genotyping of SVs. 
 
 # Installation
 
-Nebula's only dependency is htslib; the headers are included in this repository for convenience. Clone this repository recursively and build:
+Nebula's only dependency is htslib which is included as submodule for compatibility reasons. Clone recursively:
 
 ```
 git clone --recursive git@github.com:Parsoa/Nebula.git
 cd Nebula
+```
+
+Then build htslib:
+
+```
+cd src/cpp/htslib
 make
 ```
 
-If your htslib shared object (`libhts.a`) is in a non-standard directory you can pass it to `make` using the `HTSLIB` option :
+Then build Nebula itself:
 
 ```
-make HTSLIB=/software/htslib/1.8/lssc0-linux/lib/libhts.a
+cd ..
+make
+```
+
+You need to update your `LD_LIBRARY_PATH` to use Nebula's own htslib instance:
+
+```
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/Nebula/src/cpp/htslib
 ```
 
 # Usage
@@ -51,9 +64,12 @@ Note that all paths passed to Nebula must be absolute.
 Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in subdirectory inside `output` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
 
 ```
-nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json
-nebula genotype --bed /path_to_genotypes_2.bed --bam /path/to/bam_file_2.bed --workdir output/sample_2 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json
+nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
+nebula genotype --bed /path_to_genotypes_2.bed --bam /path/to/bam_file_2.bed --workdir output/sample_2 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
 ```
+
+Not that we are passing `--select` here. This tells the genotyper to only keep kmers that predicted the known genotype correctly.
+Passing `--unique` causes the genotyper to only keep kmers unique to one SV. This option will increase precision but may reduce the recall slightly.
 
 Merge the remaining kmers after filtering. Note that this stage will determine the output directory for each sample based on the workdir and the name of each sample: 
 
@@ -68,8 +84,10 @@ The output kmers are stored in afolder named `Mix` inside workdir (here `/output
 For genotyping unmapped sample with the extracted kmers from an earlier kmer-extraction run:
 
 ```
-nebula.sh genotype --kmers /path/to/Mix/directory --bam/--fastq /path/to/sample --workdir <output directory>
+nebula genotype --kmers /path/to/Mix/directory --bam/--fastq /path/to/sample --workdir <output directory>
 ```
+
+This will count the kmers on the new sample and calculate genotypes. Note that we don't pass `--select` here.
 
 Nebula will output a BED file named `genotypes.bed` in the specified working directory. The file will include the original fields in the input BED files along with the field `GENOTYPE` (one of 0/0, 1/0 or 1/1). Note that a BED file does not need to passed to the genotyper; the variants are implicit in the kmers. There are no requirements on the output directory.
 

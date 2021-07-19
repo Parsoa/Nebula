@@ -68,9 +68,16 @@ void create_workdir() {
 }
 
 int main(int argc, char** argv) {
-    cout << "Nebula, ultra-efficient, mapping-free genotyper." << endl ;
-    if (argc == 1) {
-        cout << "Usage:" << endl ;
+    cerr << "Nebula, ultra-efficient, mapping-free genotyper." << endl ;
+    if (argc == 1) { 
+        cerr << "Basic usage:" << endl ;
+        cerr << "\t - To extract kmers (preprocessing):" << endl ;
+        cerr << "\t\t nebula preprocess --bed /path/to/genotypes.bed --bam /path/to/bam_file.bed --wokdir <path> --reference /path/to/reference/FASTA/file --thread <integer>" << endl; 
+        cerr << "\t - To genotype a sample:" << endl ;
+        cerr << "\t\t nebula genotype [--bed /path_to_genotypes.bed] --bam /path/to/bam_file.bed --workdir <path> --kmers /path/to/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json [--select] [--unique]" << endl ;
+        cerr << "\t - To mix kmers from a preprocessing run:" << endl ;
+        cerr << "\t\t nebula mix --bed /path_to_genotypes_1.bed,/path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir /output" << endl ;
+        cerr << "\t This only details the list of options for each subcommand. See https://github.com/Parsoa/Nebula for detailed instructions." << endl ;
         exit(0) ;
     }
     auto c = Configuration::getInstance() ;
