@@ -49,35 +49,33 @@ Nebula requires a reference genome in FASTA format and a number of samples in BA
 
 To use the reference genome for extraction, the SV type should be one of `DEL`, `INS` or `INV`. For other types of SVs, kmers will only be extracted from mapped reads. The `SEQ` field is only used for insertions and should contain the inserted sequence.
 
-The union of all SVs found in the BED files will be considered. SVs are identified only by coordinates. SVs that don't have a genotype for a sample are assumed to be 0/0 on that sample. Ideally the same set of SVs should be passed for all samples.
+Same set of SVs should be passed for all samples being preprocessed. If the set of SVs is not the same, then the union of all SVs found in the BED files will be considered and SVs that don't have a genotype for a sample are assumed to be 0/0 on that sample.
 
-Nebula expects a certain directory structure for outputs of different stages. For a kmer-extraction run, create an output directory that will contain all resulting and intermediate files, e.g `/output`. Run the kmer extractor as below:
+Nebula keeps all files and folders produced during a preprocessing run under the same directory. This is initially determined by passing `--workdir`. This directory will be created if it doesn't already exist. For the sake of these examples, we will initially set `workdir` to `/output`.
 
-```
-nebula preprocess --bed /path/to/genotypes_1.bed /path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir /output/kmers --reference /path/to/reference/FASTA/file --thread <number of threads to use>
-```
-
-This will output a number of JSON files including the kmers in `output/kmers`.
-
-Note that all paths passed to Nebula must be absolute.
-
-Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in subdirectory inside `output` with the same name as the sample. A sample's name is just whatever identificationn you use for that sample, but has to consistent through the pipeline:
+To extract kmers run the `preprocess` command. This will output the extracted kmers in a series of JSON files under `/output`. This command process multiple pairs of BAM and BED files at the same time. List arguments are separated by comma.
 
 ```
-nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
-nebula genotype --bed /path_to_genotypes_2.bed --bam /path/to/bam_file_2.bed --workdir output/sample_2 --kmers /output/kmers --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
+nebula preprocess --bed /path/to/genotypes_1.bed,/path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir /output --reference /path/to/reference/FASTA/file --thread <number of threads to use>
 ```
 
-Not that we are passing `--select` here. This tells the genotyper to only keep kmers that predicted the known genotype correctly.
-Passing `--unique` causes the genotyper to only keep kmers unique to one SV. This option will increase precision but may reduce the recall slightly.
+Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in a subdirectory inside `output` specified by passing `--workdir`.`--bed` is the corresponding set of SV calls for the current sample. `--kmers` specifices the location of extracted kmers. The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
 
-Merge the remaining kmers after filtering. Note that this stage will determine the output directory for each sample based on the workdir and the name of each sample: 
+Note that we are passing `--select` here. This tells the genotyper to only keep kmers that predict the known genotypes correctly. This flag must be passed during preprocessing.
+Passing `--unique` causes the genotyper to only keep kmers unique to one SV. This option will usually result in higher precision during genotyping but may reduce recall slightly.
 
 ```
-nebula mix --bed /path_to_genotypes_1.bed//path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir /output
+nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
+nebula genotype --bed /path_to_genotypes_2.bed --bam /path/to/bam_file_2.bed --workdir output/sample_2 --kmers /output --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
 ```
 
-The output kmers are stored in afolder named `Mix` inside workdir (here `/output/Mix`).
+Finally, merge the remaining kmers after filtering by running the `mix` subcommand. The `--samples` argument takes the name of input sample. This is basically the name of the directories passed during the previous stage when running the genotyper.
+
+```
+nebula mix --bed /path_to_genotypes_1.bed,/path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir /output
+```
+
+The output kmers are stored in a folder named `Mix` inside workdir (here `/output/Mix`).
 
 ## Genotyping
 

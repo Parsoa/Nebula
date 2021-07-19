@@ -353,12 +353,13 @@ void Preprocessor::dump_kmers(string path) {
     vector<mutex> locks(num_batches) ;
     vector<ofstream> output_files ;
 
-    ofstream test(path + "/kmers.txt") ;
-    for (auto kmer = kmers.begin(); kmer != kmers.end(); kmer++) {
-        assert(kmer->second.weight == 1.0) ;
-        test << decode_kmer(kmer->first) << endl ;
-    }
-    test.close() ;
+    // this is for internal testing
+    //ofstream test(path + "/kmers.txt") ;
+    //for (auto kmer = kmers.begin(); kmer != kmers.end(); kmer++) {
+    //    assert(kmer->second.weight == 1.0) ;
+    //    test << decode_kmer(kmer->first) << endl ;
+    //}
+    //test.close() ;
 
     for (int i = 0; i < num_batches; i++) {
         string p = path + "/kmers_batch_" + std::to_string(i) + ".json" ;
@@ -367,7 +368,6 @@ void Preprocessor::dump_kmers(string path) {
         counters.push_back(0) ;
     }
     //TODO: check if correctly parallel
-    //cout << path + "/kmers_2.txt" << endl ;
     //#pragma omp parallel for num_threads(c->threads)
     for (size_t bucket = 0; bucket < kmers.bucket_count(); bucket++) {
         int t = bucket % num_batches ;
