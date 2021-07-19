@@ -53,13 +53,13 @@ Same set of SVs should be passed for all samples being preprocessed. If the set 
 
 Nebula keeps all files and folders produced during a preprocessing run under the same directory. This is initially determined by passing `--workdir`. This directory will be created if it doesn't already exist. For the sake of these examples, we will initially set `workdir` to `/output`.
 
-To extract kmers run the `preprocess` command. This will output the extracted kmers in a series of JSON files under `/output`. This command process multiple pairs of BAM and BED files at the same time. List arguments are separated by comma.
+To extract kmers run the `preprocess` command. This will output the extracted kmers in a series of JSON files under `/output`. This command processes multiple pairs of BAM and BED files at the same time. List arguments are separated by comma.
 
 ```
 nebula preprocess --bed /path/to/genotypes_1.bed,/path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir /output --reference /path/to/reference/FASTA/file --thread <number of threads to use>
 ```
 
-Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in a subdirectory inside `output` specified by passing `--workdir`.`--bed` is the corresponding set of SV calls for the current sample. `--kmers` specifices the location of extracted kmers. The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
+Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in a subdirectory inside `/output` specified by passing `--workdir`.`--bed` is the corresponding set of SV calls for the current sample. `--kmers` specifices the location of extracted kmers (the output of running the preprocessor). The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
 
 Note that we are passing `--select` here. This tells the genotyper to only keep kmers that predict the known genotypes correctly. This flag must be passed during preprocessing.
 Passing `--unique` causes the genotyper to only keep kmers unique to one SV. This option will usually result in higher precision during genotyping but may reduce recall slightly.
@@ -75,7 +75,7 @@ Finally, merge the remaining kmers after filtering by running the `mix` subcomma
 nebula mix --bed /path_to_genotypes_1.bed,/path_to_genotypes_2.bed --samples sample_1,sample_2 --workdir /output
 ```
 
-The output kmers are stored in a folder named `Mix` inside workdir (here `/output/Mix`).
+The output kmers are stored in a folder named `Mix` inside workdir (here `/output/Mix`). You will only the contents of `Mix` for genotyping other samples. Any other files and directories created by Nebula can be deleted to save disk space.
 
 ## Genotyping
 
@@ -85,7 +85,7 @@ For genotyping unmapped sample with the extracted kmers from an earlier kmer-ext
 nebula genotype --kmers /path/to/Mix/directory --bam/--fastq /path/to/sample --workdir <output directory>
 ```
 
-This will count the kmers on the new sample and calculate genotypes. Note that we don't pass `--select` here.
+The `workdir` here can be anywhere. This will count the kmers on the new sample and calculate genotypes. Note that we don't pass `--select` when actually genotyping a sample.
 
 Nebula will output a BED file named `genotypes.bed` in the specified working directory. The file will include the original fields in the input BED files along with the field `GENOTYPE` (one of 0/0, 1/0 or 1/1). Note that a BED file does not need to passed to the genotyper; the variants are implicit in the kmers. There are no requirements on the output directory.
 
@@ -93,10 +93,11 @@ Nebula will output a BED file named `genotypes.bed` in the specified working dir
 
 Nebula is designed to be simple, fast and memory efficient so it can be run on any reasonable personal hardware. Using a single processor core, Nebula can count kmers at a rate of 400,000 reads per second from a FASTQ file. A 30x human sample can be process in less than 80 minutes on a single core.
 
-Nebula's kmer counter is very fast, as a result genotyping runtime is mostly a function of memory bandwidth and I/O speed when reading sequencing data from disk. Unless you have very fast disk I/O, it's unlikely that adding more threads will improve kmer counting runtime. The initial loading of kmers and the final step of genotyping SVs using the likelihood model will benefit significantly from multiple threads, however they account for only 15% of the runtime.
-The kmer extraction step will benefit largely from multiple threads as its most time-consuming component, finding occurrences of kmers in the reference genome, can be parallelized over differnet chromosomes.
+Nebula has been deeply parallelized with OpenMP. The kmer extraction step (`preprocess` subcommand) will benefit significantly from multiple threads as finding occurrences of kmers in sequencing reads and the reference genome can be easily parallelized. Use as many threads as available for the `preprocess` subcommand for best performance.
 
-Nebula is an order of magnitude faster than other tools when genotyping an unmapped sample in FASTQ sample. The figure below shows comparison of Nebula's runtime against several other state-of-the-art methods.
+Nebula's kmer counter is very fast due to low-level optimizations and as a result genotyping runtime is mostly a function of memory bandwidth and I/O speed. Unless you have very fast disk I/O, it's unlikely that adding more threads will improve kmer counting runtime. The initial loading of kmers and the final step of genotyping SVs using the likelihood model will benefit significantly from multiple threads, however they account for only 15% of the runtime. We suggest running the counter on a small number of threads (e.g 4).
+
+Nebula is an order of magnitude faster than other tools when genotyping an unmapped sample in FASTQ sample. The figure below shows comparison of Nebula's single-core genotyping runtime against several other state-of-the-art methods.
 
 ![Runtime comparison when genotyping an unmapped sample](assets/Runtime.png)
 
