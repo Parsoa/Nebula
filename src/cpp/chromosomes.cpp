@@ -25,11 +25,15 @@ void load_chromosomes(string path) {
     std::string line ;
     std::getline(fasta_file, line) ;
     while (true) {
-        if (line.substr(0, 4) == ">chr") {
+        if (line[0] == '>') {
+            int o = 3 ; //hg19 style
+            if (line.substr(1, 3) == "chr") {
+                o = 0 ;
+            }
             int l = line.length() ;
-            if (l == 6 || l == 5) {
-                if (line[4] == 'X' || line[4] == 'Y' || (line[4] >= '1' && line[4] <= '9')) {
-                    string chrom = line.substr(1, l - 1) ;
+            if (l == 6 - o || l == 5 - o) {
+                if (line[4 - o] == 'X' || line[4 - o] == 'Y' || (line[4 - o] >= '1' && line[4 - o] <= '9')) {
+                    string chrom = (o == 3 ? "chr" : "") + line.substr(1, l - 1) ; // chromosome names will begin with "chr"
                     //cout << "Collecting " << chrom << ".." << endl ;
                     while(std::getline(fasta_file, line)) {
                          if (line[0] == '>') {

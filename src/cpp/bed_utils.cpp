@@ -105,12 +105,14 @@ std::vector<Track> load_tracks_from_file(string path) {
         } else {
             vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}} ;
             Track track ;
-            track.chrom = get_chromosome_index(tokens[0]) ;
+            // make sure all chromosome names begin with "chr"
+            string _chrom = tokens[0] ;
+            if (_chrom.substr(0, 3) != "chr") {
+                _chrom = "chr" + _chrom ;
+            } 
+            track.chrom = get_chromosome_index(_chrom) ;
             track.begin = std::stoi(tokens[1]) ;
             track.end = std::stoi(tokens[2]) ;
-            if (header.find("SVLEN") != header.end()) {
-                track.svlen = abs(std::stoi(tokens[header["SVLEN"]])) ;
-            }
             if (header.find("SEQ") != header.end()) {
                 track.seq = tokens[header["SEQ"]] ;
             }
@@ -121,6 +123,16 @@ std::vector<Track> load_tracks_from_file(string path) {
                 track.svtype = parse_svtype(tokens[header["SVTYPE"]]) ;
             } else {
                 track.svtype = SVTYPE_DEL ; 
+            }
+            if (header.find("SVLEN") != header.end()) {
+                track.svlen = abs(std::stoi(tokens[header["SVLEN"]])) ;
+            } else {
+                // calculate SVLEN based on other parameters
+                if (track.svtype != SVTYPE_INS) {
+                    track.svlen = track.end - track.begin ;
+                } else {
+                    track.svlen = track.seq.length() ;
+                }
             }
             tracks.push_back(track) ;
         }

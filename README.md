@@ -39,27 +39,35 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/Nebula/src/cpp/htslib
 
 # Usage
 
-## kmer Extraction 
+## Input format
 
-Nebula requires a reference genome in FASTA format and a number of samples in BAM/SAM/CRAM format along with SV genotypes for each sample in BED format. Only the following basic fields are required in the BED file:
+Nebula receives the SV loci and genotypes for prepreocessing in BED format. Only a few fields are required:
 
 ```
 #CHROM BEGIN   END SVTYPE SEQ
 ```
 
-To use the reference genome for extraction, the SV type should be one of `DEL`, `INS` or `INV`. For other types of SVs, kmers will only be extracted from mapped reads. The `SEQ` field is only used for insertions and should contain the inserted sequence.
+`SVTYPE` is usually one of `DEL`, `INS` or `INV` for deletion, insertion and inversion respectively. Other SV types are not currently tested but should work as long as kmers can be extracted for them.
 
-Same set of SVs should be passed for all samples being preprocessed. If the set of SVs is not the same, then the union of all SVs found in the BED files will be considered and SVs that don't have a genotype for a sample are assumed to be 0/0 on that sample.
+The `SEQ` field is only required for insertions and is ignored for insertions and inversions, however the field should still be provided (you can pass an empty string `"."`).
 
-Nebula keeps all files and folders produced during a preprocessing run under the same directory. This is initially determined by passing `--workdir`. This directory will be created if it doesn't already exist. For the sake of these examples, we will initially set `workdir` to `/output`.
+You can optionally include `SVLEN` otherwise it will be estimated from `BEGIN` and `END` for  deletions and inversions and from size of `SEQ` for insertions.
 
-To extract kmers run the `preprocess` command. This will output the extracted kmers in a series of JSON files under `/output`. This command processes multiple pairs of BAM and BED files at the same time. List arguments are separated by comma.
+Chromosome names in BED and FASTA files can both include and not include `chr`. However, Nebula's output will always include `chr` in chromosome names regradless of input format.
+
+## Preprocessing and k-mer extraction 
+
+Nebula requires a reference genome in FASTA format and a number of samples in BAM/SAM/CRAM format along with SV genotypes for each sample in BED format. k-mers are extracted from both the reference genome (for deletions only) and read mappings (for any type of SV).
+
+The same set of SV genotypes should be provided for all samples being preprocessed. If the set of SVs is not the same, then the union of all SVs found in the BED files will be considered and SVs that don't have a genotype for a sample are assumed to be 0/0 on that sample.
+
+The preprocessing stage consists of multiple commands. To extract kmers run the `preprocess` command. This will output the extracted kmers in a series of JSON files under `--workdir` and the directory is created if it doesn't exists. A BED file and a BAM file should be passed for each sample being preprocessed.
 
 ```
 nebula preprocess --bed /path/to/genotypes_1.bed,/path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir /output --reference /path/to/reference/FASTA/file --thread <number of threads to use>
 ```
 
-Next, the input samples should be genotyped with these kmers. The genotyping output for each of the samples must be stored in a subdirectory inside `/output` specified by passing `--workdir`.`--bed` is the corresponding set of SV calls for the current sample. `--kmers` specifices the location of extracted kmers (the output of running the preprocessor). The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
+Next, the input samples should be genotyped with these kmers. `--kmers` specifices the location of extracted kmers (the output of running the preprocessor). The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
 
 Note that we are passing `--select` here. This tells the genotyper to only keep kmers that predict the known genotypes correctly. This flag must be passed during preprocessing.
 Passing `--unique` causes the genotyper to only keep kmers unique to one SV. This option will usually result in higher precision during genotyping but may reduce recall slightly.
