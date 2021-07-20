@@ -57,7 +57,7 @@ You can optionally include `SVLEN` otherwise it will be estimated from `BEGIN` a
 
 Chromosome names in BED and FASTA files can both include and not include `chr`. However, Nebula's output will always include `chr` in chromosome names regradless of input format.
 
-GENOTYPE must be one of `0/0` for absent, `0/1` or `1/0` (treated equally) for heterozygous and `1/1` for homozygous. Nebula's preprocessing stage requires "known" SV genotypes to select kmers, as a result ambiguous genotypes like `./1` and `./.` are not accepted and will result in abort.
+`GENOTYPE` must be one of `0/0` for absent, `0/1` or `1/0` (treated equally) for heterozygous and `1/1` for homozygous. Nebula's preprocessing stage requires "known" SV genotypes to select kmers, as a result ambiguous genotypes like `./1` and `./.` are not accepted and will result in abort.
 
 ## Preprocessing and k-mer extraction 
 
@@ -71,10 +71,9 @@ The preprocessing stage consists of multiple commands. To extract kmers run the 
 nebula preprocess --bed /path/to/genotypes_1.bed,/path/to/genotypes_2.bed --bam /path/to/bam_file_1.bed /path/to/bam_file_2.bed --wokdir /output --reference /path/to/reference/FASTA/file --thread <number of threads to use>
 ```
 
-Next, the input samples should be genotyped with these kmers. `--kmers` specifices the location of extracted kmers (the output of running the preprocessor). The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
+Next, the input samples are genotyped with these kmers to filter low-quality kmers. Passing `--select` causes the genotyper to only keep the kmers whose counts support the known genotypes. `--kmers` specifices the location of extracted kmers (the output of running the preprocessor). The `gc_kmers` and `depth_kmers` arguments take a precaculated list of kmers used for estimating sequencing depth across regions of the genome with different levels of GC content. These files can be downloaded from [here](https://github.com/Parsoa/Nebula/tree/master/experiments/kmers).
 
-Note that we are passing `--select` here. This tells the genotyper to only keep kmers that predict the known genotypes correctly. This flag must be passed during preprocessing.
-Passing `--unique` causes the genotyper to only keep kmers unique to one SV. This option will usually result in higher precision during genotyping but may reduce recall slightly.
+Passing `--unique` causes the genotyper to only keep kmers unique to one SV (e.g kmers that don't appear as a result of two different SVs). This option will usually result in higher precision during genotyping but may reduce recall slightly.
 
 ```
 nebula genotype --bed /path_to_genotypes_1.bed --bam /path/to/bam_file_1.bed --workdir output/sample_1 --kmers /output --depth_kmers depth_kmers.json --gc_kmers gc_kmers.json --select --unique
