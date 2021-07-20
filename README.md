@@ -44,8 +44,10 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/Nebula/src/cpp/htslib
 Nebula receives the SV loci and genotypes for prepreocessing in BED format. Only a few fields are required:
 
 ```
-#CHROM BEGIN   END SVTYPE SEQ
+#CHROM BEGIN   END SVTYPE SEQ GENOTYPE
 ```
+
+The header line MUST be present.
 
 `SVTYPE` is usually one of `DEL`, `INS` or `INV` for deletion, insertion and inversion respectively. Other SV types are not currently tested but should work as long as kmers can be extracted for them.
 
@@ -54,6 +56,8 @@ The `SEQ` field is only required for insertions and is ignored for insertions an
 You can optionally include `SVLEN` otherwise it will be estimated from `BEGIN` and `END` for  deletions and inversions and from size of `SEQ` for insertions.
 
 Chromosome names in BED and FASTA files can both include and not include `chr`. However, Nebula's output will always include `chr` in chromosome names regradless of input format.
+
+GENOTYPE must be one of `0/0` for absent, `0/1` or `1/0` (treated equally) for heterozygous and `1/1` for homozygous. Nebula's preprocessing stage requires "known" SV genotypes to select kmers, as a result ambiguous genotypes like `./1` and `./.` are not accepted and will result in abort.
 
 ## Preprocessing and k-mer extraction 
 
@@ -93,9 +97,11 @@ For genotyping unmapped sample with the extracted kmers from an earlier kmer-ext
 nebula genotype --kmers /path/to/Mix/directory --bam/--fastq /path/to/sample --workdir <output directory>
 ```
 
+Note that a BED file is not passed to the genotyper as the variants are implicit in the kmers. 
+
 The `workdir` here can be anywhere. This will count the kmers on the new sample and calculate genotypes. Note that we don't pass `--select` when actually genotyping a sample.
 
-Nebula will output a BED file named `genotypes.bed` in the specified working directory. The file will include the original fields in the input BED files along with the field `GENOTYPE` (one of 0/0, 1/0 or 1/1). Note that a BED file does not need to passed to the genotyper; the variants are implicit in the kmers. There are no requirements on the output directory.
+Nebula will output a BED file named `genotypes.bed` in the specified working directory. The file will include the original fields in the input BED files along with the field `GENOTYPE` (one of 0/0, 1/0 or 1/1). 
 
 # Benchmarking and Performance
 

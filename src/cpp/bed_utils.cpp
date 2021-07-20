@@ -94,7 +94,7 @@ std::vector<Track> load_tracks_from_file(string path) {
         istringstream iss(line) ;
         if (i == 0) {
             if (line[0] != '#') {
-                cout << "BAM header not present (first line doesn't begin with #). Aborting.." << endl ;
+                cerr << "BED header not present (first line doesn't begin with #). Aborting.." << endl ;
                 exit(0) ;
             }
             vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}} ;
@@ -118,6 +118,9 @@ std::vector<Track> load_tracks_from_file(string path) {
             }
             if (header.find("GENOTYPE") != header.end()) {
                 track.genotype = tokens[header["GENOTYPE"]] ;
+                if (track.genotype != "0/0" && track.genotype != "0/1" && track.genotype != "1/0" && track.genotype != "1/1") {
+                    cerr << "Invalid genotype on BED input line \"" << line << "\". Aborting.. " << endl ;
+                }
             }
             if (header.find("SVTYPE") != header.end()) {
                 track.svtype = parse_svtype(tokens[header["SVTYPE"]]) ;
