@@ -86,7 +86,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
                 it++ ;
                 continue ;
             }
-            Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5, false}) ;
+            Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, uint16_t(it->gc / 5), false}) ;
             _kmers[k].loci.push_back(locus) ;
             _kmers[k].count ++ ;
             n++ ;
@@ -101,7 +101,7 @@ unordered_map<uint64_t, Kmer> Preprocessor::scan_chromosome(string chrom, int th
                     it++ ;
                     continue ;
                 }
-                Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, it->gc / 5, false}) ;
+                Locus locus({get_chromosome_index(chrom), uint32_t(it.position), LOCUS_TYPE_REF, it->left, it->right, uint16_t(it->gc / 5), false}) ;
                 _kmers[rc].loci.push_back(locus) ;
                 _kmers[rc].count ++ ;
                 n++ ;
